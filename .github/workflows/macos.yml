@@ -1,5 +1,8 @@
 name: macos
 
+permissions:
+  contents: write
+
 on:
   push:
     branches: [main]
@@ -109,6 +112,12 @@ jobs:
             --team-id "$APPLE_TEAM_ID" \
             --password "$APPLE_APP_PASSWORD" \
             --wait
+
+      - name: Draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: dist/beatit-macos.zip
 
   homebrew:
     runs-on: macos-14
