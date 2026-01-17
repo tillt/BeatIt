@@ -1,0 +1,3 @@
+[submodule "third_party/BeatTrack"]
+	path = third_party/BeatTrack
+	url = https://github.com/mhrice/BeatTrack.git

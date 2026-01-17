@@ -1,0 +1,131 @@
+name: macos
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: macos-14
+    env:
+      BEATIT_TEST_CPU_ONLY: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install ninja
+        run: brew list ninja || brew install ninja
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: beatit-macos-build
+          path: |
+            build/beatit
+            build/BeatIt.framework
+
+  notarize:
+    runs-on: macos-14
+    environment: Release
+    needs: build
+    if: github.ref_type == 'tag'
+    env:
+      BEATIT_TEST_CPU_ONLY: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install ninja
+        run: brew list ninja || brew install ninja
+
+      - name: Import signing certificate
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MAC_CERT_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MAC_CERT_PASS }}
+          KEYCHAIN_PASSWORD: ${{ secrets.MAC_KEYCHAIN_PASS }}
+        run: |
+          if [ -z "$MACOS_CERTIFICATE" ]; then
+            echo "Missing MAC_CERT_P12_BASE64 secret."
+            exit 1
+          fi
+          if [ -z "$KEYCHAIN_PASSWORD" ]; then
+            echo "Missing MAC_KEYCHAIN_PASS secret."
+            exit 1
+          fi
+          echo "$MACOS_CERTIFICATE" | base64 --decode > signing.p12
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security import signing.p12 -k build.keychain -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Codesign artifacts
+        env:
+          MACOS_SIGN_IDENTITY: ${{ secrets.MAC_CODESIGN_ID }}
+        run: |
+          if [ -z "$MACOS_SIGN_IDENTITY" ]; then
+            echo "Missing MAC_CODESIGN_ID secret."
+            exit 1
+          fi
+          codesign --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" build/BeatIt.framework
+          codesign --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" build/beatit
+
+      - name: Package for notarization
+        run: |
+          mkdir -p dist/BeatIt
+          cp -R build/BeatIt.framework dist/BeatIt/
+          cp build/beatit dist/BeatIt/
+          ditto -c -k --sequesterRsrc --keepParent dist/BeatIt dist/beatit-macos.zip
+
+      - name: Notarize
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PWD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -z "$APPLE_ID" ] || [ -z "$APPLE_APP_PASSWORD" ] || [ -z "$APPLE_TEAM_ID" ]; then
+            echo "Missing Apple notarization secrets."
+            exit 1
+          fi
+          xcrun notarytool submit dist/beatit-macos.zip \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --wait
+
+  homebrew:
+    runs-on: macos-14
+    needs: build
+    if: github.ref_type == 'tag'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install ninja
+        run: brew list ninja || brew install ninja
+
+      - name: Tap repository
+        run: brew tap tillt/beatit "$GITHUB_WORKSPACE"
+
+      - name: Install from formula
+        run: brew install --HEAD --build-from-source tillt/beatit/beatit
+
+      - name: Test formula
+        run: brew test beatit

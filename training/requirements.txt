@@ -1,0 +1,6 @@
+coremltools>=7.0
+librosa>=0.10.1
+numpy>=1.24
+onnx>=1.14
+soundfile>=0.12
+torch>=2.1
