@@ -44,6 +44,7 @@ Options:
 - `--ml-frame <frames>` CoreML feature frame size
 - `--ml-hop <frames>` CoreML feature hop size
 - `--ml-mels <bins>` CoreML mel bin count
+- `--ml-window-hop <frames>` CoreML window hop (fixed-frame mode)
 - `--ml-threshold <value>` CoreML activation threshold
 - `--ml-beattrack` use BeatTrack CoreML defaults
 - `--ml-tempo-window <pct>` percent window around classic BPM
@@ -57,9 +58,7 @@ Options:
 - `--info` print decoded audio stats
 - `-h, --help` show help
 
-Run `./build/beatit --help` for the full list.
-
-CLI is for development/testing only. The reusable API lives in `include/beatit/analysis.h`.
+CLI is for development/testing; the reusable API lives in `include/beatit/analysis.h`.
 
 ## Streaming API (large files)
 
