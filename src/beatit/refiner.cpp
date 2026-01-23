@@ -437,18 +437,48 @@ long long choose_half_beat_shift(const std::vector<unsigned long long>& beat_fra
 }
 
 std::size_t choose_downbeat_phase(const std::vector<unsigned long long>& beat_frames,
-                                  const std::vector<float>* downbeat_activation) {
-    if (beat_frames.empty() || !downbeat_activation || downbeat_activation->empty()) {
+                                  const std::vector<float>* downbeat_activation,
+                                  const std::vector<float>* phase_energy,
+                                  double low_freq_weight) {
+    if (beat_frames.empty()) {
         return 0;
     }
 
+    constexpr std::size_t kPeakWindow = 2;
+
     double scores[4] = {0.0, 0.0, 0.0, 0.0};
-    const std::size_t size = downbeat_activation->size();
+
+    float max_downbeat = 0.0f;
+    if (downbeat_activation) {
+        for (float value : *downbeat_activation) {
+            max_downbeat = std::max(max_downbeat, value);
+        }
+    }
+
+    float max_phase = 0.0f;
+    if (phase_energy) {
+        for (float value : *phase_energy) {
+            max_phase = std::max(max_phase, value);
+        }
+    }
 
     for (std::size_t i = 0; i < beat_frames.size(); ++i) {
-        const std::size_t frame =
-            static_cast<std::size_t>(std::min<unsigned long long>(beat_frames[i], size - 1));
-        scores[i % 4] += static_cast<double>((*downbeat_activation)[frame]);
+        double score = 0.0;
+
+        if (downbeat_activation && !downbeat_activation->empty() && max_downbeat > 0.0f) {
+            const std::size_t frame =
+                static_cast<std::size_t>(
+                    std::min<unsigned long long>(beat_frames[i], downbeat_activation->size() - 1));
+            score += static_cast<double>((*downbeat_activation)[frame]) / max_downbeat;
+        }
+
+        if (phase_energy && !phase_energy->empty() && max_phase > 0.0f) {
+            const double peak =
+                compute_local_peak(phase_energy, beat_frames[i], kPeakWindow) / max_phase;
+            score += low_freq_weight * peak;
+        }
+
+        scores[i % 4] += score;
     }
 
     std::size_t best = 0;
@@ -491,6 +521,34 @@ std::size_t last_active_frame(const std::vector<float>* energy,
     return total_frames;
 }
 
+std::size_t first_active_frame(const std::vector<float>* energy,
+                               std::size_t total_frames,
+                               double active_energy_ratio) {
+    if (!energy || energy->empty()) {
+        return 0;
+    }
+
+    float max_value = 0.0f;
+    for (float value : *energy) {
+        if (value > max_value) {
+            max_value = value;
+        }
+    }
+
+    if (max_value <= 0.0f) {
+        return 0;
+    }
+
+    const float threshold = static_cast<float>(max_value * active_energy_ratio);
+    for (std::size_t i = 0; i < energy->size(); ++i) {
+        if ((*energy)[i] >= threshold) {
+            return std::min(total_frames, i);
+        }
+    }
+
+    return 0;
+}
+
 } // namespace
 
 const unsigned long long BeatEventMaskMarkers = kBeatEventMaskMarkers;
@@ -499,10 +557,32 @@ std::string beat_event_csv_header() {
     return "index,frame,bpm,energy,peak,style";
 }
 
-std::string beat_event_csv_preamble(std::size_t downbeat_phase, long long phase_shift_frames) {
+std::string beat_event_csv_preamble(std::size_t downbeat_phase,
+                                    long long phase_shift_frames,
+                                    bool used_model_downbeat,
+                                    double downbeat_coverage,
+                                    std::size_t active_start_frame,
+                                    std::size_t active_end_frame,
+                                    std::size_t found_count,
+                                    std::size_t total_count,
+                                    std::size_t max_missing_run,
+                                    double avg_missing_run) {
     std::ostringstream out;
     out << "# downbeat_phase=" << downbeat_phase
         << " phase_shift_frames=" << phase_shift_frames;
+    out << " model_downbeat=" << (used_model_downbeat ? 1 : 0)
+        << " downbeat_coverage=" << std::setprecision(4) << downbeat_coverage;
+    out << " active_start=" << active_start_frame
+        << " active_end=" << active_end_frame;
+    if (total_count > 0) {
+        out.setf(std::ios::fixed);
+        out << " found=" << found_count
+            << " total=" << total_count
+            << " found_ratio=" << std::setprecision(4)
+            << (static_cast<double>(found_count) / static_cast<double>(total_count))
+            << " max_missing_run=" << max_missing_run
+            << " avg_missing_run=" << std::setprecision(2) << avg_missing_run;
+    }
     return out.str();
 }
 
@@ -522,8 +602,26 @@ void write_beat_events_csv(std::ostream& out,
                            const std::vector<BeatEvent>& events,
                            bool include_header,
                            std::size_t downbeat_phase,
-                           long long phase_shift_frames) {
-    out << beat_event_csv_preamble(downbeat_phase, phase_shift_frames) << "\n";
+                           long long phase_shift_frames,
+                           bool used_model_downbeat,
+                           double downbeat_coverage,
+                           std::size_t active_start_frame,
+                           std::size_t active_end_frame,
+                           std::size_t found_count,
+                           std::size_t total_count,
+                           std::size_t max_missing_run,
+                           double avg_missing_run) {
+    out << beat_event_csv_preamble(downbeat_phase,
+                                   phase_shift_frames,
+                                   used_model_downbeat,
+                                   downbeat_coverage,
+                                   active_start_frame,
+                                   active_end_frame,
+                                   found_count,
+                                   total_count,
+                                   max_missing_run,
+                                   avg_missing_run)
+        << "\n";
     if (include_header) {
         out << beat_event_csv_header() << "\n";
     }
@@ -555,9 +653,21 @@ ConstantBeatResult refine_constant_beats(const std::vector<unsigned long long>& 
         return result;
     }
 
+    const std::vector<float>* energy = phase_energy ? phase_energy : beat_activation;
+    std::size_t silence_frames = initial_silence_frames;
+    if (refiner_config.auto_active_trim && silence_frames == 0) {
+        silence_frames =
+            first_active_frame(energy, total_frames, refiner_config.active_energy_ratio);
+    }
+
+    const std::size_t active_frames =
+        last_active_frame(energy, total_frames, refiner_config.active_energy_ratio);
+    result.active_start_frame = silence_frames;
+    result.active_end_frame = active_frames;
+
     long long first_beat_frame = 0;
     const double const_bpm =
-        make_constant_bpm(regions, frame_rate, refiner_config, &first_beat_frame, initial_silence_frames);
+        make_constant_bpm(regions, frame_rate, refiner_config, &first_beat_frame, silence_frames);
     if (const_bpm <= 0.0) {
         return result;
     }
@@ -566,9 +676,6 @@ ConstantBeatResult refine_constant_beats(const std::vector<unsigned long long>& 
         adjust_phase(first_beat_frame, const_bpm, beat_feature_frames, frame_rate, refiner_config);
     const double beat_length = 60.0 * frame_rate / const_bpm;
 
-    const std::vector<float>* energy = phase_energy ? phase_energy : beat_activation;
-    const std::size_t active_frames =
-        last_active_frame(energy, total_frames, refiner_config.active_energy_ratio);
     long long phase_shift_frames = 0;
     if (refiner_config.use_half_beat_correction) {
         const long long half_beat_frames = static_cast<long long>(std::llround(beat_length * 0.5));
@@ -597,34 +704,79 @@ ConstantBeatResult refine_constant_beats(const std::vector<unsigned long long>& 
     // Align to a 4/4 grid for the marker scheme.
     beat_count_assumption = (beat_count_assumption >> 2) << 2;
 
-    unsigned long intro_beat_count = 32U << 2;
-    unsigned long buildup_beat_count = 64U << 2;
-    unsigned long teardown_beat_count;
-    unsigned long outro_beat_count;
-
-    if (beat_count_assumption < 3 * buildup_beat_count) {
-        buildup_beat_count = ((buildup_beat_count >> 1) >> 2) << 2;
-        intro_beat_count = ((intro_beat_count >> 1) >> 2) << 2;
-    }
-
-    outro_beat_count = intro_beat_count;
-    teardown_beat_count = buildup_beat_count;
-
-    const std::size_t intro_beats_starting_at = intro_beat_count;
-    const std::size_t buildup_beats_starting_at = buildup_beat_count;
-    const std::size_t teardown_beats_starting_at = beat_count_assumption - teardown_beat_count;
-    const std::size_t outro_beats_starting_at = beat_count_assumption - outro_beat_count;
-
     const unsigned long long tolerance_frames =
         static_cast<unsigned long long>(std::max(1.0, std::round(refiner_config.max_phase_error_seconds * frame_rate)));
     std::size_t coarse_index = 0;
 
     std::size_t beat_index = 0;
+    bool use_model_downbeat = refiner_config.use_downbeat_anchor;
+    const std::vector<float>* downbeat_for_phase = downbeat_activation;
+    if (use_model_downbeat && refiner_config.auto_downbeat_fallback) {
+        if (!downbeat_activation || downbeat_activation->empty()) {
+            use_model_downbeat = false;
+            downbeat_for_phase = nullptr;
+        } else {
+            float max_downbeat = 0.0f;
+            for (float value : *downbeat_activation) {
+                max_downbeat = std::max(max_downbeat, value);
+            }
+            if (max_downbeat <= 0.0f) {
+                use_model_downbeat = false;
+                downbeat_for_phase = nullptr;
+            } else {
+                std::size_t covered = 0;
+                for (unsigned long long frame : beat_feature_frames) {
+                    if (frame >= downbeat_activation->size()) {
+                        continue;
+                    }
+                    const float value = (*downbeat_activation)[static_cast<std::size_t>(frame)];
+                    if (value >= max_downbeat * refiner_config.downbeat_min_strength_ratio) {
+                        covered++;
+                    }
+                }
+                if (!beat_feature_frames.empty()) {
+                    result.downbeat_coverage =
+                        static_cast<double>(covered) /
+                        static_cast<double>(beat_feature_frames.size());
+                }
+                if (result.downbeat_coverage < refiner_config.downbeat_min_coverage) {
+                    use_model_downbeat = false;
+                    downbeat_for_phase = nullptr;
+                }
+            }
+        }
+    }
     const std::size_t downbeat_phase =
-        refiner_config.use_downbeat_anchor
-            ? choose_downbeat_phase(beat_feature_frames, downbeat_activation)
-            : 0;
+        choose_downbeat_phase(beat_feature_frames,
+                              downbeat_for_phase,
+                              phase_energy,
+                              refiner_config.low_freq_weight);
     result.downbeat_phase = downbeat_phase;
+    result.used_model_downbeat = use_model_downbeat;
+
+    // Segment markers are defined in bars (4 beats) and aligned to the bar phase.
+    unsigned long intro_bar_count = 32U;
+    unsigned long buildup_bar_count = 64U;
+    unsigned long teardown_bar_count;
+    unsigned long outro_bar_count;
+
+    const std::size_t bar_count_assumption = beat_count_assumption / 4;
+    if (bar_count_assumption < 3 * buildup_bar_count) {
+        buildup_bar_count >>= 1;
+        intro_bar_count >>= 1;
+    }
+
+    outro_bar_count = intro_bar_count;
+    teardown_bar_count = buildup_bar_count;
+
+    const std::size_t intro_beats_starting_at =
+        downbeat_phase + (static_cast<std::size_t>(intro_bar_count) * 4);
+    const std::size_t buildup_beats_starting_at =
+        downbeat_phase + (static_cast<std::size_t>(buildup_bar_count) * 4);
+    const std::size_t teardown_beats_starting_at =
+        downbeat_phase + (bar_count_assumption - teardown_bar_count) * 4;
+    const std::size_t outro_beats_starting_at =
+        downbeat_phase + (bar_count_assumption - outro_bar_count) * 4;
     // Clamp to real audio activity so padding does not create synthetic beats.
     while (next_beat_frame < static_cast<double>(active_frames)) {
         const auto frame = static_cast<unsigned long long>(std::llround(next_beat_frame));
@@ -690,6 +842,38 @@ ConstantBeatResult refine_constant_beats(const std::vector<unsigned long long>& 
         BeatEvent& last_event = result.beat_events.back();
         last_event.style =
             static_cast<BeatEventStyle>(last_event.style | BeatEventStyleMarkEnd);
+    }
+
+    result.total_count = result.beat_events.size();
+    if (result.total_count > 0) {
+        std::size_t current_missing = 0;
+        std::size_t total_missing = 0;
+        std::size_t missing_runs = 0;
+        for (const BeatEvent& event : result.beat_events) {
+            const bool found = (event.style & BeatEventStyleFound) == BeatEventStyleFound;
+            if (found) {
+                result.found_count++;
+                if (current_missing > 0) {
+                    result.max_missing_run = std::max(result.max_missing_run, current_missing);
+                    total_missing += current_missing;
+                    missing_runs++;
+                    current_missing = 0;
+                }
+            } else {
+                current_missing++;
+            }
+        }
+        if (current_missing > 0) {
+            result.max_missing_run = std::max(result.max_missing_run, current_missing);
+            total_missing += current_missing;
+            missing_runs++;
+        }
+        result.found_ratio =
+            static_cast<double>(result.found_count) / static_cast<double>(result.total_count);
+        if (missing_runs > 0) {
+            result.avg_missing_run =
+                static_cast<double>(total_missing) / static_cast<double>(missing_runs);
+        }
     }
 
     result.beat_sample_frames.reserve(result.beat_feature_frames.size());

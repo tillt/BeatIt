@@ -11,7 +11,9 @@
 #include "beatit/analysis.h"
 #include "beatit/coreml.h"
 
+#include <chrono>
 #include <cstddef>
+#include <memory>
 #include <vector>
 
 namespace beatit {
@@ -21,6 +23,7 @@ public:
     BeatitStream(double sample_rate,
                  const CoreMLConfig& coreml_config,
                  bool enable_coreml = true);
+    ~BeatitStream();
 
     void push(const float* samples, std::size_t count);
     void push(const std::vector<float>& samples) { push(samples.data(), samples.size()); }
@@ -29,6 +32,12 @@ public:
 
 private:
     void process_coreml_windows();
+    void process_torch_windows();
+#if defined(BEATIT_USE_TORCH)
+    bool infer_torch_window(const std::vector<float>& window,
+                            std::vector<float>* beat,
+                            std::vector<float>* downbeat);
+#endif
 
     double sample_rate_ = 0.0;
     CoreMLConfig coreml_config_;
@@ -55,6 +64,21 @@ private:
     double phase_energy_state_ = 0.0;
     double phase_energy_sum_sq_ = 0.0;
     std::size_t phase_energy_sample_count_ = 0;
+
+    struct PerfStats {
+        double resample_ms = 0.0;
+        double process_ms = 0.0;
+        double window_infer_ms = 0.0;
+        std::size_t window_count = 0;
+        double finalize_infer_ms = 0.0;
+        double postprocess_ms = 0.0;
+        double finalize_ms = 0.0;
+    } perf_;
+
+#if defined(BEATIT_USE_TORCH)
+    struct TorchState;
+    std::unique_ptr<TorchState> torch_state_;
+#endif
 };
 
 } // namespace beatit

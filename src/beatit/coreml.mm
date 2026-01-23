@@ -13,8 +13,11 @@
 
 #include <Accelerate/Accelerate.h>
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <iostream>
+#include <limits>
+#include <numeric>
 #include <vector>
 
 // Fallback for older SDKs that do not expose metadata key constants.
@@ -44,6 +47,34 @@ namespace beatit {
 namespace {
 
 constexpr float kPi = 3.14159265358979323846f;
+
+MLModel* load_cached_model(NSURL* model_url,
+                           MLModelConfiguration* model_config,
+                           NSError** error) {
+    static NSMutableDictionary<NSString*, MLModel*>* cache = nil;
+    static dispatch_once_t once_token;
+    dispatch_once(&once_token, ^{
+        cache = [NSMutableDictionary new];
+    });
+
+    NSString* cache_key = [NSString stringWithFormat:@"%@|%ld",
+                           model_url.path,
+                           static_cast<long>(model_config.computeUnits)];
+    @synchronized(cache) {
+        MLModel* cached = [cache objectForKey:cache_key];
+        if (cached) {
+            return cached;
+        }
+
+        MLModel* model = [MLModel modelWithContentsOfURL:model_url
+                                           configuration:model_config
+                                                   error:error];
+        if (model) {
+            [cache setObject:model forKey:cache_key];
+        }
+        return model;
+    }
+}
 
 NSString* resolve_model_path(const CoreMLConfig& config) {
     NSString* model_path = nil;
@@ -124,24 +155,36 @@ std::vector<float> make_hann_window(std::size_t size) {
     return window;
 }
 
-float hz_to_mel(float hz) {
+float hz_to_mel(float hz, CoreMLConfig::MelScale scale) {
+    if (scale == CoreMLConfig::MelScale::Slaney) {
+        return 1127.01048f * std::log(1.0f + hz / 700.0f);
+    }
     return 2595.0f * std::log10(1.0f + hz / 700.0f);
 }
 
-float mel_to_hz(float mel) {
+float mel_to_hz(float mel, CoreMLConfig::MelScale scale) {
+    if (scale == CoreMLConfig::MelScale::Slaney) {
+        return 700.0f * (std::exp(mel / 1127.01048f) - 1.0f);
+    }
     return 700.0f * (std::pow(10.0f, mel / 2595.0f) - 1.0f);
 }
 
 std::vector<float> build_mel_filterbank(std::size_t mel_bins,
                                         std::size_t fft_bins,
-                                        double sample_rate) {
+                                        double sample_rate,
+                                        float f_min,
+                                        float f_max,
+                                        CoreMLConfig::MelScale scale) {
     std::vector<float> filters(mel_bins * fft_bins, 0.0f);
     if (mel_bins == 0 || fft_bins == 0 || sample_rate <= 0.0) {
         return filters;
     }
 
-    const float mel_min = hz_to_mel(0.0f);
-    const float mel_max = hz_to_mel(static_cast<float>(sample_rate / 2.0));
+    const float nyquist = static_cast<float>(sample_rate / 2.0);
+    const float clamped_min = std::max(0.0f, f_min);
+    const float clamped_max = (f_max <= 0.0f || f_max > nyquist) ? nyquist : f_max;
+    const float mel_min = hz_to_mel(clamped_min, scale);
+    const float mel_max = hz_to_mel(clamped_max, scale);
     std::vector<float> mel_points(mel_bins + 2);
     for (std::size_t i = 0; i < mel_points.size(); ++i) {
         const float t = static_cast<float>(i) / static_cast<float>(mel_bins + 1);
@@ -150,7 +193,7 @@ std::vector<float> build_mel_filterbank(std::size_t mel_bins,
 
     std::vector<float> hz_points(mel_points.size());
     for (std::size_t i = 0; i < mel_points.size(); ++i) {
-        hz_points[i] = mel_to_hz(mel_points[i]);
+        hz_points[i] = mel_to_hz(mel_points[i], scale);
     }
 
     std::vector<std::size_t> bin_points(hz_points.size());
@@ -184,7 +227,13 @@ std::vector<float> compute_mel(const std::vector<float>& samples,
                                std::size_t frame_size,
                                std::size_t hop_size,
                                std::size_t mel_bins,
-                               bool use_log) {
+                               bool use_log,
+                               float log_multiplier,
+                               float f_min,
+                               float f_max,
+                               CoreMLConfig::MelScale mel_scale,
+                               CoreMLConfig::SpectrogramNorm spectrogram_norm,
+                               float power) {
     if (samples.empty() || frame_size == 0 || hop_size == 0 || mel_bins == 0) {
         return {};
     }
@@ -209,7 +258,8 @@ std::vector<float> compute_mel(const std::vector<float>& samples,
     const int fft_log2 = static_cast<int>(std::log2(frame_size));
     FFTSetup setup = vDSP_create_fftsetup(fft_log2, kFFTRadix2);
 
-    std::vector<float> mel_filters = build_mel_filterbank(mel_bins, fft_bins, sample_rate);
+    std::vector<float> mel_filters =
+        build_mel_filterbank(mel_bins, fft_bins, sample_rate, f_min, f_max, mel_scale);
     std::vector<float> features(frame_count * mel_bins, 0.0f);
 
     for (std::size_t frame = 0; frame < frame_count; ++frame) {
@@ -218,7 +268,15 @@ std::vector<float> compute_mel(const std::vector<float>& samples,
         vDSP_vmul(buffer.data(), 1, window.data(), 1, windowed.data(), 1, frame_size);
         vDSP_ctoz(reinterpret_cast<DSPComplex*>(windowed.data()), 2, &split, 1, fft_bins);
         vDSP_fft_zrip(setup, &split, 1, fft_log2, FFT_FORWARD);
-        vDSP_zvmags(&split, 1, spectrum.data(), 1, fft_bins);
+        if (std::abs(power - 1.0f) < 1e-6f) {
+            vDSP_zvabs(&split, 1, spectrum.data(), 1, fft_bins);
+        } else {
+            vDSP_zvmags(&split, 1, spectrum.data(), 1, fft_bins);
+        }
+        if (spectrogram_norm == CoreMLConfig::SpectrogramNorm::FrameLength) {
+            const float scale = 1.0f / static_cast<float>(frame_size);
+            vDSP_vsmul(spectrum.data(), 1, &scale, spectrum.data(), 1, fft_bins);
+        }
 
         for (std::size_t m = 0; m < mel_bins; ++m) {
             float sum = 0.0f;
@@ -226,7 +284,8 @@ std::vector<float> compute_mel(const std::vector<float>& samples,
             for (std::size_t k = 0; k < fft_bins; ++k) {
                 sum += spectrum[k] * filter[k];
             }
-            const float value = use_log ? std::log1p(sum) : sum;
+            const float value =
+                use_log ? std::log1p(log_multiplier * sum) : sum;
             features[frame * mel_bins + m] = value;
         }
     }
@@ -234,6 +293,48 @@ std::vector<float> compute_mel(const std::vector<float>& samples,
     vDSP_destroy_fftsetup(setup);
     return features;
 }
+
+} // namespace
+
+std::vector<float> compute_mel_features(const std::vector<float>& samples,
+                                        double sample_rate,
+                                        const CoreMLConfig& config,
+                                        std::size_t* out_frames) {
+    if (out_frames) {
+        *out_frames = 0;
+    }
+    if (samples.empty() || sample_rate <= 0.0) {
+        return {};
+    }
+    if (config.sample_rate == 0 || config.frame_size == 0 || config.hop_size == 0 || config.mel_bins == 0) {
+        return {};
+    }
+
+    std::vector<float> resampled = resample_linear(samples, sample_rate, config.sample_rate);
+    if (resampled.size() < config.frame_size) {
+        return {};
+    }
+
+    const std::size_t frames = 1 + (resampled.size() - config.frame_size) / config.hop_size;
+    if (out_frames) {
+        *out_frames = frames;
+    }
+
+    return compute_mel(resampled,
+                       config.sample_rate,
+                       config.frame_size,
+                       config.hop_size,
+                       config.mel_bins,
+                       config.use_log_mel,
+                       config.log_multiplier,
+                       config.f_min,
+                       config.f_max,
+                       config.mel_scale,
+                       config.spectrogram_norm,
+                       config.power);
+}
+
+namespace {
 
 bool load_multiarray_from_features(MLMultiArray* array,
                                    const std::vector<float>& features,
@@ -379,6 +480,310 @@ double median_interval_frames(const std::vector<std::size_t>& peaks) {
     const std::size_t mid = intervals.size() / 2;
     std::nth_element(intervals.begin(), intervals.begin() + static_cast<long>(mid), intervals.end());
     return static_cast<double>(intervals[mid]);
+}
+
+struct DBNDecodeResult {
+    std::vector<std::size_t> beat_frames;
+    std::vector<std::size_t> downbeat_frames;
+};
+
+std::vector<std::size_t> viterbi_beats(const std::vector<float>& activation,
+                                       double fps,
+                                       double bpm,
+                                       double interval_tolerance,
+                                       float activation_floor) {
+    std::vector<std::size_t> beats;
+    if (activation.empty() || fps <= 0.0 || bpm <= 0.0) {
+        return beats;
+    }
+
+    const double interval = (60.0 * fps) / bpm;
+    const double tolerance = std::max(0.0, interval_tolerance);
+    const std::size_t min_interval =
+        static_cast<std::size_t>(std::max(1.0, std::floor(interval * (1.0 - tolerance))));
+    const std::size_t max_interval =
+        static_cast<std::size_t>(std::max<double>(min_interval,
+                                                  std::ceil(interval * (1.0 + tolerance))));
+
+    const double floor_value = std::max(1e-6f, activation_floor);
+    const std::size_t frames = activation.size();
+
+    std::vector<double> score(frames, std::numeric_limits<double>::lowest());
+    std::vector<int> prev(frames, -1);
+
+    for (std::size_t i = 0; i < frames; ++i) {
+        const double obs = std::log(std::max<double>(activation[i], floor_value));
+        score[i] = obs;
+        prev[i] = -1;
+
+        const std::size_t start = (i > max_interval) ? i - max_interval : 0;
+        const std::size_t end = (i > min_interval) ? i - min_interval : 0;
+        for (std::size_t j = start; j <= end; ++j) {
+            if (score[j] == std::numeric_limits<double>::lowest()) {
+                continue;
+            }
+            const double candidate = score[j] + obs;
+            if (candidate > score[i]) {
+                score[i] = candidate;
+                prev[i] = static_cast<int>(j);
+            }
+        }
+    }
+
+    std::size_t best_idx = 0;
+    double best_score = std::numeric_limits<double>::lowest();
+    for (std::size_t i = 0; i < frames; ++i) {
+        if (score[i] > best_score) {
+            best_score = score[i];
+            best_idx = i;
+        }
+    }
+
+    int cursor = static_cast<int>(best_idx);
+    while (cursor >= 0) {
+        beats.push_back(static_cast<std::size_t>(cursor));
+        cursor = prev[static_cast<std::size_t>(cursor)];
+    }
+
+    std::reverse(beats.begin(), beats.end());
+    return beats;
+}
+
+DBNDecodeResult decode_dbn_beats(const std::vector<float>& beat_activation,
+                                 const std::vector<float>& downbeat_activation,
+                                 double fps,
+                                 float min_bpm,
+                                 float max_bpm,
+                                 const CoreMLConfig& config,
+                                 float reference_bpm) {
+    DBNDecodeResult result;
+    if (beat_activation.empty() || fps <= 0.0) {
+        return result;
+    }
+
+    const float bpm_step = std::max(0.1f, config.dbn_bpm_step);
+    const float activation_floor = std::max(1e-6f, config.dbn_activation_floor);
+    const std::size_t beats_per_bar = std::max<std::size_t>(1, config.dbn_beats_per_bar);
+    const float downbeat_weight = std::max(0.0f, config.dbn_downbeat_weight);
+    const float tempo_change_penalty = std::max(0.0f, config.dbn_tempo_change_penalty);
+    const float tempo_prior_weight = std::max(0.0f, config.dbn_tempo_prior_weight);
+    const float transition_reward = config.dbn_transition_reward;
+    const std::size_t max_candidates = std::max<std::size_t>(4, config.dbn_max_candidates);
+    const double floor_value = std::max(1e-6f, activation_floor);
+
+    // DBN needs dense frame-wise activations, not peak-picked candidates.
+    const bool use_all_candidates = true;
+
+    std::vector<std::size_t> candidates;
+    candidates.reserve(beat_activation.size());
+    if (use_all_candidates) {
+        candidates.resize(beat_activation.size());
+        std::iota(candidates.begin(), candidates.end(), 0);
+    } else {
+        for (std::size_t i = 0; i < beat_activation.size(); ++i) {
+            if (beat_activation[i] >= activation_floor) {
+                candidates.push_back(i);
+            }
+        }
+    }
+
+    if (!use_all_candidates && candidates.size() > max_candidates) {
+        std::vector<std::size_t> sorted = candidates;
+        std::nth_element(sorted.begin(),
+                         sorted.begin() + static_cast<std::ptrdiff_t>(max_candidates),
+                         sorted.end(),
+                         [&](std::size_t a, std::size_t b) {
+                             return beat_activation[a] > beat_activation[b];
+                         });
+        sorted.resize(max_candidates);
+        std::sort(sorted.begin(), sorted.end());
+        candidates.swap(sorted);
+    }
+
+    if (config.verbose) {
+        std::size_t min_delta = std::numeric_limits<std::size_t>::max();
+        std::size_t max_delta = 0;
+        std::size_t viable_links = 0;
+        const double min_interval_global = (60.0 * fps) / std::max(1.0f, max_bpm);
+        const double max_interval_global = (60.0 * fps) / std::max(1.0f, min_bpm);
+        for (std::size_t i = 1; i < candidates.size(); ++i) {
+            const std::size_t delta = candidates[i] - candidates[i - 1];
+            min_delta = std::min(min_delta, delta);
+            max_delta = std::max(max_delta, delta);
+            if (delta >= min_interval_global && delta <= max_interval_global) {
+                ++viable_links;
+            }
+        }
+        if (candidates.size() >= 2) {
+            std::cerr << "DBN: candidates=" << candidates.size()
+                      << " min_delta=" << min_delta
+                      << " max_delta=" << max_delta
+                      << " viable_links=" << viable_links
+                      << " activation_floor=" << activation_floor
+                      << "\n";
+        } else {
+            std::cerr << "DBN: candidates=" << candidates.size()
+                      << " activation_floor=" << activation_floor
+                      << "\n";
+        }
+    }
+
+    if (candidates.size() < 2) {
+        result.beat_frames = viterbi_beats(beat_activation,
+                                           fps,
+                                           std::max(1.0f, min_bpm),
+                                           config.dbn_interval_tolerance,
+                                           activation_floor);
+        if (!result.beat_frames.empty()) {
+            result.downbeat_frames.push_back(result.beat_frames.front());
+        }
+        return result;
+    }
+
+    const std::size_t tempo_count =
+        static_cast<std::size_t>(std::floor((max_bpm - min_bpm) / bpm_step)) + 1;
+    const std::size_t phase_count = beats_per_bar;
+
+    struct Backref {
+        int prev_idx = -1;
+        int prev_tempo = -1;
+    };
+
+    const std::size_t state_count = tempo_count * phase_count;
+    const std::size_t total_states = candidates.size() * state_count;
+    std::vector<double> scores(total_states, std::numeric_limits<double>::lowest());
+    std::vector<Backref> backrefs(total_states);
+
+    auto state_index = [&](std::size_t cand_idx, std::size_t tempo_idx, std::size_t phase_idx) {
+        return (cand_idx * tempo_count + tempo_idx) * phase_count + phase_idx;
+    };
+
+    for (std::size_t ci = 0; ci < candidates.size(); ++ci) {
+        const std::size_t frame = candidates[ci];
+        const double beat_obs = std::log(std::max<double>(beat_activation[frame], floor_value));
+            for (std::size_t tempo_idx = 0; tempo_idx < tempo_count; ++tempo_idx) {
+                const float bpm = min_bpm + static_cast<float>(tempo_idx) * bpm_step;
+                const double interval = (60.0 * fps) / bpm;
+                const double tolerance = std::max(0.0, static_cast<double>(config.dbn_interval_tolerance));
+                const double min_interval = interval * (1.0 - tolerance);
+                const double max_interval = interval * (1.0 + tolerance);
+                const std::size_t min_prev_frame =
+                    (frame > static_cast<std::size_t>(std::ceil(max_interval)))
+                        ? frame - static_cast<std::size_t>(std::ceil(max_interval))
+                        : 0;
+                const std::size_t max_prev_frame =
+                    (frame > static_cast<std::size_t>(std::floor(min_interval)))
+                        ? frame - static_cast<std::size_t>(std::floor(min_interval))
+                        : 0;
+                const auto start_it =
+                    std::lower_bound(candidates.begin(), candidates.begin() + static_cast<std::ptrdiff_t>(ci), min_prev_frame);
+                const auto end_it =
+                    std::upper_bound(candidates.begin(), candidates.begin() + static_cast<std::ptrdiff_t>(ci), max_prev_frame);
+                const std::size_t start_idx =
+                    static_cast<std::size_t>(std::distance(candidates.begin(), start_it));
+                const std::size_t end_idx =
+                    static_cast<std::size_t>(std::distance(candidates.begin(), end_it));
+
+                for (std::size_t phase_idx = 0; phase_idx < phase_count; ++phase_idx) {
+                    const bool is_downbeat = (phase_idx == 0);
+                    double obs = beat_obs;
+                if (config.dbn_use_downbeat && is_downbeat && frame < downbeat_activation.size()) {
+                    obs += downbeat_weight *
+                        std::log(std::max<double>(downbeat_activation[frame], floor_value));
+                }
+                if (reference_bpm > 0.0f && tempo_prior_weight > 0.0f) {
+                    obs -= tempo_prior_weight * std::abs(bpm - reference_bpm);
+                }
+
+                double best_score = obs;
+                Backref best_backref;
+
+                    const std::size_t prev_phase =
+                        (phase_idx + phase_count - 1) % phase_count;
+                    for (std::size_t cj = start_idx; cj < end_idx; ++cj) {
+                        for (int tempo_delta = -1; tempo_delta <= 1; ++tempo_delta) {
+                            const int prev_tempo = static_cast<int>(tempo_idx) + tempo_delta;
+                            if (prev_tempo < 0 || prev_tempo >= static_cast<int>(tempo_count)) {
+                                continue;
+                            }
+                            const std::size_t idx =
+                                state_index(cj, static_cast<std::size_t>(prev_tempo), prev_phase);
+                            const double prev_score = scores[idx];
+                            if (prev_score == std::numeric_limits<double>::lowest()) {
+                                continue;
+                            }
+                            const float prev_bpm =
+                                min_bpm + static_cast<float>(prev_tempo) * bpm_step;
+                            const double tempo_penalty =
+                                tempo_change_penalty * std::abs(bpm - prev_bpm);
+                            const double candidate = prev_score + obs - tempo_penalty;
+                            const double rewarded = candidate + transition_reward;
+                            if (rewarded > best_score) {
+                                best_score = rewarded;
+                                best_backref.prev_idx = static_cast<int>(cj);
+                                best_backref.prev_tempo = prev_tempo;
+                            }
+                        }
+                    }
+
+                const std::size_t idx = state_index(ci, tempo_idx, phase_idx);
+                scores[idx] = best_score;
+                backrefs[idx] = best_backref;
+            }
+        }
+    }
+
+    double best_score = std::numeric_limits<double>::lowest();
+    std::size_t best_ci = 0;
+    std::size_t best_tempo = 0;
+    std::size_t best_phase = 0;
+    for (std::size_t ci = 0; ci < candidates.size(); ++ci) {
+        for (std::size_t tempo_idx = 0; tempo_idx < tempo_count; ++tempo_idx) {
+            for (std::size_t phase_idx = 0; phase_idx < phase_count; ++phase_idx) {
+                const std::size_t idx = state_index(ci, tempo_idx, phase_idx);
+                const double score = scores[idx];
+                if (score > best_score) {
+                    best_score = score;
+                    best_ci = ci;
+                    best_tempo = tempo_idx;
+                    best_phase = phase_idx;
+                }
+            }
+        }
+    }
+
+    std::vector<std::size_t> beat_frames;
+    std::vector<std::size_t> downbeat_frames;
+    std::size_t ci = best_ci;
+    std::size_t tempo_idx = best_tempo;
+    std::size_t phase_idx = best_phase;
+
+    while (true) {
+        beat_frames.push_back(candidates[ci]);
+        if (phase_idx == 0) {
+            downbeat_frames.push_back(candidates[ci]);
+        }
+        const std::size_t idx = state_index(ci, tempo_idx, phase_idx);
+        const Backref ref = backrefs[idx];
+        if (ref.prev_idx < 0) {
+            break;
+        }
+        ci = static_cast<std::size_t>(ref.prev_idx);
+        tempo_idx = static_cast<std::size_t>(ref.prev_tempo);
+        phase_idx = (phase_idx + phase_count - 1) % phase_count;
+    }
+
+    std::reverse(beat_frames.begin(), beat_frames.end());
+    std::reverse(downbeat_frames.begin(), downbeat_frames.end());
+
+    result.beat_frames = std::move(beat_frames);
+    result.downbeat_frames = std::move(downbeat_frames);
+
+    if (result.downbeat_frames.empty() && !result.beat_frames.empty()) {
+        result.downbeat_frames.push_back(result.beat_frames.front());
+    }
+
+    return result;
 }
 
 std::vector<std::size_t> fill_peaks_with_grid(const std::vector<float>& activation,
@@ -613,18 +1018,32 @@ CoreMLResult analyze_with_coreml(const std::vector<float>& samples,
         return result;
     }
 
+    const bool should_profile =
+        config.profile && (config.fixed_frames == 0 || config.profile_per_window);
+    const auto total_start = std::chrono::steady_clock::now();
+
+    const auto resample_start = std::chrono::steady_clock::now();
     std::vector<float> resampled = resample_linear(samples, sample_rate, config.sample_rate);
+    const auto resample_end = std::chrono::steady_clock::now();
     if (resampled.size() < config.frame_size) {
         return result;
     }
 
     const std::size_t frames = 1 + (resampled.size() - config.frame_size) / config.hop_size;
+    const auto mel_start = std::chrono::steady_clock::now();
     std::vector<float> features = compute_mel(resampled,
                                               config.sample_rate,
                                               config.frame_size,
                                               config.hop_size,
                                               config.mel_bins,
-                                              config.use_log_mel);
+                                              config.use_log_mel,
+                                              config.log_multiplier,
+                                              config.f_min,
+                                              config.f_max,
+                                              config.mel_scale,
+                                              config.spectrogram_norm,
+                                              config.power);
+    const auto mel_end = std::chrono::steady_clock::now();
     if (features.empty()) {
         return result;
     }
@@ -639,6 +1058,7 @@ CoreMLResult analyze_with_coreml(const std::vector<float>& samples,
         }
     }
 
+    const auto model_start = std::chrono::steady_clock::now();
     NSError* error = nil;
     NSString* model_path = resolve_model_path(config);
     if (!model_path) {
@@ -665,13 +1085,14 @@ CoreMLResult analyze_with_coreml(const std::vector<float>& samples,
             model_config.computeUnits = MLComputeUnitsAll;
             break;
     }
-    MLModel* model = [MLModel modelWithContentsOfURL:model_url configuration:model_config error:&error];
+    MLModel* model = load_cached_model(model_url, model_config, &error);
     if (!model) {
         if (config.verbose && error) {
             std::cerr << "CoreML load error: " << error.localizedDescription.UTF8String << "\n";
         }
         return result;
     }
+    const auto model_end = std::chrono::steady_clock::now();
 
     auto run_inference = [&](const std::vector<float>& window_features,
                              std::size_t window_frames,
@@ -749,6 +1170,7 @@ CoreMLResult analyze_with_coreml(const std::vector<float>& samples,
 
     std::vector<float> beat_activation;
     std::vector<float> downbeat_activation;
+    double infer_ms = 0.0;
     if (config.fixed_frames > 0 && frames > config.fixed_frames) {
         result.beat_activation.assign(frames, 0.0f);
         result.downbeat_activation.assign(frames, 0.0f);
@@ -768,9 +1190,16 @@ CoreMLResult analyze_with_coreml(const std::vector<float>& samples,
 
             beat_activation.clear();
             downbeat_activation.clear();
-            if (!run_inference(window_features, config.fixed_frames, &beat_activation, &downbeat_activation)) {
+            const auto infer_start = std::chrono::steady_clock::now();
+            if (!run_inference(window_features,
+                               config.fixed_frames,
+                               &beat_activation,
+                               &downbeat_activation)) {
                 return result;
             }
+            const auto infer_end = std::chrono::steady_clock::now();
+            infer_ms +=
+                std::chrono::duration<double, std::milli>(infer_end - infer_start).count();
 
             if (beat_activation.size() > config.fixed_frames) {
                 beat_activation.resize(config.fixed_frames);
@@ -779,7 +1208,11 @@ CoreMLResult analyze_with_coreml(const std::vector<float>& samples,
                 downbeat_activation.resize(config.fixed_frames);
             }
 
-            for (std::size_t i = 0; i < copy_frames; ++i) {
+            const std::size_t border =
+                std::min(config.window_border_frames, copy_frames / 2);
+            const std::size_t start_frame = border;
+            const std::size_t end_frame = copy_frames > border ? copy_frames - border : 0;
+            for (std::size_t i = start_frame; i < end_frame; ++i) {
                 const std::size_t idx = start + i;
                 if (idx < result.beat_activation.size()) {
                     result.beat_activation[idx] =
@@ -792,17 +1225,47 @@ CoreMLResult analyze_with_coreml(const std::vector<float>& samples,
             }
         }
     } else {
-        if (!run_inference(features, used_frames, &result.beat_activation, &result.downbeat_activation)) {
+        const auto infer_start = std::chrono::steady_clock::now();
+        if (!run_inference(features,
+                           used_frames,
+                           &result.beat_activation,
+                           &result.downbeat_activation)) {
             return result;
         }
+        const auto infer_end = std::chrono::steady_clock::now();
+        infer_ms +=
+            std::chrono::duration<double, std::milli>(infer_end - infer_start).count();
     }
 
+    const auto post_start = std::chrono::steady_clock::now();
     result = postprocess_coreml_activations(result.beat_activation,
                                             result.downbeat_activation,
                                             config,
                                             sample_rate,
                                             reference_bpm,
                                             0);
+    const auto post_end = std::chrono::steady_clock::now();
+
+    if (should_profile) {
+        const auto total_end = std::chrono::steady_clock::now();
+        const double resample_ms =
+            std::chrono::duration<double, std::milli>(resample_end - resample_start).count();
+        const double mel_ms =
+            std::chrono::duration<double, std::milli>(mel_end - mel_start).count();
+        const double model_ms =
+            std::chrono::duration<double, std::milli>(model_end - model_start).count();
+        const double post_ms =
+            std::chrono::duration<double, std::milli>(post_end - post_start).count();
+        const double total_ms =
+            std::chrono::duration<double, std::milli>(total_end - total_start).count();
+        std::cerr << "Timing(coreml): resample=" << resample_ms
+                  << "ms mel=" << mel_ms
+                  << "ms model=" << model_ms
+                  << "ms infer=" << infer_ms
+                  << "ms post=" << post_ms
+                  << "ms total=" << total_ms
+                  << "ms\n";
+    }
 
     return result;
 }
@@ -846,6 +1309,55 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
     }
 
     const double fps = static_cast<double>(config.sample_rate) / static_cast<double>(config.hop_size);
+
+    auto fill_beats_from_frames = [&](const std::vector<std::size_t>& frames) {
+        result.beat_feature_frames.clear();
+        result.beat_feature_frames.reserve(frames.size());
+        result.beat_sample_frames.clear();
+        result.beat_sample_frames.reserve(frames.size());
+        result.beat_strengths.clear();
+        result.beat_strengths.reserve(frames.size());
+
+        const double hop_scale = sample_rate / static_cast<double>(config.sample_rate);
+        for (std::size_t frame : frames) {
+            result.beat_feature_frames.push_back(static_cast<unsigned long long>(frame));
+            const double sample_pos = static_cast<double>(frame * config.hop_size) * hop_scale;
+            result.beat_sample_frames.push_back(static_cast<unsigned long long>(std::llround(sample_pos)));
+            result.beat_strengths.push_back(result.beat_activation[frame]);
+        }
+    };
+
+    if (config.use_dbn) {
+        if (config.prefer_double_time && has_window) {
+            min_bpm = std::min(min_bpm, min_bpm_alt);
+            max_bpm = std::max(max_bpm, max_bpm_alt);
+        }
+        DBNDecodeResult decoded =
+            decode_dbn_beats(result.beat_activation,
+                             result.downbeat_activation,
+                             fps,
+                             min_bpm,
+                             max_bpm,
+                             config,
+                             reference_bpm);
+        if (!decoded.beat_frames.empty()) {
+            if (config.verbose) {
+                std::cerr << "DBN: beats=" << decoded.beat_frames.size()
+                          << " downbeats=" << decoded.downbeat_frames.size()
+                          << " bpm_range=[" << min_bpm << "," << max_bpm << "]\n";
+            }
+            fill_beats_from_frames(decoded.beat_frames);
+            result.downbeat_feature_frames.clear();
+            result.downbeat_feature_frames.reserve(decoded.downbeat_frames.size());
+            for (std::size_t frame : decoded.downbeat_frames) {
+                result.downbeat_feature_frames.push_back(static_cast<unsigned long long>(frame));
+            }
+            return result;
+        }
+        if (config.verbose) {
+            std::cerr << "DBN: no beats decoded\n";
+        }
+    }
     auto compute_peaks = [&](const std::vector<float>& activation,
                              float local_min_bpm,
                              float local_max_bpm,
@@ -932,19 +1444,7 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
         }
     }
 
-    result.beat_feature_frames.clear();
-    result.beat_feature_frames.reserve(peaks.size());
-    result.beat_sample_frames.clear();
-    result.beat_sample_frames.reserve(peaks.size());
-    result.beat_strengths.clear();
-    result.beat_strengths.reserve(peaks.size());
-    const double hop_scale = sample_rate / static_cast<double>(config.sample_rate);
-    for (std::size_t frame : peaks) {
-        result.beat_feature_frames.push_back(static_cast<unsigned long long>(frame));
-        const double sample_pos = static_cast<double>(frame * config.hop_size) * hop_scale;
-        result.beat_sample_frames.push_back(static_cast<unsigned long long>(std::llround(sample_pos)));
-        result.beat_strengths.push_back(result.beat_activation[frame]);
-    }
+    fill_beats_from_frames(peaks);
 
     if (!result.downbeat_activation.empty()) {
         std::vector<std::size_t> down_peaks =
