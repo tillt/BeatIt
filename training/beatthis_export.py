@@ -35,7 +35,7 @@ def main() -> None:
     parser.add_argument("--source", default="", help="Source label for metadata")
     args = parser.parse_args()
 
-    sys.path.append("beat_this")
+    sys.path.append("third_party/beat_this")
 
     from beat_this.model.beat_tracker import BeatThis
     from beat_this.utils import replace_state_dict_key
