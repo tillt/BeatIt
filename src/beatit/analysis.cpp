@@ -8,6 +8,9 @@
 
 #include "beatit/analysis.h"
 #include "beatit/coreml.h"
+#if defined(BEATIT_USE_TORCH)
+#include "beatit/torch_mel.h"
+#endif
 
 #include <algorithm>
 #include <chrono>
@@ -22,6 +25,7 @@
 #include <vector>
 
 #if defined(BEATIT_USE_TORCH)
+#include <c10/core/InferenceMode.h>
 #include <torch/script.h>
 #endif
 
@@ -428,7 +432,19 @@ CoreMLResult analyze_with_torch_activations(const std::vector<float>& samples,
     }
 
     std::size_t frames = 0;
-    std::vector<float> features = compute_mel_features(samples, sample_rate, config, &frames);
+    std::vector<float> features;
+    if (config.mel_backend == CoreMLConfig::MelBackend::Torch) {
+#if defined(BEATIT_USE_TORCH)
+        std::string mel_error;
+        features = compute_mel_features_torch(samples, sample_rate, config, device, &frames, &mel_error);
+#else
+        if (config.verbose) {
+            std::cerr << "Torch backend: mel backend requested but Torch is disabled.\n";
+        }
+#endif
+    } else {
+        features = compute_mel_features(samples, sample_rate, config, &frames);
+    }
     if (features.empty() || frames == 0) {
         if (config.verbose) {
             std::cerr << "Torch backend: mel feature extraction failed.\n";
@@ -450,6 +466,8 @@ CoreMLResult analyze_with_torch_activations(const std::vector<float>& samples,
                   << " mel_bins=" << config.mel_bins
                   << " sample_rate=" << config.sample_rate
                   << " hop_size=" << config.hop_size
+                  << " mel_backend="
+                  << (config.mel_backend == CoreMLConfig::MelBackend::Torch ? "torch" : "cpu")
                   << "\n";
     }
 
@@ -460,27 +478,58 @@ CoreMLResult analyze_with_torch_activations(const std::vector<float>& samples,
     std::vector<char> downbeat_filled(frames, 0);
 
     const auto options = torch::TensorOptions().dtype(torch::kFloat32).device(device);
-    std::vector<float> window_buffer(window_frames * config.mel_bins, 0.0f);
+    const std::size_t batch_size = std::max<std::size_t>(1, config.torch_batch_size);
 
-    for (std::size_t start = 0; start < frames; start += hop_frames) {
-        const std::size_t available = frames - start;
-        if (available < window_frames && !config.pad_final_window) {
+    struct BatchItem {
+        std::size_t start = 0;
+        std::size_t write_start = 0;
+        std::size_t write_end = 0;
+        std::size_t copy_frames = 0;
+    };
+
+    std::vector<BatchItem> batch_items;
+    std::vector<float> batch_buffer;
+
+    for (std::size_t start = 0; start < frames; ) {
+        batch_items.clear();
+        for (std::size_t slot = 0; slot < batch_size && start < frames; ++slot) {
+            const std::size_t available = frames - start;
+            if (available < window_frames && !config.pad_final_window) {
+                break;
+            }
+
+            const std::size_t copy_frames = std::min(window_frames, available);
+            const std::size_t write_start = start + border;
+            const std::size_t write_end =
+                std::min(frames, start + window_frames - border);
+            if (write_end > write_start) {
+                batch_items.push_back({start, write_start, write_end, copy_frames});
+            }
+
+            start += hop_frames;
+        }
+
+        if (batch_items.empty()) {
             break;
         }
 
-        std::fill(window_buffer.begin(), window_buffer.end(), 0.0f);
-        const std::size_t copy_frames = std::min(window_frames, available);
-        for (std::size_t f = 0; f < copy_frames; ++f) {
-            const std::size_t src = (start + f) * config.mel_bins;
-            const std::size_t dst = f * config.mel_bins;
-            std::copy(features.begin() + src,
-                      features.begin() + src + config.mel_bins,
-                      window_buffer.begin() + dst);
+        batch_buffer.assign(batch_items.size() * window_frames * config.mel_bins, 0.0f);
+        for (std::size_t b = 0; b < batch_items.size(); ++b) {
+            const auto& item = batch_items[b];
+            for (std::size_t f = 0; f < item.copy_frames; ++f) {
+                const std::size_t src = (item.start + f) * config.mel_bins;
+                const std::size_t dst =
+                    (b * window_frames + f) * config.mel_bins;
+                std::copy(features.begin() + src,
+                          features.begin() + src + config.mel_bins,
+                          batch_buffer.begin() + dst);
+            }
         }
 
         torch::Tensor input =
-            torch::from_blob(window_buffer.data(),
-                             {1, static_cast<long long>(window_frames),
+            torch::from_blob(batch_buffer.data(),
+                             {static_cast<long long>(batch_items.size()),
+                              static_cast<long long>(window_frames),
                               static_cast<long long>(config.mel_bins)},
                              torch::kFloat32)
                 .to(options)
@@ -491,26 +540,28 @@ CoreMLResult analyze_with_torch_activations(const std::vector<float>& samples,
         inputs.reserve(1);
         inputs.emplace_back(input);
         try {
+            c10::InferenceMode inference_guard(true);
             if (config.verbose) {
-                std::cerr << "Torch backend: forward start frame=" << start
-                          << " copy_frames=" << copy_frames << "\n";
+                std::cerr << "Torch backend: forward batch=" << batch_items.size()
+                          << " start_frame=" << batch_items.front().start << "\n";
             }
             output = module.forward(inputs);
         } catch (const c10::Error& err) {
             if (config.verbose) {
-                std::cerr << "Torch backend: forward failed at frame=" << start
+                std::cerr << "Torch backend: forward failed at frame=" << batch_items.front().start
                           << " err=" << err.what() << "\n";
             }
             return CoreMLResult{};
         } catch (const std::exception& err) {
             if (config.verbose) {
-                std::cerr << "Torch backend: forward exception at frame=" << start
+                std::cerr << "Torch backend: forward exception at frame=" << batch_items.front().start
                           << " err=" << err.what() << "\n";
             }
             return CoreMLResult{};
         } catch (...) {
             if (config.verbose) {
-                std::cerr << "Torch backend: forward unknown exception at frame=" << start << "\n";
+                std::cerr << "Torch backend: forward unknown exception at frame="
+                          << batch_items.front().start << "\n";
             }
             return CoreMLResult{};
         }
@@ -541,47 +592,59 @@ CoreMLResult analyze_with_torch_activations(const std::vector<float>& samples,
             return CoreMLResult{};
         }
 
-        beat_tensor = torch::sigmoid(beat_tensor).to(torch::kCPU).flatten();
+        beat_tensor = torch::sigmoid(beat_tensor).to(torch::kCPU);
         if (downbeat_tensor.defined()) {
-            downbeat_tensor = torch::sigmoid(downbeat_tensor).to(torch::kCPU).flatten();
+            downbeat_tensor = torch::sigmoid(downbeat_tensor).to(torch::kCPU);
         }
 
-        const std::size_t window_size = static_cast<std::size_t>(beat_tensor.numel());
-        const std::size_t write_start = start + border;
-        const std::size_t write_end =
-            std::min(frames, start + window_size - border);
-        if (write_end <= write_start) {
-            continue;
+        if (beat_tensor.dim() == 3 && beat_tensor.size(1) == 1) {
+            beat_tensor = beat_tensor.squeeze(1);
+        }
+        if (downbeat_tensor.defined() && downbeat_tensor.dim() == 3 && downbeat_tensor.size(1) == 1) {
+            downbeat_tensor = downbeat_tensor.squeeze(1);
         }
 
-        const auto beat_accessor = beat_tensor.accessor<float, 1>();
-        for (std::size_t i = write_start; i < write_end; ++i) {
-            if (filled[i]) {
-                continue;
-            }
-            const std::size_t local = i - start;
-            if (local < window_size) {
-                result.beat_activation[i] = beat_accessor[static_cast<long long>(local)];
-                filled[i] = 1;
-            }
+        if (beat_tensor.dim() == 1) {
+            beat_tensor = beat_tensor.unsqueeze(0);
+        }
+        if (downbeat_tensor.defined() && downbeat_tensor.dim() == 1) {
+            downbeat_tensor = downbeat_tensor.unsqueeze(0);
         }
 
-        if (downbeat_tensor.defined() && downbeat_tensor.numel() == beat_tensor.numel()) {
-            const auto downbeat_accessor = downbeat_tensor.accessor<float, 1>();
-            for (std::size_t i = write_start; i < write_end; ++i) {
-                if (downbeat_filled[i]) {
+        const auto beat_cpu = beat_tensor.contiguous();
+        const auto beat_accessor = beat_cpu.accessor<float, 2>();
+        torch::Tensor downbeat_cpu;
+        if (downbeat_tensor.defined()) {
+            downbeat_cpu = downbeat_tensor.contiguous();
+        }
+
+        for (std::size_t b = 0; b < batch_items.size(); ++b) {
+            const auto& item = batch_items[b];
+            for (std::size_t i = item.write_start; i < item.write_end; ++i) {
+                if (filled[i]) {
                     continue;
                 }
-                const std::size_t local = i - start;
-                if (local < window_size) {
+                const std::size_t local = i - item.start;
+                result.beat_activation[i] =
+                    beat_accessor[static_cast<long long>(b)][static_cast<long long>(local)];
+                filled[i] = 1;
+            }
+
+            if (downbeat_cpu.defined()) {
+                const auto downbeat_accessor = downbeat_cpu.accessor<float, 2>();
+                for (std::size_t i = item.write_start; i < item.write_end; ++i) {
+                    if (downbeat_filled[i]) {
+                        continue;
+                    }
+                    const std::size_t local = i - item.start;
                     result.downbeat_activation[i] =
-                        downbeat_accessor[static_cast<long long>(local)];
+                        downbeat_accessor[static_cast<long long>(b)][static_cast<long long>(local)];
                     downbeat_filled[i] = 1;
                 }
             }
         }
 
-        if (start + window_frames >= frames) {
+        if (batch_items.back().start + window_frames >= frames) {
             break;
         }
     }
@@ -691,6 +754,14 @@ AnalysisResult analyze(const std::vector<float>& samples,
         result.coreml_downbeat_feature_frames = std::move(final_result.downbeat_feature_frames);
         result.estimated_bpm =
             estimate_bpm_from_beats(result.coreml_beat_sample_frames, sample_rate);
+        result.coreml_beat_events =
+            build_shakespear_markers(result.coreml_beat_feature_frames,
+                                     result.coreml_beat_sample_frames,
+                                     result.coreml_downbeat_feature_frames,
+                                     &result.coreml_beat_activation,
+                                     result.estimated_bpm,
+                                     sample_rate,
+                                     config);
 
         return result;
     }
@@ -721,6 +792,14 @@ AnalysisResult analyze(const std::vector<float>& samples,
     result.coreml_beat_strengths = std::move(final_result.beat_strengths);
     result.coreml_downbeat_feature_frames = std::move(final_result.downbeat_feature_frames);
     result.estimated_bpm = estimate_bpm_from_beats(result.coreml_beat_sample_frames, sample_rate);
+    result.coreml_beat_events =
+        build_shakespear_markers(result.coreml_beat_feature_frames,
+                                 result.coreml_beat_sample_frames,
+                                 result.coreml_downbeat_feature_frames,
+                                 &result.coreml_beat_activation,
+                                 result.estimated_bpm,
+                                 sample_rate,
+                                 config);
 
     return result;
 }
