@@ -570,21 +570,21 @@ DBNDecodeResult decode_dbn_beats(const std::vector<float>& beat_activation,
     const float transition_reward = config.dbn_transition_reward;
     const std::size_t max_candidates = std::max<std::size_t>(4, config.dbn_max_candidates);
     const double floor_value = std::max(1e-6f, activation_floor);
+    const double tolerance = std::max(0.0, static_cast<double>(config.dbn_interval_tolerance));
 
     // DBN needs dense frame-wise activations, not peak-picked candidates.
     const bool use_all_candidates = true;
 
     std::vector<std::size_t> candidates;
-    candidates.reserve(beat_activation.size());
-    if (use_all_candidates) {
-        candidates.resize(beat_activation.size());
-        std::iota(candidates.begin(), candidates.end(), 0);
-    } else {
+    std::size_t candidate_count = beat_activation.size();
+    if (!use_all_candidates) {
+        candidates.reserve(beat_activation.size());
         for (std::size_t i = 0; i < beat_activation.size(); ++i) {
             if (beat_activation[i] >= activation_floor) {
                 candidates.push_back(i);
             }
         }
+        candidate_count = candidates.size();
     }
 
     if (!use_all_candidates && candidates.size() > max_candidates) {
@@ -600,35 +600,7 @@ DBNDecodeResult decode_dbn_beats(const std::vector<float>& beat_activation,
         candidates.swap(sorted);
     }
 
-    if (config.verbose) {
-        std::size_t min_delta = std::numeric_limits<std::size_t>::max();
-        std::size_t max_delta = 0;
-        std::size_t viable_links = 0;
-        const double min_interval_global = (60.0 * fps) / std::max(1.0f, max_bpm);
-        const double max_interval_global = (60.0 * fps) / std::max(1.0f, min_bpm);
-        for (std::size_t i = 1; i < candidates.size(); ++i) {
-            const std::size_t delta = candidates[i] - candidates[i - 1];
-            min_delta = std::min(min_delta, delta);
-            max_delta = std::max(max_delta, delta);
-            if (delta >= min_interval_global && delta <= max_interval_global) {
-                ++viable_links;
-            }
-        }
-        if (candidates.size() >= 2) {
-            std::cerr << "DBN: candidates=" << candidates.size()
-                      << " min_delta=" << min_delta
-                      << " max_delta=" << max_delta
-                      << " viable_links=" << viable_links
-                      << " activation_floor=" << activation_floor
-                      << "\n";
-        } else {
-            std::cerr << "DBN: candidates=" << candidates.size()
-                      << " activation_floor=" << activation_floor
-                      << "\n";
-        }
-    }
-
-    if (candidates.size() < 2) {
+    if (candidate_count < 2) {
         result.beat_frames = viterbi_beats(beat_activation,
                                            fps,
                                            std::max(1.0f, min_bpm),
@@ -644,13 +616,49 @@ DBNDecodeResult decode_dbn_beats(const std::vector<float>& beat_activation,
         static_cast<std::size_t>(std::floor((max_bpm - min_bpm) / bpm_step)) + 1;
     const std::size_t phase_count = beats_per_bar;
 
+    std::vector<double> beat_log(beat_activation.size(), 0.0);
+    for (std::size_t i = 0; i < beat_activation.size(); ++i) {
+        beat_log[i] = std::log(std::max<double>(beat_activation[i], floor_value));
+    }
+
+    std::vector<double> downbeat_log(downbeat_activation.size(), 0.0);
+    for (std::size_t i = 0; i < downbeat_activation.size(); ++i) {
+        downbeat_log[i] = std::log(std::max<double>(downbeat_activation[i], floor_value));
+    }
+
+    struct TempoParams {
+        float bpm = 0.0f;
+        std::size_t min_interval = 0;
+        std::size_t max_interval = 0;
+        double prior_penalty = 0.0;
+    };
+
+    std::vector<TempoParams> tempos;
+    tempos.reserve(tempo_count);
+    for (std::size_t tempo_idx = 0; tempo_idx < tempo_count; ++tempo_idx) {
+        const float bpm = min_bpm + static_cast<float>(tempo_idx) * bpm_step;
+        const double interval = (60.0 * fps) / bpm;
+        const double min_interval = interval * (1.0 - tolerance);
+        const double max_interval = interval * (1.0 + tolerance);
+        double prior_penalty = 0.0;
+        if (reference_bpm > 0.0f && tempo_prior_weight > 0.0f) {
+            prior_penalty = tempo_prior_weight * std::abs(bpm - reference_bpm);
+        }
+        tempos.push_back({
+            bpm,
+            static_cast<std::size_t>(std::max(1.0, std::floor(min_interval))),
+            static_cast<std::size_t>(std::max(1.0, std::ceil(max_interval))),
+            prior_penalty
+        });
+    }
+
     struct Backref {
         int prev_idx = -1;
         int prev_tempo = -1;
     };
 
     const std::size_t state_count = tempo_count * phase_count;
-    const std::size_t total_states = candidates.size() * state_count;
+    const std::size_t total_states = candidate_count * state_count;
     std::vector<double> scores(total_states, std::numeric_limits<double>::lowest());
     std::vector<Backref> backrefs(total_states);
 
@@ -658,73 +666,68 @@ DBNDecodeResult decode_dbn_beats(const std::vector<float>& beat_activation,
         return (cand_idx * tempo_count + tempo_idx) * phase_count + phase_idx;
     };
 
-    for (std::size_t ci = 0; ci < candidates.size(); ++ci) {
-        const std::size_t frame = candidates[ci];
-        const double beat_obs = std::log(std::max<double>(beat_activation[frame], floor_value));
-            for (std::size_t tempo_idx = 0; tempo_idx < tempo_count; ++tempo_idx) {
-                const float bpm = min_bpm + static_cast<float>(tempo_idx) * bpm_step;
-                const double interval = (60.0 * fps) / bpm;
-                const double tolerance = std::max(0.0, static_cast<double>(config.dbn_interval_tolerance));
-                const double min_interval = interval * (1.0 - tolerance);
-                const double max_interval = interval * (1.0 + tolerance);
-                const std::size_t min_prev_frame =
-                    (frame > static_cast<std::size_t>(std::ceil(max_interval)))
-                        ? frame - static_cast<std::size_t>(std::ceil(max_interval))
-                        : 0;
-                const std::size_t max_prev_frame =
-                    (frame > static_cast<std::size_t>(std::floor(min_interval)))
-                        ? frame - static_cast<std::size_t>(std::floor(min_interval))
-                        : 0;
+    for (std::size_t ci = 0; ci < candidate_count; ++ci) {
+        const std::size_t frame = use_all_candidates ? ci : candidates[ci];
+        const double beat_obs = beat_log[frame];
+        for (std::size_t tempo_idx = 0; tempo_idx < tempo_count; ++tempo_idx) {
+            const auto& tempo = tempos[tempo_idx];
+            const std::size_t min_prev_frame =
+                (frame > tempo.max_interval) ? frame - tempo.max_interval : 0;
+            const std::size_t max_prev_frame =
+                (frame > tempo.min_interval) ? frame - tempo.min_interval : 0;
+            std::size_t start_idx = 0;
+            std::size_t end_idx = 0;
+            if (use_all_candidates) {
+                start_idx = min_prev_frame;
+                end_idx = std::min(max_prev_frame + 1, ci);
+            } else {
                 const auto start_it =
-                    std::lower_bound(candidates.begin(), candidates.begin() + static_cast<std::ptrdiff_t>(ci), min_prev_frame);
+                    std::lower_bound(candidates.begin(),
+                                     candidates.begin() + static_cast<std::ptrdiff_t>(ci),
+                                     min_prev_frame);
                 const auto end_it =
-                    std::upper_bound(candidates.begin(), candidates.begin() + static_cast<std::ptrdiff_t>(ci), max_prev_frame);
-                const std::size_t start_idx =
-                    static_cast<std::size_t>(std::distance(candidates.begin(), start_it));
-                const std::size_t end_idx =
-                    static_cast<std::size_t>(std::distance(candidates.begin(), end_it));
+                    std::upper_bound(candidates.begin(),
+                                     candidates.begin() + static_cast<std::ptrdiff_t>(ci),
+                                     max_prev_frame);
+                start_idx = static_cast<std::size_t>(std::distance(candidates.begin(), start_it));
+                end_idx = static_cast<std::size_t>(std::distance(candidates.begin(), end_it));
+            }
 
-                for (std::size_t phase_idx = 0; phase_idx < phase_count; ++phase_idx) {
-                    const bool is_downbeat = (phase_idx == 0);
-                    double obs = beat_obs;
-                if (config.dbn_use_downbeat && is_downbeat && frame < downbeat_activation.size()) {
-                    obs += downbeat_weight *
-                        std::log(std::max<double>(downbeat_activation[frame], floor_value));
-                }
-                if (reference_bpm > 0.0f && tempo_prior_weight > 0.0f) {
-                    obs -= tempo_prior_weight * std::abs(bpm - reference_bpm);
+            for (std::size_t phase_idx = 0; phase_idx < phase_count; ++phase_idx) {
+                const bool is_downbeat = (phase_idx == 0);
+                double obs = beat_obs - tempo.prior_penalty;
+                if (config.dbn_use_downbeat && is_downbeat && frame < downbeat_log.size()) {
+                    obs += downbeat_weight * downbeat_log[frame];
                 }
 
                 double best_score = obs;
                 Backref best_backref;
 
-                    const std::size_t prev_phase =
-                        (phase_idx + phase_count - 1) % phase_count;
-                    for (std::size_t cj = start_idx; cj < end_idx; ++cj) {
-                        for (int tempo_delta = -1; tempo_delta <= 1; ++tempo_delta) {
-                            const int prev_tempo = static_cast<int>(tempo_idx) + tempo_delta;
-                            if (prev_tempo < 0 || prev_tempo >= static_cast<int>(tempo_count)) {
-                                continue;
-                            }
-                            const std::size_t idx =
-                                state_index(cj, static_cast<std::size_t>(prev_tempo), prev_phase);
-                            const double prev_score = scores[idx];
-                            if (prev_score == std::numeric_limits<double>::lowest()) {
-                                continue;
-                            }
-                            const float prev_bpm =
-                                min_bpm + static_cast<float>(prev_tempo) * bpm_step;
-                            const double tempo_penalty =
-                                tempo_change_penalty * std::abs(bpm - prev_bpm);
-                            const double candidate = prev_score + obs - tempo_penalty;
-                            const double rewarded = candidate + transition_reward;
-                            if (rewarded > best_score) {
-                                best_score = rewarded;
-                                best_backref.prev_idx = static_cast<int>(cj);
-                                best_backref.prev_tempo = prev_tempo;
-                            }
+                const std::size_t prev_phase =
+                    (phase_idx + phase_count - 1) % phase_count;
+                for (std::size_t cj = start_idx; cj < end_idx; ++cj) {
+                    for (int tempo_delta = -1; tempo_delta <= 1; ++tempo_delta) {
+                        const int prev_tempo = static_cast<int>(tempo_idx) + tempo_delta;
+                        if (prev_tempo < 0 || prev_tempo >= static_cast<int>(tempo_count)) {
+                            continue;
+                        }
+                        const std::size_t idx =
+                            state_index(cj, static_cast<std::size_t>(prev_tempo), prev_phase);
+                        const double prev_score = scores[idx];
+                        if (prev_score == std::numeric_limits<double>::lowest()) {
+                            continue;
+                        }
+                        const double tempo_penalty =
+                            tempo_change_penalty * std::abs(tempo.bpm - tempos[prev_tempo].bpm);
+                        const double candidate = prev_score + obs - tempo_penalty;
+                        const double rewarded = candidate + transition_reward;
+                        if (rewarded > best_score) {
+                            best_score = rewarded;
+                            best_backref.prev_idx = static_cast<int>(cj);
+                            best_backref.prev_tempo = prev_tempo;
                         }
                     }
+                }
 
                 const std::size_t idx = state_index(ci, tempo_idx, phase_idx);
                 scores[idx] = best_score;
@@ -737,7 +740,7 @@ DBNDecodeResult decode_dbn_beats(const std::vector<float>& beat_activation,
     std::size_t best_ci = 0;
     std::size_t best_tempo = 0;
     std::size_t best_phase = 0;
-    for (std::size_t ci = 0; ci < candidates.size(); ++ci) {
+    for (std::size_t ci = 0; ci < candidate_count; ++ci) {
         for (std::size_t tempo_idx = 0; tempo_idx < tempo_count; ++tempo_idx) {
             for (std::size_t phase_idx = 0; phase_idx < phase_count; ++phase_idx) {
                 const std::size_t idx = state_index(ci, tempo_idx, phase_idx);
@@ -759,9 +762,9 @@ DBNDecodeResult decode_dbn_beats(const std::vector<float>& beat_activation,
     std::size_t phase_idx = best_phase;
 
     while (true) {
-        beat_frames.push_back(candidates[ci]);
+        beat_frames.push_back(use_all_candidates ? ci : candidates[ci]);
         if (phase_idx == 0) {
-            downbeat_frames.push_back(candidates[ci]);
+            downbeat_frames.push_back(use_all_candidates ? ci : candidates[ci]);
         }
         const std::size_t idx = state_index(ci, tempo_idx, phase_idx);
         const Backref ref = backrefs[idx];
@@ -1276,6 +1279,9 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                                             double sample_rate,
                                             float reference_bpm,
                                             std::size_t last_active_frame) {
+    double dbn_ms = 0.0;
+    double peaks_ms = 0.0;
+
     CoreMLResult result;
     result.beat_activation = beat_activation;
     result.downbeat_activation = downbeat_activation;
@@ -1332,6 +1338,7 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
             min_bpm = std::min(min_bpm, min_bpm_alt);
             max_bpm = std::max(max_bpm, max_bpm_alt);
         }
+        const auto dbn_start = std::chrono::steady_clock::now();
         DBNDecodeResult decoded =
             decode_dbn_beats(result.beat_activation,
                              result.downbeat_activation,
@@ -1340,35 +1347,37 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                              max_bpm,
                              config,
                              reference_bpm);
+        const auto dbn_end = std::chrono::steady_clock::now();
+        dbn_ms += std::chrono::duration<double, std::milli>(dbn_end - dbn_start).count();
         if (!decoded.beat_frames.empty()) {
-            if (config.verbose) {
-                std::cerr << "DBN: beats=" << decoded.beat_frames.size()
-                          << " downbeats=" << decoded.downbeat_frames.size()
-                          << " bpm_range=[" << min_bpm << "," << max_bpm << "]\n";
-            }
             fill_beats_from_frames(decoded.beat_frames);
             result.downbeat_feature_frames.clear();
             result.downbeat_feature_frames.reserve(decoded.downbeat_frames.size());
             for (std::size_t frame : decoded.downbeat_frames) {
                 result.downbeat_feature_frames.push_back(static_cast<unsigned long long>(frame));
             }
+            if (config.profile) {
+                std::cerr << "Timing(postprocess): dbn=" << dbn_ms
+                          << "ms peaks=" << peaks_ms << "ms\n";
+            }
             return result;
-        }
-        if (config.verbose) {
-            std::cerr << "DBN: no beats decoded\n";
         }
     }
     auto compute_peaks = [&](const std::vector<float>& activation,
                              float local_min_bpm,
                              float local_max_bpm,
                              float threshold) {
+        const auto peaks_start = std::chrono::steady_clock::now();
         const double max_bpm_local = std::max(local_min_bpm + 1.0f, local_max_bpm);
         const double min_bpm_local = std::max(1.0f, local_min_bpm);
         const std::size_t min_interval =
             static_cast<std::size_t>(std::max(1.0, std::floor((60.0 * fps) / max_bpm_local)));
         const std::size_t max_interval =
             static_cast<std::size_t>(std::ceil((60.0 * fps) / min_bpm_local));
-        return pick_peaks(activation, threshold, min_interval, max_interval);
+        auto peaks = pick_peaks(activation, threshold, min_interval, max_interval);
+        const auto peaks_end = std::chrono::steady_clock::now();
+        peaks_ms += std::chrono::duration<double, std::milli>(peaks_end - peaks_start).count();
+        return peaks;
     };
 
     auto adjust_threshold = [&](const std::vector<float>& activation,
@@ -1466,6 +1475,11 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
         }
     } else if (!result.beat_feature_frames.empty()) {
         result.downbeat_feature_frames.push_back(result.beat_feature_frames.front());
+    }
+
+    if (config.profile) {
+        std::cerr << "Timing(postprocess): dbn=" << dbn_ms
+                  << "ms peaks=" << peaks_ms << "ms\n";
     }
 
     return result;

@@ -37,6 +37,9 @@ private:
     bool infer_torch_window(const std::vector<float>& window,
                             std::vector<float>* beat,
                             std::vector<float>* downbeat);
+    bool infer_torch_windows(const std::vector<std::vector<float>>& windows,
+                             std::vector<std::vector<float>>* beats,
+                             std::vector<std::vector<float>>* downbeats);
 #endif
 
     double sample_rate_ = 0.0;
@@ -68,10 +71,13 @@ private:
     struct PerfStats {
         double resample_ms = 0.0;
         double process_ms = 0.0;
+        double mel_ms = 0.0;
+        double torch_forward_ms = 0.0;
         double window_infer_ms = 0.0;
         std::size_t window_count = 0;
         double finalize_infer_ms = 0.0;
         double postprocess_ms = 0.0;
+        double marker_ms = 0.0;
         double finalize_ms = 0.0;
     } perf_;
 
