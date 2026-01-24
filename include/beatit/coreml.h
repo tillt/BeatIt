@@ -44,6 +44,11 @@ struct CoreMLConfig {
         FrameLength,
     };
     SpectrogramNorm spectrogram_norm = SpectrogramNorm::None;
+    enum class MelBackend {
+        Cpu,
+        Torch,
+    };
+    MelBackend mel_backend = MelBackend::Cpu;
     enum class InputLayout {
         FramesByMels,
         ChannelsFramesMels,
@@ -92,6 +97,7 @@ struct CoreMLConfig {
     std::string torch_model_path;
     std::string torch_device = "cpu";
     float torch_fps = 100.0f;
+    std::size_t torch_batch_size = 1;
 };
 
 struct CoreMLResult {

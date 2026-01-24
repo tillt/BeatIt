@@ -63,6 +63,7 @@ public:
         config.window_border_frames = 6;
         config.use_dbn = true;
         config.dbn_use_downbeat = true;
+        config.torch_batch_size = 1;
     }
 };
 

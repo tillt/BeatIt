@@ -1,0 +1,32 @@
+//
+//  torch_mel.h
+//  BeatIt
+//
+//  Created by Till Toenshoff on 2026-01-23.
+//  Copyright © 2026 Till Toenshoff. All rights reserved.
+//
+
+#pragma once
+
+#include <cstddef>
+#include <string>
+#include <vector>
+
+#if defined(BEATIT_USE_TORCH)
+#include <torch/torch.h>
+#endif
+
+#include "beatit/coreml.h"
+
+namespace beatit {
+
+#if defined(BEATIT_USE_TORCH)
+std::vector<float> compute_mel_features_torch(const std::vector<float>& samples,
+                                              double sample_rate,
+                                              const CoreMLConfig& config,
+                                              const torch::Device& device,
+                                              std::size_t* out_frames,
+                                              std::string* error);
+#endif
+
+} // namespace beatit
