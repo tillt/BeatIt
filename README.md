@@ -5,7 +5,7 @@
 [![Tests](https://img.shields.io/badge/tests-ctest-orange.svg)](#tests)
 [![Homebrew](https://img.shields.io/badge/homebrew-tap-181717.svg)](#macos-homebrew)
 
-A Minimal BPM/beat tracker using CoreML. Lightweight, permissive.
+Minimal BPM/beat tracker for macOS with CoreML and Torch (BeatThis) backends.
 
 ## Goals
 
@@ -46,6 +46,11 @@ Options:
 - `--ml-mels <bins>` CoreML mel bin count
 - `--ml-window-hop <frames>` CoreML window hop (fixed-frame mode)
 - `--ml-threshold <value>` CoreML activation threshold
+- `--ml-backend <name>` ML backend (coreml, beatthis, torch)
+- `--torch-model <path>` TorchScript model path
+- `--torch-device <name>` Torch device (cpu, mps)
+- `--torch-fps <hz>` Torch output fps (default 100)
+- `--beatthis-dbn` BeatThis enable DBN postprocess
 - `--ml-beattrack` use BeatTrack CoreML defaults
 - `--ml-tempo-window <pct>` percent window around classic BPM
 - `--ml-prefer-double` prefer double-time BPM if stronger
@@ -53,6 +58,18 @@ Options:
 - `--ml-refine-csv` print CSV for constant beat events
 - `--ml-refine-downbeat` use model downbeats to anchor bar phase
 - `--ml-refine-halfbeat` enable half-beat phase correction
+- `--ml-dbn` use DBN-style beat decoder
+- `--ml-dbn-step <bpm>` DBN BPM step size
+- `--ml-dbn-tol <ratio>` DBN interval tolerance (0-1)
+- `--ml-dbn-floor <value>` DBN activation floor
+- `--ml-dbn-bpb <beats>` DBN beats-per-bar (default 4)
+- `--ml-dbn-no-downbeat` DBN ignore downbeat activations
+- `--ml-dbn-downbeat <w>` DBN downbeat weight
+- `--ml-dbn-tempo-pen <w>` DBN tempo change penalty per BPM
+- `--ml-dbn-tempo-prior <w>` DBN tempo prior weight
+- `--ml-dbn-max-cand <n>` DBN max candidate frames
+- `--ml-dbn-reward <w>` DBN transition reward
+- `--ml-dbn-all-cand` DBN use every frame as candidate
 - `--ml-cpu-only` force CoreML CPU-only execution
 - `--ml-info` print CoreML model metadata
 - `--info` print decoded audio stats
@@ -85,7 +102,9 @@ half-beat correction.
 ./build/beatit --input training/moderat.wav --ml-refine-constant --ml-refine-csv --ml-cpu-only
 ```
 
-## CoreML beat model (experimental)
+## Model backends
+
+### CoreML (BeatTrack)
 
 Default CoreML settings match BeatTrack (torchaudio MelSpectrogram; no log scaling):
 
@@ -106,6 +125,18 @@ You can override names/paths by editing `beatit::CoreMLConfig` or using the CLI 
 If you are exporting a model from another repository (e.g. BeatTrack), use the `--ml-*` flags
 to match its input/output names and feature settings. For BeatTrack exports, use `.mlpackage`
 and compile to `.mlmodelc` with `xcrun coremlc compile`.
+
+### Torch (BeatThis)
+
+BeatThis runs via TorchScript with optional DBN postprocessing. Export locally with:
+
+```bash
+scripts/export_beatthis.sh
+```
+
+The export script expects the BeatThis repo in `third_party/beat_this` and an external
+clone of `rotary-embedding-torch` (default: `~/Development/3rdparty/rotary-embedding-torch`).
+Override paths by setting `BEATTHIS_DIR` or `ROTARY_DIR`.
 
 ## Credits
 
