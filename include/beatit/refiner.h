@@ -77,6 +77,14 @@ void write_beat_events_csv(std::ostream& out,
                            std::size_t max_missing_run = 0,
                            double avg_missing_run = 0.0);
 
+std::vector<BeatEvent> build_shakespear_markers(const std::vector<unsigned long long>& beat_feature_frames,
+                                                const std::vector<unsigned long long>& beat_sample_frames,
+                                                const std::vector<unsigned long long>& downbeat_feature_frames,
+                                                const std::vector<float>* beat_activation,
+                                                double bpm,
+                                                double sample_rate,
+                                                const CoreMLConfig& config);
+
 struct ConstantBeatRefinerConfig {
     double max_phase_error_seconds = 0.025;
     double max_phase_error_sum_seconds = 0.1;

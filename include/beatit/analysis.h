@@ -9,6 +9,7 @@
 #pragma once
 
 #include "beatit/coreml.h"
+#include "beatit/refiner.h"
 
 #include <cstddef>
 #include <vector>
@@ -25,6 +26,8 @@ struct AnalysisResult {
     std::vector<unsigned long long> coreml_beat_feature_frames;
     // Sample-frame indices (audio timeline) intended for end-user consumption.
     std::vector<unsigned long long> coreml_beat_sample_frames;
+    // Beat events with markers derived from the beat grid.
+    std::vector<BeatEvent> coreml_beat_events;
     std::vector<float> coreml_beat_strengths;
     // Feature-frame indices for downbeats (diagnostic timeline).
     std::vector<unsigned long long> coreml_downbeat_feature_frames;

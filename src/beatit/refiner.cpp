@@ -631,6 +631,116 @@ void write_beat_events_csv(std::ostream& out,
     }
 }
 
+std::vector<BeatEvent> build_shakespear_markers(const std::vector<unsigned long long>& beat_feature_frames,
+                                                const std::vector<unsigned long long>& beat_sample_frames,
+                                                const std::vector<unsigned long long>& downbeat_feature_frames,
+                                                const std::vector<float>* beat_activation,
+                                                double bpm,
+                                                double sample_rate,
+                                                const CoreMLConfig& config) {
+    std::vector<BeatEvent> events;
+    if (beat_feature_frames.empty()) {
+        return events;
+    }
+
+    const std::size_t beat_count_assumption = (beat_feature_frames.size() >> 2) << 2;
+    const std::size_t bar_count_assumption = beat_count_assumption / 4;
+
+    std::size_t downbeat_phase = 0;
+    if (!downbeat_feature_frames.empty()) {
+        for (std::size_t i = 0; i < beat_feature_frames.size(); ++i) {
+            const unsigned long long frame = beat_feature_frames[i];
+            if (std::find(downbeat_feature_frames.begin(),
+                          downbeat_feature_frames.end(),
+                          frame) != downbeat_feature_frames.end()) {
+                downbeat_phase = i % 4;
+                break;
+            }
+        }
+    }
+
+    unsigned long intro_bar_count = 32U;
+    unsigned long buildup_bar_count = 64U;
+    unsigned long teardown_bar_count;
+    unsigned long outro_bar_count;
+
+    if (bar_count_assumption < 3 * buildup_bar_count) {
+        buildup_bar_count >>= 1;
+        intro_bar_count >>= 1;
+    }
+
+    outro_bar_count = intro_bar_count;
+    teardown_bar_count = buildup_bar_count;
+
+    const std::size_t intro_beats_starting_at =
+        downbeat_phase + (static_cast<std::size_t>(intro_bar_count) * 4);
+    const std::size_t buildup_beats_starting_at =
+        downbeat_phase + (static_cast<std::size_t>(buildup_bar_count) * 4);
+    const std::size_t teardown_beats_starting_at =
+        downbeat_phase + (bar_count_assumption - teardown_bar_count) * 4;
+    const std::size_t outro_beats_starting_at =
+        downbeat_phase + (bar_count_assumption - outro_bar_count) * 4;
+
+    const double hop_scale = sample_rate / static_cast<double>(config.sample_rate);
+
+    events.reserve(beat_feature_frames.size());
+    for (std::size_t beat_index = 0; beat_index < beat_feature_frames.size(); ++beat_index) {
+        const unsigned long long frame = beat_feature_frames[beat_index];
+        BeatEvent event;
+        event.bpm = bpm;
+        event.index = beat_index;
+        event.style = BeatEventStyleBeat;
+        if (beat_index % 4 == downbeat_phase) {
+            event.style = static_cast<BeatEventStyle>(event.style | BeatEventStyleBar);
+        }
+        event.style = static_cast<BeatEventStyle>(event.style | BeatEventStyleFound);
+
+        if (beat_index == 0) {
+            event.style = static_cast<BeatEventStyle>(event.style | BeatEventStyleMarkStart);
+        } else if (beat_index == intro_beats_starting_at) {
+            event.style = static_cast<BeatEventStyle>(event.style | BeatEventStyleMarkIntro);
+        } else if (beat_index == buildup_beats_starting_at) {
+            event.style = static_cast<BeatEventStyle>(event.style | BeatEventStyleMarkBuildup);
+        } else if (beat_index == teardown_beats_starting_at) {
+            event.style = static_cast<BeatEventStyle>(event.style | BeatEventStyleMarkTeardown);
+        } else if (beat_index == outro_beats_starting_at) {
+            event.style = static_cast<BeatEventStyle>(event.style | BeatEventStyleMarkOutro);
+        }
+
+        if (beat_index >= outro_beats_starting_at) {
+            event.style = static_cast<BeatEventStyle>(event.style | BeatEventStyleAlarmOutro);
+        } else if (beat_index >= teardown_beats_starting_at) {
+            event.style = static_cast<BeatEventStyle>(event.style | BeatEventStyleAlarmTeardown);
+        } else if (beat_index < intro_beats_starting_at) {
+            event.style = static_cast<BeatEventStyle>(event.style | BeatEventStyleAlarmIntro);
+        } else if (beat_index < buildup_beats_starting_at) {
+            event.style = static_cast<BeatEventStyle>(event.style | BeatEventStyleAlarmBuildup);
+        }
+
+        if (beat_index < beat_sample_frames.size()) {
+            event.frame = beat_sample_frames[beat_index];
+        } else {
+            const double sample_pos = static_cast<double>(frame * config.hop_size) * hop_scale;
+            event.frame = static_cast<unsigned long long>(std::llround(sample_pos));
+        }
+
+        if (beat_activation && frame < beat_activation->size()) {
+            event.energy = static_cast<double>((*beat_activation)[frame]);
+            event.peak = compute_local_peak(beat_activation, frame, 2);
+        }
+
+        events.push_back(event);
+    }
+
+    if (!events.empty()) {
+        BeatEvent& last_event = events.back();
+        last_event.style =
+            static_cast<BeatEventStyle>(last_event.style | BeatEventStyleMarkEnd);
+    }
+
+    return events;
+}
+
 ConstantBeatResult refine_constant_beats(const std::vector<unsigned long long>& beat_feature_frames,
                                          std::size_t total_frames,
                                          const CoreMLConfig& config,
