@@ -9,53 +9,10 @@
 #include <string>
 #include <vector>
 
+#include "beatit/coreml_preset.h"
 #include "beatit/stream.h"
 
 namespace {
-
-std::string compile_model_if_needed(const std::string& path, std::string* error) {
-    NSString* ns_path = [NSString stringWithUTF8String:path.c_str()];
-    NSURL* url = [NSURL fileURLWithPath:ns_path];
-    if (!url) {
-        if (error) {
-            *error = "Failed to create model URL.";
-        }
-        return {};
-    }
-
-    NSString* ext = url.pathExtension.lowercaseString;
-    if (![ext isEqualToString:@"mlpackage"] && ![ext isEqualToString:@"mlmodel"]) {
-        return path;
-    }
-
-    std::string tmp_dir;
-    try {
-        tmp_dir = (std::filesystem::current_path() / "coreml_tmp").string();
-        std::filesystem::create_directories(tmp_dir);
-        setenv("TMPDIR", tmp_dir.c_str(), 1);
-    } catch (const std::exception&) {
-        if (error) {
-            *error = "Failed to prepare temporary directory for CoreML compile.";
-        }
-        return {};
-    }
-
-    NSError* compile_error = nil;
-    NSURL* compiled_url = [MLModel compileModelAtURL:url error:&compile_error];
-    if (!compiled_url || compile_error) {
-        if (error) {
-            std::string message = "Failed to compile CoreML model.";
-            if (compile_error) {
-                message += " ";
-                message += compile_error.localizedDescription.UTF8String;
-            }
-            *error = message;
-        }
-        return {};
-    }
-
-    return compiled_url.path.UTF8String ? compiled_url.path.UTF8String : std::string();
-}
 
 bool stream_audio_to_beatit(const std::string& path,
                             const beatit::CoreMLConfig& config,
@@ -204,16 +161,27 @@ bool expect_non_positive(double value, const char* label) {
 }  // namespace
 
 int main() {
-    std::string model_error;
-    std::string model_path = compile_model_if_needed(BEATIT_TEST_MODEL_PATH, &model_error);
-    if (model_path.empty()) {
-        std::cerr << "Failed to prepare CoreML model: " << model_error << "\n";
+    beatit::CoreMLConfig config;
+#if !defined(BEATIT_USE_TORCH)
+    std::cerr << "SKIP: Torch backend not enabled.\n";
+    return 77;
+#endif
+
+    if (auto preset = beatit::make_coreml_preset("beatthis")) {
+        preset->apply(config);
+    }
+
+    const char* model_path = std::getenv("BEATIT_TORCH_MODEL_PATH");
+    const std::string fallback_model = (std::filesystem::current_path() / "models" / "beatthis.pt").string();
+    const std::string torch_model_path =
+        (model_path && model_path[0] != '\0') ? model_path : fallback_model;
+    if (!std::filesystem::exists(torch_model_path)) {
+        std::cerr << "SKIP: Torch model missing (set BEATIT_TORCH_MODEL_PATH).\n";
         return 77;
     }
 
-    beatit::CoreMLConfig config;
-    config.model_path = model_path;
-    config.activation_threshold = 0.4f;
+    config.backend = beatit::CoreMLConfig::Backend::Torch;
+    config.torch_model_path = torch_model_path;
     config.window_hop_frames = 2500;
     config.use_dbn = true;
     config.dbn_use_all_candidates = true;
