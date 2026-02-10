@@ -65,8 +65,8 @@ struct CoreMLConfig {
     ComputeUnits compute_units = ComputeUnits::All;
     std::size_t fixed_frames = 1500;
     std::size_t window_hop_frames = 1488;
-    float min_bpm = 55.0f;
-    float max_bpm = 215.0f;
+    float min_bpm = 70.0f;
+    float max_bpm = 180.0f;
     float tempo_window_percent = 20.0f;
     bool prefer_double_time = true;
     float activation_threshold = 0.5f;
@@ -104,7 +104,7 @@ struct CoreMLConfig {
     float dbn_transition_reward = 0.7f;
     bool dbn_use_all_candidates = true;
     float dbn_transition_lambda = 100.0f;
-    bool dbn_trace = true;
+    bool dbn_trace = false;
     bool use_minimal_postprocess = true;
     double dbn_window_seconds = 60.0;
     // Global analysis start offset applied before any windowing (seconds).
@@ -118,6 +118,8 @@ struct CoreMLConfig {
     bool dbn_window_consensus = false;
     bool dbn_window_stitch = false;
     bool dbn_window_best = true;
+    // Fit one global linear beat grid (frame ~= a + i*b) before projection.
+    bool dbn_grid_global_fit = false;
     bool dbn_grid_align_downbeat_peak = true;
     bool dbn_grid_start_strong_peak = true;
     float dbn_grid_start_advance_seconds = 0.06f;

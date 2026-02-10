@@ -67,7 +67,7 @@ public:
         config.min_bpm = 70.0f;
         config.max_bpm = 180.0f;
         config.output_latency_seconds = 0.016;
-        config.use_dbn = false;
+        config.use_dbn = true;
         config.use_logit_consensus = true;
         config.logit_block_seconds = 120.0;
         config.logit_block_hop_seconds = 60.0;
@@ -90,7 +90,8 @@ public:
         config.dbn_window_intro_mid_outro = false;
         config.dbn_window_consensus = false;
         config.dbn_project_grid = true;
-        config.dbn_trace = true;
+        config.dbn_grid_global_fit = true;
+        config.dbn_trace = false;
         config.dbn_grid_align_downbeat_peak = true;
         config.dbn_grid_start_strong_peak = true;
         config.dbn_grid_start_advance_seconds = 0.06f;

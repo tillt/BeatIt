@@ -4702,7 +4702,7 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                     bpm_source = "base_interval";
                 }
                 projected_bpm = bpm_for_grid;
-                const double step_frames =
+                double step_frames =
                     (bpm_for_grid > 0.0) ? (60.0 * fps) / bpm_for_grid : base_interval;
                 if (config.verbose) {
                     std::cerr << "DBN grid: bpm=" << decoded.bpm
@@ -5344,6 +5344,34 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                 }
                 // Force a uniform grid so projection yields evenly spaced beats.
                 if (decoded.beat_frames.size() >= 2 && step_frames > 1.0) {
+                    if (config.dbn_grid_global_fit && decoded.beat_frames.size() >= 8) {
+                        const double n = static_cast<double>(decoded.beat_frames.size());
+                        double sx = 0.0;
+                        double sy = 0.0;
+                        double sxx = 0.0;
+                        double sxy = 0.0;
+                        for (std::size_t i = 0; i < decoded.beat_frames.size(); ++i) {
+                            const double x = static_cast<double>(i);
+                            const double y = static_cast<double>(decoded.beat_frames[i]);
+                            sx += x;
+                            sy += y;
+                            sxx += x * x;
+                            sxy += x * y;
+                        }
+                        const double den = n * sxx - sx * sx;
+                        if (std::abs(den) > 1e-9) {
+                            const double fit_step = (n * sxy - sx * sy) / den;
+                            if (fit_step > 1.0) {
+                                if (config.verbose) {
+                                    std::cerr << "DBN grid fit: step_frames(raw)=" << step_frames
+                                              << " step_frames(fit)=" << fit_step
+                                              << " beats=" << decoded.beat_frames.size()
+                                              << "\n";
+                                }
+                                step_frames = fit_step;
+                            }
+                        }
+                    }
                     const bool have_downbeat_start = !decoded.downbeat_frames.empty();
                     const bool reliable_downbeat_start =
                         have_downbeat_start &&
@@ -5397,6 +5425,50 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                         grid_start = target + k * step_frames;
                         while (grid_start < 0.0) {
                             grid_start += step_frames;
+                        }
+                    }
+                    if (!reliable_downbeat_start && step_frames > 1.0 &&
+                        result.beat_activation.size() >= 8) {
+                        const auto phase_score = [&](double start_frame) -> double {
+                            if (start_frame < 0.0) {
+                                return -1.0;
+                            }
+                            double score = 0.0;
+                            std::size_t hits = 0;
+                            double cursor_local = start_frame;
+                            while (cursor_local >= step_frames) {
+                                cursor_local -= step_frames;
+                            }
+                            while (cursor_local < static_cast<double>(used_frames) && hits < 128) {
+                                const long long idx_ll = static_cast<long long>(std::llround(cursor_local));
+                                if (idx_ll >= 0 &&
+                                    static_cast<std::size_t>(idx_ll) < result.beat_activation.size()) {
+                                    const std::size_t idx = static_cast<std::size_t>(idx_ll);
+                                    float value = result.beat_activation[idx];
+                                    if (idx > 0) {
+                                        value = std::max(value, result.beat_activation[idx - 1]);
+                                    }
+                                    if (idx + 1 < result.beat_activation.size()) {
+                                        value = std::max(value, result.beat_activation[idx + 1]);
+                                    }
+                                    score += static_cast<double>(value);
+                                    hits += 1;
+                                }
+                                cursor_local += step_frames;
+                            }
+                            return hits > 0 ? (score / static_cast<double>(hits)) : -1.0;
+                        };
+                        const double alt_start = grid_start + (0.5 * step_frames);
+                        const double base_score = phase_score(grid_start);
+                        const double alt_score = phase_score(alt_start);
+                        if (alt_score > base_score) {
+                            grid_start = alt_start;
+                            if (config.verbose) {
+                                std::cerr << "DBN grid: half-step phase shift selected"
+                                          << " base_score=" << base_score
+                                          << " alt_score=" << alt_score
+                                          << "\n";
+                            }
                         }
                     }
                     if (grid_start < 0.0) {
