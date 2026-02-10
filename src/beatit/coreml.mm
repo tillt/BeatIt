@@ -2325,8 +2325,19 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
     const std::size_t grid_total_frames =
         total_frames_full > used_frames ? total_frames_full : used_frames;
 
-    float min_bpm = config.min_bpm;
-    float max_bpm = config.max_bpm;
+    const float hard_min_bpm = std::max(1.0f, config.min_bpm);
+    const float hard_max_bpm = std::max(hard_min_bpm + 1.0f, config.max_bpm);
+    auto clamp_bpm_range = [&](float* min_value, float* max_value) {
+        *min_value = std::max(hard_min_bpm, *min_value);
+        *max_value = std::min(hard_max_bpm, *max_value);
+        if (*max_value <= *min_value) {
+            *min_value = hard_min_bpm;
+            *max_value = hard_max_bpm;
+        }
+    };
+
+    float min_bpm = hard_min_bpm;
+    float max_bpm = hard_max_bpm;
     float min_bpm_alt = min_bpm;
     float max_bpm_alt = max_bpm;
     bool has_window = false;
@@ -2334,18 +2345,14 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
         const float window = config.tempo_window_percent / 100.0f;
         min_bpm = reference_bpm * (1.0f - window);
         max_bpm = reference_bpm * (1.0f + window);
-        if (min_bpm < 1.0f) {
-            min_bpm = 1.0f;
-        }
         if (config.prefer_double_time) {
             const float doubled = reference_bpm * 2.0f;
             min_bpm_alt = doubled * (1.0f - window);
             max_bpm_alt = doubled * (1.0f + window);
-            if (min_bpm_alt < 1.0f) {
-                min_bpm_alt = 1.0f;
-            }
             has_window = true;
         }
+        clamp_bpm_range(&min_bpm, &max_bpm);
+        clamp_bpm_range(&min_bpm_alt, &max_bpm_alt);
     }
 
     const double fps = static_cast<double>(config.sample_rate) / static_cast<double>(config.hop_size);
@@ -3579,6 +3586,7 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
             min_bpm = std::min(min_bpm, min_bpm_alt);
             max_bpm = std::max(max_bpm, max_bpm_alt);
         }
+        clamp_bpm_range(&min_bpm, &max_bpm);
         const float window_peak_threshold =
             std::max(config.activation_threshold, config.dbn_activation_floor);
         std::pair<std::size_t, std::size_t> window{0, used_frames};
@@ -3746,6 +3754,7 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                         : 0.10;
                     min_bpm = static_cast<float>(prior_bpm * (1.0 - window_pct));
                     max_bpm = static_cast<float>(prior_bpm * (1.0 + window_pct));
+                    clamp_bpm_range(&min_bpm, &max_bpm);
                     if (config.verbose) {
                         std::cerr << "DBN calmdad prior: bpm=" << prior_bpm
                                   << " peaks=" << prior_peaks.size()
@@ -3978,6 +3987,7 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                         : 0.10;
                     min_bpm = static_cast<float>(adjusted_bpm * (1.0 - window_pct));
                     max_bpm = static_cast<float>(adjusted_bpm * (1.0 + window_pct));
+                    clamp_bpm_range(&min_bpm, &max_bpm);
                     if (config.verbose) {
                         std::cerr << "DBN stitch tempo prior: bpm=" << candidate_bpm
                                   << " adjusted=" << adjusted_bpm
@@ -5335,7 +5345,10 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                 // Force a uniform grid so projection yields evenly spaced beats.
                 if (decoded.beat_frames.size() >= 2 && step_frames > 1.0) {
                     const bool have_downbeat_start = !decoded.downbeat_frames.empty();
-                    const std::size_t start = have_downbeat_start
+                    const bool reliable_downbeat_start =
+                        have_downbeat_start &&
+                        max_downbeat > activation_floor;
+                    const std::size_t start = reliable_downbeat_start
                         ? decoded.downbeat_frames.front()
                         : std::min(decoded.beat_frames.front(),
                                    std::min(earliest_peak, earliest_downbeat_peak));
@@ -5343,12 +5356,12 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                     if (earliest_downbeat_peak > 0 && earliest_downbeat_peak < start) {
                         grid_start = static_cast<double>(earliest_downbeat_peak);
                     }
-                    if (!have_downbeat_start &&
+                    if (!reliable_downbeat_start &&
                         config.dbn_grid_start_strong_peak &&
                         strongest_peak_value >= activation_floor) {
                         grid_start = static_cast<double>(strongest_peak);
                     }
-                    if (!have_downbeat_start &&
+                    if (!reliable_downbeat_start &&
                         config.dbn_grid_align_downbeat_peak &&
                         earliest_downbeat_peak > 0 &&
                         step_frames > 1.0) {
@@ -5372,7 +5385,7 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                         grid_start -= static_cast<double>(config.dbn_grid_start_advance_seconds) *
                             frames_per_second;
                     }
-                    if (consensus_phase_valid && step_frames > 1.0 && !have_downbeat_start) {
+                    if (consensus_phase_valid && step_frames > 1.0 && !reliable_downbeat_start) {
                         double target = std::fmod(consensus_phase_frames, step_frames);
                         if (target < 0.0) {
                             target += step_frames;
