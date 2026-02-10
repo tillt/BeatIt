@@ -6,7 +6,7 @@ project(beatit
     LANGUAGES CXX OBJCXX)
 
 if(APPLE AND NOT DEFINED CMAKE_OSX_ARCHITECTURES)
-    if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    if(CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_CONFIGURATION_TYPES)
         set(CMAKE_OSX_ARCHITECTURES "x86_64;arm64")
     endif()
 endif()
@@ -17,17 +17,29 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-option(BEATIT_USE_TORCH "Enable Torch backend" OFF)
+option(BEATIT_USE_TORCH "Enable Torch backend" ON)
 set(BEATIT_TORCH_ROOT "" CACHE PATH "Path to LibTorch root")
 
-add_library(beatit_lib
+if(BEATIT_USE_TORCH AND BEATIT_TORCH_ROOT STREQUAL "")
+    if(EXISTS "/opt/homebrew/opt/libtorch/share/cmake/Torch")
+        set(BEATIT_TORCH_ROOT "/opt/homebrew/opt/libtorch" CACHE PATH "Path to LibTorch root" FORCE)
+    elseif(EXISTS "/usr/local/opt/libtorch/share/cmake/Torch")
+        set(BEATIT_TORCH_ROOT "/usr/local/opt/libtorch" CACHE PATH "Path to LibTorch root" FORCE)
+    endif()
+endif()
+
+set(BEATIT_LIB_SOURCES
     src/beatit/analysis.cpp
     src/beatit/coreml.mm
     src/beatit/coreml_preset.cpp
     src/beatit/refiner.cpp
     src/beatit/stream.cpp
-    src/beatit/torch_mel.mm
 )
+if(BEATIT_USE_TORCH)
+    list(APPEND BEATIT_LIB_SOURCES src/beatit/torch_mel.mm)
+endif()
+
+add_library(beatit_lib ${BEATIT_LIB_SOURCES})
 
 target_include_directories(beatit_lib
     PUBLIC
@@ -46,7 +58,20 @@ function(beatit_link_torch target)
     set(Torch_DIR "${BEATIT_TORCH_ROOT}/torch/share/cmake/Torch")
     find_package(Torch REQUIRED)
     target_include_directories(${target} PRIVATE ${TORCH_INCLUDE_DIRS})
-    target_link_libraries(${target} PRIVATE ${TORCH_LIBRARIES})
+    set(BEATIT_TORCH_LIBS
+        torch
+        torch_cpu
+        c10
+    )
+    find_library(TORCH_GLOBAL_DEPS_LIB
+        NAMES torch_global_deps
+        PATHS "${BEATIT_TORCH_ROOT}/torch/lib"
+        NO_DEFAULT_PATH
+    )
+    if(TORCH_GLOBAL_DEPS_LIB)
+        list(APPEND BEATIT_TORCH_LIBS "${TORCH_GLOBAL_DEPS_LIB}")
+    endif()
+    target_link_libraries(${target} PRIVATE ${BEATIT_TORCH_LIBS})
     target_compile_definitions(${target} PRIVATE BEATIT_USE_TORCH=1)
     set_target_properties(${target} PROPERTIES
         BUILD_RPATH "${BEATIT_TORCH_ROOT}/torch/lib"
@@ -75,15 +100,19 @@ endif()
 if(APPLE)
     file(GLOB BEATIT_PUBLIC_HEADERS "${CMAKE_CURRENT_SOURCE_DIR}/include/beatit/*.h")
 
-    add_library(beatit_framework SHARED
+    set(BEATIT_FRAMEWORK_SOURCES
         src/beatit/analysis.cpp
         src/beatit/coreml.mm
         src/beatit/coreml_preset.cpp
         src/beatit/refiner.cpp
         src/beatit/stream.cpp
-        src/beatit/torch_mel.mm
         ${BEATIT_PUBLIC_HEADERS}
     )
+    if(BEATIT_USE_TORCH)
+        list(APPEND BEATIT_FRAMEWORK_SOURCES src/beatit/torch_mel.mm)
+    endif()
+
+    add_library(beatit_framework SHARED ${BEATIT_FRAMEWORK_SOURCES})
 
     target_include_directories(beatit_framework
         PUBLIC
@@ -114,6 +143,40 @@ if(APPLE)
             "$<TARGET_FILE_DIR:beatit_framework>/Resources/beatit.mlmodelc"
         COMMENT "Copying CoreML model into BeatIt.framework resources"
     )
+
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/coreml_out_latest/BeatThis_small0.mlpackage")
+        add_custom_command(TARGET beatit_framework POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${CMAKE_CURRENT_SOURCE_DIR}/coreml_out_latest/BeatThis_small0.mlpackage"
+                "$<TARGET_FILE_DIR:beatit_framework>/Resources/BeatThis_small0.mlpackage"
+            COMMENT "Copying BeatThis small CoreML package into BeatIt.framework resources"
+        )
+    elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/coreml_out_latest/BeatThis_small0.mlmodelc")
+        add_custom_command(TARGET beatit_framework POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${CMAKE_CURRENT_SOURCE_DIR}/coreml_out_latest/BeatThis_small0.mlmodelc"
+                "$<TARGET_FILE_DIR:beatit_framework>/Resources/BeatThis_small0.mlmodelc"
+            COMMENT "Copying BeatThis small CoreML model into BeatIt.framework resources"
+        )
+    endif()
+
+    if(BEATIT_USE_TORCH AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/models/beatthis.pt")
+        add_custom_command(TARGET beatit_framework POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${CMAKE_CURRENT_SOURCE_DIR}/models/beatthis.pt"
+                "$<TARGET_FILE_DIR:beatit_framework>/Resources/beatthis.pt"
+            COMMENT "Copying BeatThis Torch model into BeatIt.framework resources"
+        )
+    endif()
+
+    if(BEATIT_USE_TORCH AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/models/beatthis_mps.pt")
+        add_custom_command(TARGET beatit_framework POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${CMAKE_CURRENT_SOURCE_DIR}/models/beatthis_mps.pt"
+                "$<TARGET_FILE_DIR:beatit_framework>/Resources/beatthis_mps.pt"
+            COMMENT "Copying BeatThis MPS Torch model into BeatIt.framework resources"
+        )
+    endif()
 
     add_custom_command(TARGET beatit_framework POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory
@@ -177,61 +240,65 @@ else()
     message(STATUS "Python3 not found; synthetic test audio will not be generated.")
 endif()
 
-add_executable(beatit_streaming_tests
-    tests/streaming_ml_test.mm
+add_executable(beatit_streaming_synthetic_tests
+    tests/streaming_coreml_synthetic_test.mm
 )
 
-target_link_libraries(beatit_streaming_tests
+target_link_libraries(beatit_streaming_synthetic_tests
     PRIVATE
         beatit_lib
 )
 
-target_compile_definitions(beatit_streaming_tests PRIVATE
+target_compile_definitions(beatit_streaming_synthetic_tests PRIVATE
     BEATIT_TEST_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/models/beatit.mlpackage"
+    BEATIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
 )
 
 if(APPLE)
-    target_compile_options(beatit_streaming_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
-    target_link_libraries(beatit_streaming_tests PRIVATE "-framework CoreML" "-framework Foundation")
+    target_compile_options(beatit_streaming_synthetic_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
+    target_link_libraries(beatit_streaming_synthetic_tests PRIVATE "-framework CoreML" "-framework Foundation")
+    target_link_options(beatit_streaming_synthetic_tests PRIVATE "-Wl,-no_warn_duplicate_libraries")
 endif()
 
 if(TARGET generate_test_audio)
-    add_dependencies(beatit_streaming_tests generate_test_audio)
+    add_dependencies(beatit_streaming_synthetic_tests generate_test_audio)
 endif()
 
-add_test(NAME beatit_streaming_tests COMMAND beatit_streaming_tests)
-set_tests_properties(beatit_streaming_tests PROPERTIES
+add_test(NAME beatit_streaming_synthetic_tests COMMAND beatit_streaming_synthetic_tests)
+set_tests_properties(beatit_streaming_synthetic_tests PROPERTIES
     ENVIRONMENT
         "TMPDIR=${CMAKE_CURRENT_BINARY_DIR}/coreml_tmp;HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_home;XDG_CACHE_HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_cache"
     WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     SKIP_RETURN_CODE 77
 )
 
-add_executable(beatit_streaming_mp3_tests
-    tests/streaming_ml_mp3_test.mm
+add_executable(beatit_streaming_decoded_audio_tests
+    tests/streaming_coreml_decoded_audio_test.mm
 )
 
-target_link_libraries(beatit_streaming_mp3_tests
+target_link_libraries(beatit_streaming_decoded_audio_tests
     PRIVATE
         beatit_lib
 )
 
-target_compile_definitions(beatit_streaming_mp3_tests PRIVATE
+target_compile_definitions(beatit_streaming_decoded_audio_tests PRIVATE
     BEATIT_TEST_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/models/beatit.mlpackage"
     BEATIT_TEST_AUDIO_PATH="${CMAKE_CURRENT_SOURCE_DIR}/training/test.wav"
+    BEATIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
 )
 
 if(APPLE)
-    target_compile_options(beatit_streaming_mp3_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
-    target_link_libraries(beatit_streaming_mp3_tests PRIVATE "-framework AVFoundation" "-framework CoreMedia" "-framework CoreML" "-framework Foundation")
+    target_compile_options(beatit_streaming_decoded_audio_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
+    target_link_libraries(beatit_streaming_decoded_audio_tests PRIVATE "-framework AVFoundation" "-framework CoreMedia" "-framework CoreML" "-framework Foundation")
+    target_link_options(beatit_streaming_decoded_audio_tests PRIVATE "-Wl,-no_warn_duplicate_libraries")
 endif()
 
 if(TARGET generate_test_audio)
-    add_dependencies(beatit_streaming_mp3_tests generate_test_audio)
+    add_dependencies(beatit_streaming_decoded_audio_tests generate_test_audio)
 endif()
 
-add_test(NAME beatit_streaming_mp3_tests COMMAND beatit_streaming_mp3_tests)
-set_tests_properties(beatit_streaming_mp3_tests PROPERTIES
+add_test(NAME beatit_streaming_decoded_audio_tests COMMAND beatit_streaming_decoded_audio_tests)
+set_tests_properties(beatit_streaming_decoded_audio_tests PROPERTIES
     ENVIRONMENT
         "TMPDIR=${CMAKE_CURRENT_BINARY_DIR}/coreml_tmp;HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_home;XDG_CACHE_HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_cache"
     WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
@@ -280,81 +347,77 @@ set_tests_properties(beatit_dbn_purelove_tests PROPERTIES
     SKIP_RETURN_CODE 77
 )
 
-add_executable(beatit_beatthis_canonical_tests
-    tests/beatthis_canonical_test.mm
-)
+if(BEATIT_USE_TORCH)
+    add_executable(beatit_beatthis_canonical_tests
+        tests/beatthis_canonical_test.mm
+    )
 
-target_link_libraries(beatit_beatthis_canonical_tests
-    PRIVATE
-        beatit_lib
-)
+    target_link_libraries(beatit_beatthis_canonical_tests
+        PRIVATE
+            beatit_lib
+    )
 
-beatit_link_torch(beatit_beatthis_canonical_tests)
+    beatit_link_torch(beatit_beatthis_canonical_tests)
 
-target_compile_definitions(beatit_beatthis_canonical_tests PRIVATE
-    BEATIT_TEST_TORCH_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/models/beatthis.pt"
-    BEATIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
-)
+    target_compile_definitions(beatit_beatthis_canonical_tests PRIVATE
+        BEATIT_TEST_TORCH_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/models/beatthis.pt"
+        BEATIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+    )
 
-if(APPLE)
-    target_compile_options(beatit_beatthis_canonical_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
-    target_link_libraries(beatit_beatthis_canonical_tests PRIVATE "-framework AVFoundation" "-framework Foundation")
+    if(APPLE)
+        target_compile_options(beatit_beatthis_canonical_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
+        target_link_libraries(beatit_beatthis_canonical_tests PRIVATE "-framework AVFoundation" "-framework Foundation")
+    endif()
+
+    add_test(NAME beatit_beatthis_canonical_tests COMMAND beatit_beatthis_canonical_tests)
+    set_tests_properties(beatit_beatthis_canonical_tests PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+        SKIP_RETURN_CODE 77
+    )
+
+    add_executable(beatit_beatthis_mps_tests
+        tests/beatthis_mps_smoke_test.mm
+    )
+
+    target_link_libraries(beatit_beatthis_mps_tests
+        PRIVATE
+            beatit_lib
+    )
+
+    beatit_link_torch(beatit_beatthis_mps_tests)
+
+    target_compile_definitions(beatit_beatthis_mps_tests PRIVATE
+        BEATIT_TEST_TORCH_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/models/beatthis.pt"
+        BEATIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+
+    if(APPLE)
+        target_compile_options(beatit_beatthis_mps_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
+        target_link_libraries(beatit_beatthis_mps_tests PRIVATE "-framework AVFoundation" "-framework Foundation")
+    endif()
+
+    add_test(NAME beatit_beatthis_mps_tests COMMAND beatit_beatthis_mps_tests)
+    set_tests_properties(beatit_beatthis_mps_tests PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+        SKIP_RETURN_CODE 77
+    )
 endif()
 
-add_test(NAME beatit_beatthis_canonical_tests COMMAND beatit_beatthis_canonical_tests)
-set_tests_properties(beatit_beatthis_canonical_tests PROPERTIES
-    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-    SKIP_RETURN_CODE 77
-)
-
-add_executable(beatit_beatthis_mps_tests
-    tests/beatthis_mps_smoke_test.mm
-)
-
-target_link_libraries(beatit_beatthis_mps_tests
-    PRIVATE
-        beatit_lib
-)
-
-beatit_link_torch(beatit_beatthis_mps_tests)
-
-target_compile_definitions(beatit_beatthis_mps_tests PRIVATE
-    BEATIT_TEST_TORCH_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/models/beatthis.pt"
-    BEATIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
-)
-
-if(APPLE)
-    target_compile_options(beatit_beatthis_mps_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
-    target_link_libraries(beatit_beatthis_mps_tests PRIVATE "-framework AVFoundation" "-framework Foundation")
-endif()
-
-add_test(NAME beatit_beatthis_mps_tests COMMAND beatit_beatthis_mps_tests)
-set_tests_properties(beatit_beatthis_mps_tests PROPERTIES
-    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-    SKIP_RETURN_CODE 77
-)
-
-add_executable(beatit_torch_stream_tests
+add_executable(beatit_coreml_stream_tests
     tests/torch_stream_test.mm
 )
 
-target_link_libraries(beatit_torch_stream_tests
+target_link_libraries(beatit_coreml_stream_tests
     PRIVATE
         beatit_lib
 )
 
-beatit_link_torch(beatit_torch_stream_tests)
-
-target_compile_definitions(beatit_torch_stream_tests PRIVATE
-    BEATIT_TEST_TORCH_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/models/beatthis.pt"
-)
-
 if(APPLE)
-    target_compile_options(beatit_torch_stream_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
+    target_compile_options(beatit_coreml_stream_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
 endif()
 
-add_test(NAME beatit_torch_stream_tests COMMAND beatit_torch_stream_tests)
-set_tests_properties(beatit_torch_stream_tests PROPERTIES
+add_test(NAME beatit_coreml_stream_tests COMMAND beatit_coreml_stream_tests)
+set_tests_properties(beatit_coreml_stream_tests PROPERTIES
     WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     SKIP_RETURN_CODE 77
 )

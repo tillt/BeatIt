@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "beatit/stream.h"
+#include "coreml_test_config.h"
 
 namespace {
 
@@ -120,14 +121,21 @@ int main() {
     const double bpm = 120.0;
     const double seconds = 32.0;
 
+    std::string source_model_path = beatit::tests::resolve_beatthis_coreml_model_path();
+    if (source_model_path.empty()) {
+        std::cerr << "SKIP: BeatThis CoreML model missing (set BEATIT_COREML_MODEL_PATH).\n";
+        return 77;
+    }
+
     std::string model_error;
-    std::string model_path = compile_model_if_needed(BEATIT_TEST_MODEL_PATH, &model_error);
+    std::string model_path = compile_model_if_needed(source_model_path, &model_error);
     if (model_path.empty()) {
         std::cerr << "Failed to prepare CoreML model: " << model_error << "\n";
         return 1;
     }
 
     beatit::CoreMLConfig config;
+    beatit::tests::apply_beatthis_coreml_test_config(config);
     config.model_path = model_path;
     config.verbose = true;
     config.activation_threshold = 0.2f;
