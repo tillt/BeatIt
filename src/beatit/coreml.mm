@@ -5088,17 +5088,6 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                     const char* source = "none";
                     bool score_set = false;
 
-                if (allow_downbeat_phase) {
-                    const std::size_t frame = phase_frames.front();
-                    // Force earliest phase when downbeat activations exist.
-                    score = 1000000.0 - static_cast<double>(frame);
-                    hits = 1;
-                    mean = (frame < result.downbeat_activation.size())
-                            ? static_cast<double>(result.downbeat_activation[frame])
-                            : 0.0;
-                        source = "downbeat_earliest";
-                        score_set = true;
-                    }
                     if (phase_window_frames > 0 && !allow_downbeat_phase) {
                         if (has_phase_peaks) {
                             double sum = 0.0;

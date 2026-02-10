@@ -317,6 +317,13 @@ int main() {
     config.use_dbn = true;
     config.max_analysis_seconds = 60.0;
     config.dbn_window_start_seconds = 0.0;
+    if (const char* trace = std::getenv("BEATIT_WINDOW_TRACE")) {
+        if (trace[0] != '\0' && trace[0] != '0') {
+            config.verbose = true;
+            config.dbn_trace = true;
+            config.profile = true;
+        }
+    }
     if (const char* force_cpu = std::getenv("BEATIT_TEST_CPU_ONLY")) {
         if (force_cpu[0] != '\0' && force_cpu[0] != '0') {
             config.compute_units = beatit::CoreMLConfig::ComputeUnits::CPUOnly;
