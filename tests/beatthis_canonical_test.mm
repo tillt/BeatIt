@@ -145,7 +145,11 @@ double downbeat_seconds_from_result(const beatit::AnalysisResult& result,
                                     const beatit::CoreMLConfig& config) {
     if (!result.coreml_downbeat_feature_frames.empty() && config.sample_rate > 0 && config.hop_size > 0) {
         const double frames = static_cast<double>(result.coreml_downbeat_feature_frames.front());
-        return (frames * config.hop_size) / config.sample_rate;
+        const double seconds = (frames * config.hop_size) / config.sample_rate;
+        if (config.prepend_silence_seconds > 0.0) {
+            return std::max(0.0, seconds - config.prepend_silence_seconds);
+        }
+        return seconds;
     }
     return -1.0;
 }
@@ -161,6 +165,10 @@ int main() {
     beatit::CoreMLConfig config;
     if (auto preset = beatit::make_coreml_preset("beatthis")) {
         preset->apply(config);
+    }
+    config.prepend_silence_seconds = 0.0;
+    if (const char* verbose = std::getenv("BEATIT_VERBOSE"); verbose && verbose[0] != '\0') {
+        config.verbose = true;
     }
 
     std::filesystem::path test_root;

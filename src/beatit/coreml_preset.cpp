@@ -36,6 +36,7 @@ public:
         config.fixed_frames = 3000;
         config.window_hop_frames = 2500;
         config.window_border_frames = 0;
+        config.analysis_start_seconds = 0.0;
     }
 };
 
@@ -46,6 +47,7 @@ public:
     }
 
     void apply(CoreMLConfig& config) const override {
+        config.backend = CoreMLConfig::Backend::CoreML;
         config.sample_rate = 22050;
         config.frame_size = 1024;
         config.hop_size = 441;
@@ -61,9 +63,51 @@ public:
         config.fixed_frames = 1500;
         config.window_hop_frames = 1488;
         config.window_border_frames = 6;
-        config.use_dbn = true;
+        config.analysis_start_seconds = 0.0;
+        config.min_bpm = 70.0f;
+        config.max_bpm = 180.0f;
+        config.output_latency_seconds = 0.016;
+        config.use_dbn = false;
+        config.use_logit_consensus = true;
+        config.logit_block_seconds = 120.0;
+        config.logit_block_hop_seconds = 60.0;
+        config.logit_phase_window_seconds = 2.0;
+        config.logit_phase_max_shift_seconds = 0.03f;
+        config.logit_min_peaks = 8;
+        config.disable_silence_trimming = true;
         config.dbn_use_downbeat = true;
+        config.dbn_mode = CoreMLConfig::DBNMode::Calmdad;
+        config.dbn_activation_floor = 0.7f;
+        config.dbn_tempo_prior_weight = 0.0f;
+        config.dbn_downbeat_phase_peak_ratio = 0.2f;
+        config.dbn_downbeat_phase_window_seconds = 2.0;
+        config.dbn_downbeat_phase_max_delay_seconds = 0.3;
+        config.use_minimal_postprocess = true;
+        config.dbn_window_seconds = 60.0;
+        config.dbn_window_start_seconds = 0.0;
+        config.dbn_window_use_phase_energy = true;
+        config.dbn_window_best = true;
+        config.dbn_window_intro_mid_outro = false;
+        config.dbn_window_consensus = false;
+        config.dbn_project_grid = true;
+        config.dbn_trace = true;
+        config.dbn_grid_align_downbeat_peak = true;
+        config.dbn_grid_start_strong_peak = true;
+        config.dbn_grid_start_advance_seconds = 0.06f;
+        if (config.use_logit_consensus) {
+            config.max_analysis_seconds = 0.0;
+            config.dbn_window_start_seconds = 0.0;
+        } else {
+            config.max_analysis_seconds = config.dbn_window_seconds;
+        }
         config.torch_batch_size = 1;
+        config.prepend_silence_seconds = 1.0;
+        config.model_path = "coreml_out/BeatThis_small0.mlpackage";
+        config.input_name = "mel_spectrogram";
+        config.beat_output_name = "beat_logits";
+        config.downbeat_output_name = "downbeat_logits";
+        config.coreml_output_logits = false;
+        config.coreml_logit_temperature = 1.0f;
     }
 };
 

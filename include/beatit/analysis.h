@@ -26,15 +26,34 @@ struct AnalysisResult {
     std::vector<unsigned long long> coreml_beat_feature_frames;
     // Sample-frame indices (audio timeline) intended for end-user consumption.
     std::vector<unsigned long long> coreml_beat_sample_frames;
+    // Projected grid feature-frame indices (if enabled).
+    std::vector<unsigned long long> coreml_beat_projected_feature_frames;
+    // Projected grid sample-frame indices (if enabled).
+    std::vector<unsigned long long> coreml_beat_projected_sample_frames;
     // Beat events with markers derived from the beat grid.
     std::vector<BeatEvent> coreml_beat_events;
     std::vector<float> coreml_beat_strengths;
     // Feature-frame indices for downbeats (diagnostic timeline).
     std::vector<unsigned long long> coreml_downbeat_feature_frames;
+    // Projected grid downbeat feature-frame indices (if enabled).
+    std::vector<unsigned long long> coreml_downbeat_projected_feature_frames;
 };
 
 AnalysisResult analyze(const std::vector<float>& samples,
                        double sample_rate,
                        const CoreMLConfig& config);
+
+// Diagnostics/helpers used by CLI tooling.
+float estimate_bpm_from_activation(const std::vector<float>& activation,
+                                   const CoreMLConfig& config,
+                                   double sample_rate);
+float estimate_bpm_from_activation_autocorr(const std::vector<float>& activation,
+                                            const CoreMLConfig& config,
+                                            double sample_rate);
+float estimate_bpm_from_activation_comb(const std::vector<float>& activation,
+                                        const CoreMLConfig& config,
+                                        double sample_rate);
+float estimate_bpm_from_beats(const std::vector<unsigned long long>& beat_samples,
+                              double sample_rate);
 
 } // namespace beatit

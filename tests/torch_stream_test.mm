@@ -31,15 +31,26 @@ std::vector<float> make_click_track(double sample_rate, double bpm, double secon
 }
 
 std::string resolve_model_path() {
-    if (const char* env = std::getenv("BEATIT_TORCH_MODEL_PATH")) {
+    if (const char* env = std::getenv("BEATIT_COREML_MODEL_PATH")) {
         if (env[0] != '\0') {
             return env;
         }
     }
 
-#ifdef BEATIT_TEST_TORCH_MODEL_PATH
-    return BEATIT_TEST_TORCH_MODEL_PATH;
+#ifdef BEATIT_TEST_COREML_MODEL_PATH
+    return BEATIT_TEST_COREML_MODEL_PATH;
 #else
+    const std::vector<std::string> candidates = {
+        "coreml_out/BeatThis_final0.mlpackage",
+        "coreml_out/BeatThis_final0.mlmodelc",
+        "coreml_out_latest/BeatThis_final0.mlpackage",
+        "coreml_out_latest/BeatThis_final0.mlmodelc"
+    };
+    for (const auto& path : candidates) {
+        if (std::filesystem::exists(path)) {
+            return path;
+        }
+    }
     return {};
 #endif
 }
@@ -47,13 +58,9 @@ std::string resolve_model_path() {
 }  // namespace
 
 int main() {
-#if !defined(BEATIT_USE_TORCH)
-    std::cout << "SKIP: Torch backend disabled at build time.\n";
-    return 77;
-#else
     std::string model_path = resolve_model_path();
     if (model_path.empty() || !std::filesystem::exists(model_path)) {
-        std::cout << "SKIP: Torch model missing (set BEATIT_TORCH_MODEL_PATH).\n";
+        std::cout << "SKIP: CoreML model missing (set BEATIT_COREML_MODEL_PATH).\n";
         return 77;
     }
 
@@ -61,9 +68,8 @@ int main() {
     if (auto preset = beatit::make_coreml_preset("beatthis")) {
         preset->apply(config);
     }
-    config.backend = beatit::CoreMLConfig::Backend::Torch;
-    config.torch_model_path = model_path;
-    config.torch_device = "cpu";
+    config.backend = beatit::CoreMLConfig::Backend::CoreML;
+    config.model_path = model_path;
     config.verbose = true;
 
     const double sample_rate = 44100.0;
@@ -82,12 +88,11 @@ int main() {
 
     beatit::AnalysisResult result = stream.finalize();
     if (result.coreml_beat_activation.empty()) {
-        std::cerr << "Torch stream test failed: no activation output.\n";
+        std::cerr << "CoreML stream test failed: no activation output.\n";
         return 1;
     }
 
-    std::cout << "Torch stream test passed. Beats=" << result.coreml_beat_feature_frames.size()
+    std::cout << "CoreML stream test passed. Beats=" << result.coreml_beat_feature_frames.size()
               << " BPM=" << result.estimated_bpm << "\n";
     return 0;
-#endif
 }

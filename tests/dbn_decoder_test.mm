@@ -59,6 +59,7 @@ int main() {
     beatit::CoreMLResult result =
         beatit::postprocess_coreml_activations(beat_activation,
                                                downbeat_activation,
+                                               nullptr,
                                                config,
                                                config.sample_rate,
                                                0.0f,
@@ -76,6 +77,7 @@ int main() {
     beatit::CoreMLResult sparse =
         beatit::postprocess_coreml_activations(sparse_activation,
                                                {},
+                                               nullptr,
                                                config,
                                                config.sample_rate,
                                                0.0f,
