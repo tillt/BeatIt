@@ -19,6 +19,7 @@ constexpr std::size_t kAlternationWindowBeats = 24;
 constexpr double kMaxOffsetSlopeMsPerBeat = 0.10;
 constexpr double kMaxStartEndDeltaMs = 120.0;
 constexpr double kMaxOddEvenMedianGapMs = 180.0;
+constexpr double kMaxIntroMedianAbsOffsetMs = 90.0;
 
 std::string compile_model_if_needed(const std::string& path, std::string* error) {
     NSString* ns_path = [NSString stringWithUTF8String:path.c_str()];
@@ -400,6 +401,11 @@ int main() {
     std::vector<double> last(offsets_ms.end() - static_cast<long>(kEdgeWindowBeats),
                              offsets_ms.end());
     const double start_median_ms = median(first);
+    std::vector<double> first_abs = first;
+    for (double& v : first_abs) {
+        v = std::fabs(v);
+    }
+    const double start_median_abs_ms = median(first_abs);
     const double end_median_ms = median(last);
     const double start_end_delta_ms = end_median_ms - start_median_ms;
     const double slope_ms_per_beat = linear_slope(offsets_ms);
@@ -420,12 +426,19 @@ int main() {
 
     std::cout << "Window alignment metrics: bpm=" << result.estimated_bpm
               << " start_median_ms=" << start_median_ms
+              << " start_median_abs_ms=" << start_median_abs_ms
               << " end_median_ms=" << end_median_ms
               << " delta_ms=" << start_end_delta_ms
               << " slope_ms_per_beat=" << slope_ms_per_beat
               << " odd_even_gap_ms=" << odd_even_gap_ms
               << "\n";
 
+    if (start_median_abs_ms > kMaxIntroMedianAbsOffsetMs) {
+        std::cerr << "Window alignment test failed: intro median abs offset "
+                  << start_median_abs_ms << "ms > " << kMaxIntroMedianAbsOffsetMs
+                  << "ms\n";
+        return 1;
+    }
     if (std::fabs(slope_ms_per_beat) > kMaxOffsetSlopeMsPerBeat) {
         std::cerr << "Window alignment test failed: slope " << slope_ms_per_beat
                   << "ms/beat > " << kMaxOffsetSlopeMsPerBeat << "\n";

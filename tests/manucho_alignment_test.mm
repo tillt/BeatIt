@@ -22,6 +22,8 @@ constexpr double kTargetBpm = 110.0;
 constexpr double kMaxIntervalStdMilliseconds = 1.0;
 constexpr double kMaxPeakOffsetMeanAbsMilliseconds = 25.0;
 constexpr double kMaxPeakOffsetSlopeMsPerBeat = 0.05;
+constexpr std::size_t kIntroBeatCountForPhaseCheck = 64;
+constexpr double kMaxIntroMedianAbsOffsetMs = 90.0;
 
 std::string compile_model_if_needed(const std::string& path, std::string* error) {
     NSString* ns_path = [NSString stringWithUTF8String:path.c_str()];
@@ -248,6 +250,15 @@ double linear_slope(const std::vector<double>& values) {
         return 0.0;
     }
     return (n * sxy - sx * sy) / den;
+}
+
+double median(std::vector<double> values) {
+    if (values.empty()) {
+        return 0.0;
+    }
+    auto mid = values.begin() + static_cast<long>(values.size() / 2);
+    std::nth_element(values.begin(), mid, values.end());
+    return *mid;
 }
 
 bool is_bar_event(const beatit::BeatEvent& event) {
@@ -599,6 +610,14 @@ int main() {
     }
     const double peak_offset_mean_abs_ms = mean(abs_offset_ms);
     const double peak_offset_slope_ms_per_beat = linear_slope(offset_ms);
+    const std::size_t intro_count =
+        std::min<std::size_t>(kIntroBeatCountForPhaseCheck, abs_offset_ms.size());
+    double intro_median_abs_offset_ms = 0.0;
+    if (intro_count > 0) {
+        std::vector<double> intro_abs(abs_offset_ms.begin(),
+                                      abs_offset_ms.begin() + static_cast<long>(intro_count));
+        intro_median_abs_offset_ms = median(std::move(intro_abs));
+    }
 
     std::string dump_error;
     std::filesystem::path dump_dir;
@@ -629,6 +648,12 @@ int main() {
                   << kMaxPeakOffsetMeanAbsMilliseconds << "ms\n";
         return 1;
     }
+    if (intro_median_abs_offset_ms > kMaxIntroMedianAbsOffsetMs) {
+        std::cerr << "Manucho alignment test failed: intro median abs offset "
+                  << intro_median_abs_offset_ms << "ms > "
+                  << kMaxIntroMedianAbsOffsetMs << "ms\n";
+        return 1;
+    }
     if (std::fabs(peak_offset_slope_ms_per_beat) > kMaxPeakOffsetSlopeMsPerBeat) {
         std::cerr << "Manucho alignment test failed: peak offset slope "
                   << peak_offset_slope_ms_per_beat << "ms/beat > "
@@ -641,6 +666,7 @@ int main() {
               << " first_downbeat_frame=" << first_downbeat_frame
               << " interval_std_ms=" << interval_std_ms
               << " peak_offset_mean_abs_ms=" << peak_offset_mean_abs_ms
+              << " intro_median_abs_offset_ms=" << intro_median_abs_offset_ms
               << " peak_offset_slope_ms_per_beat=" << peak_offset_slope_ms_per_beat
               << "\n";
     return 0;
