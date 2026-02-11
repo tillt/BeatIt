@@ -2574,10 +2574,9 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
             return;
         }
 
-        const double start_frame_adjusted =
-            analysis_latency_frames > 0
-                ? std::max(0.0, static_cast<double>(start_frame) - analysis_latency_frames_f)
-                : static_cast<double>(start_frame);
+        // Projected DBN grid is already in timeline-aligned feature frames.
+        // Applying border latency here shifts the entire grid early.
+        const double start_frame_adjusted = static_cast<double>(start_frame);
 
         if (config.dbn_trace) {
             const double start_time = start_frame_adjusted / fps;
