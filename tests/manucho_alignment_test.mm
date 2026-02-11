@@ -261,6 +261,59 @@ double median(std::vector<double> values) {
     return *mid;
 }
 
+std::vector<std::size_t> project_downbeats_from_beats(const std::vector<unsigned long long>& beats,
+                                                      std::size_t bpb,
+                                                      std::size_t phase) {
+    std::vector<std::size_t> projected;
+    if (beats.empty() || bpb == 0) {
+        return projected;
+    }
+    projected.reserve((beats.size() + bpb - 1) / bpb);
+    for (std::size_t i = 0; i < beats.size(); ++i) {
+        if ((i % bpb) == phase) {
+            projected.push_back(static_cast<std::size_t>(beats[i]));
+        }
+    }
+    return projected;
+}
+
+std::pair<std::size_t, std::size_t> infer_bpb_phase(
+    const std::vector<unsigned long long>& beats,
+    const std::vector<unsigned long long>& downbeats) {
+    std::pair<std::size_t, std::size_t> best = {4, 0};
+    std::size_t best_hits = 0;
+    if (beats.empty() || downbeats.empty()) {
+        return best;
+    }
+    for (std::size_t bpb : {3ULL, 4ULL}) {
+        std::vector<std::size_t> beat_indices;
+        beat_indices.reserve(downbeats.size());
+        for (unsigned long long db : downbeats) {
+            auto it = std::lower_bound(beats.begin(), beats.end(), db);
+            if (it != beats.end() && *it == db) {
+                beat_indices.push_back(static_cast<std::size_t>(
+                    std::distance(beats.begin(), it)));
+            }
+        }
+        if (beat_indices.empty()) {
+            continue;
+        }
+        for (std::size_t phase = 0; phase < bpb; ++phase) {
+            std::size_t hits = 0;
+            for (std::size_t idx : beat_indices) {
+                if ((idx % bpb) == phase) {
+                    hits += 1;
+                }
+            }
+            if (hits > best_hits) {
+                best_hits = hits;
+                best = {bpb, phase};
+            }
+        }
+    }
+    return best;
+}
+
 bool is_bar_event(const beatit::BeatEvent& event) {
     return (static_cast<unsigned long long>(event.style) &
             static_cast<unsigned long long>(beatit::BeatEventStyleBar)) != 0ULL;
@@ -572,6 +625,34 @@ int main() {
     if (!(result.estimated_bpm > 0.0)) {
         std::cerr << "Manucho alignment test failed: non-positive BPM.\n";
         return 1;
+    }
+
+    if (!result.coreml_beat_projected_feature_frames.empty() &&
+        !result.coreml_downbeat_projected_feature_frames.empty()) {
+        const auto inferred =
+            infer_bpb_phase(result.coreml_beat_feature_frames, result.coreml_downbeat_feature_frames);
+        const std::vector<std::size_t> expected_projected_downbeats =
+            project_downbeats_from_beats(result.coreml_beat_projected_feature_frames,
+                                         inferred.first,
+                                         inferred.second);
+        if (expected_projected_downbeats.size() != result.coreml_downbeat_projected_feature_frames.size()) {
+            std::cerr << "Manucho alignment test failed: projected downbeat count mismatch. expected="
+                      << expected_projected_downbeats.size() << " actual="
+                      << result.coreml_downbeat_projected_feature_frames.size() << "\n";
+            return 1;
+        }
+        for (std::size_t i = 0; i < expected_projected_downbeats.size(); ++i) {
+            const std::size_t actual =
+                static_cast<std::size_t>(result.coreml_downbeat_projected_feature_frames[i]);
+            if (actual != expected_projected_downbeats[i]) {
+                std::cerr << "Manucho alignment test failed: projected downbeat phase mismatch at index "
+                          << i << ". expected=" << expected_projected_downbeats[i]
+                          << " actual=" << actual
+                          << " bpb=" << inferred.first
+                          << " phase=" << inferred.second << "\n";
+                return 1;
+            }
+        }
     }
 
     std::vector<unsigned long long> grid_sample_frames;
