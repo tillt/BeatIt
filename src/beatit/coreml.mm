@@ -5242,7 +5242,6 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                     double delay_penalty = 0.0;
                     if (max_delay_frames > 0 && phase_frames.front() > max_delay_frames &&
                         source != nullptr && std::strncmp(source, "fallback", 8) != 0 &&
-                        std::strncmp(source, "downbeat_", 9) != 0 &&
                         !(quality_low &&
                           (std::strncmp(source, "beat_peak_mask", 14) == 0 ||
                            std::strncmp(source, "beat_threshold", 14) == 0))) {
@@ -5697,10 +5696,19 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                 for (unsigned long long frame : result.beat_projected_feature_frames) {
                     projected_frames.push_back(static_cast<std::size_t>(frame));
                 }
-                const std::vector<std::size_t> adjusted_downbeats =
-                    apply_latency_to_frames(decoded.downbeat_frames);
+                std::size_t projected_bpb = std::max<std::size_t>(1, config.dbn_beats_per_bar);
+                std::size_t projected_phase = 0;
+                if (!decoded.downbeat_frames.empty()) {
+                    const auto inferred =
+                        infer_bpb_phase(decoded.beat_frames, decoded.downbeat_frames, {3, 4});
+                    projected_bpb = std::max<std::size_t>(1, inferred.first);
+                    projected_phase = inferred.second % projected_bpb;
+                }
+                // Preserve DBN-selected bar phase on the projected beat grid.
+                // Nearest-neighbor remapping can flip bars by one beat when
+                // projection tempo differs slightly from the decoded beat list.
                 const std::vector<std::size_t> projected_downbeats =
-                    align_downbeats_to_beats(projected_frames, adjusted_downbeats);
+                    project_downbeats_from_beats(projected_frames, projected_bpb, projected_phase);
                 result.downbeat_projected_feature_frames.clear();
                 result.downbeat_projected_feature_frames.reserve(projected_downbeats.size());
                 for (std::size_t frame : projected_downbeats) {
