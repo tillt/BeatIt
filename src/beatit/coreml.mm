@@ -5469,6 +5469,122 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                     if (grid_start < 0.0) {
                         grid_start = 0.0;
                     }
+                    if (step_frames > 1.0 && result.beat_activation.size() >= 64) {
+                        std::vector<std::size_t> beat_peaks;
+                        beat_peaks.reserve(result.beat_activation.size() / 8);
+                        if (result.beat_activation.size() >= 3) {
+                            const std::size_t end = result.beat_activation.size() - 1;
+                            for (std::size_t i = 1; i < end; ++i) {
+                                const float prev = result.beat_activation[i - 1];
+                                const float curr = result.beat_activation[i];
+                                const float next = result.beat_activation[i + 1];
+                                if (curr >= activation_floor && curr >= prev && curr >= next) {
+                                    beat_peaks.push_back(i);
+                                }
+                            }
+                        }
+                        if (beat_peaks.size() >= 16) {
+                            struct OffsetSample {
+                                std::size_t beat_index = 0;
+                                double offset = 0.0;
+                            };
+                            std::vector<OffsetSample> samples;
+                            samples.reserve(256);
+                            double cursor_fit = grid_start;
+                            std::size_t beat_index = 0;
+                            while (cursor_fit < static_cast<double>(used_frames) &&
+                                   beat_index < 512) {
+                                const long long frame_ll =
+                                    static_cast<long long>(std::llround(cursor_fit));
+                                if (frame_ll >= 0) {
+                                    const std::size_t frame = static_cast<std::size_t>(frame_ll);
+                                    auto it = std::lower_bound(beat_peaks.begin(), beat_peaks.end(), frame);
+                                    std::size_t nearest = beat_peaks.front();
+                                    if (it == beat_peaks.end()) {
+                                        nearest = beat_peaks.back();
+                                    } else {
+                                        nearest = *it;
+                                        if (it != beat_peaks.begin()) {
+                                            const std::size_t prev = *(it - 1);
+                                            if (frame - prev < nearest - frame) {
+                                                nearest = prev;
+                                            }
+                                        }
+                                    }
+                                    const double max_dist = step_frames * 0.45;
+                                    const double dist =
+                                        std::abs(static_cast<double>(nearest) -
+                                                 static_cast<double>(frame));
+                                    if (dist <= max_dist) {
+                                        OffsetSample sample;
+                                        sample.beat_index = beat_index;
+                                        sample.offset =
+                                            static_cast<double>(nearest) -
+                                            static_cast<double>(frame);
+                                        samples.push_back(sample);
+                                    }
+                                }
+                                cursor_fit += step_frames;
+                                beat_index += 1;
+                            }
+                            if (samples.size() >= 32) {
+                                auto median_of_offsets = [](const std::vector<OffsetSample>& src,
+                                                            std::size_t begin,
+                                                            std::size_t count) {
+                                    std::vector<double> values;
+                                    values.reserve(count);
+                                    const std::size_t end = std::min(src.size(), begin + count);
+                                    for (std::size_t i = begin; i < end; ++i) {
+                                        values.push_back(src[i].offset);
+                                    }
+                                    if (values.empty()) {
+                                        return 0.0;
+                                    }
+                                    auto mid =
+                                        values.begin() + static_cast<long>(values.size() / 2);
+                                    std::nth_element(values.begin(), mid, values.end());
+                                    return *mid;
+                                };
+                                const std::size_t edge =
+                                    std::min<std::size_t>(32, samples.size() / 2);
+                                const double start_offset = median_of_offsets(samples, 0, edge);
+                                const std::size_t tail_begin = samples.size() - edge;
+                                const double end_offset =
+                                    median_of_offsets(samples, tail_begin, edge);
+                                const std::size_t start_index = samples[edge / 2].beat_index;
+                                const std::size_t end_index =
+                                    samples[tail_begin + edge / 2].beat_index;
+                                const double index_delta =
+                                    static_cast<double>(end_index - start_index);
+                                if (index_delta > 0.0) {
+                                    const double step_correction =
+                                        (end_offset - start_offset) / index_delta;
+                                    const double max_step_correction = step_frames * 0.02;
+                                    const double clamped_correction =
+                                        std::clamp(step_correction,
+                                                   -max_step_correction,
+                                                   max_step_correction);
+                                    if (std::abs(clamped_correction) > 1e-6) {
+                                        step_frames += clamped_correction;
+                                        grid_start += start_offset;
+                                        if (grid_start < 0.0) {
+                                            grid_start = 0.0;
+                                        }
+                                        if (config.verbose) {
+                                            std::cerr << "DBN grid drift-correct:"
+                                                      << " start_offset=" << start_offset
+                                                      << " end_offset=" << end_offset
+                                                      << " step_correction=" << step_correction
+                                                      << " step_applied=" << clamped_correction
+                                                      << " step_frames=" << step_frames
+                                                      << " samples=" << samples.size()
+                                                      << "\n";
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     std::vector<std::size_t> uniform_beats;
                     double cursor = grid_start;
                     while (cursor >= step_frames) {
