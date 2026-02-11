@@ -4661,8 +4661,13 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                     bpm_for_grid = bpm_from_global_fit;
                     bpm_source = "global_fit";
                 } else if (downbeat_override_ok && bpm_from_downbeats > 0.0) {
-                    bpm_for_grid = bpm_from_downbeats;
-                    bpm_source = "downbeats_primary";
+                    if (bpm_from_fit > 0.0) {
+                        bpm_for_grid = bpm_from_fit;
+                        bpm_source = "fit_primary";
+                    } else {
+                        bpm_for_grid = bpm_from_downbeats;
+                        bpm_source = "downbeats_primary";
+                    }
                 } else if (!quality_low && bpm_from_peaks_reg_full > 0.0) {
                     bpm_for_grid = bpm_from_peaks_reg_full;
                     bpm_source = "peaks_reg_full";
@@ -4685,7 +4690,8 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                 const std::string bpm_source_before_downbeat = bpm_source;
                 if (downbeat_override_ok && bpm_from_downbeats > 0.0 && bpm_for_grid > 0.0 &&
                     bpm_source != "peaks_reg_full" &&
-                    bpm_source != "downbeats_primary") {
+                    bpm_source != "downbeats_primary" &&
+                    bpm_source != "fit_primary") {
                     const double ratio =
                         std::abs(bpm_from_downbeats - bpm_for_grid) / bpm_for_grid;
                     if (ratio <= 0.005) {
