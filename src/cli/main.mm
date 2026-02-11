@@ -57,8 +57,8 @@ struct CliOptions {
     std::size_t coreml_hop_size = 441;
     std::size_t coreml_mel_bins = 81;
     std::size_t coreml_window_hop_frames = 0;
-    float coreml_min_bpm = 55.0f;
-    float coreml_max_bpm = 215.0f;
+    float coreml_min_bpm = 70.0f;
+    float coreml_max_bpm = 180.0f;
     float coreml_threshold = 0.5f;
     float coreml_gap_tolerance = 0.05f;
     float coreml_offbeat_tolerance = 0.10f;
@@ -66,28 +66,50 @@ struct CliOptions {
     float coreml_tempo_window = 20.0f;
     bool coreml_prefer_double_time = true;
     bool coreml_use_dbn = false;
+    bool coreml_use_dbn_set = false;
     float coreml_dbn_bpm_step = 1.0f;
+    bool coreml_dbn_bpm_step_set = false;
     float coreml_dbn_interval_tolerance = 0.05f;
+    bool coreml_dbn_interval_tolerance_set = false;
     float coreml_dbn_activation_floor = 0.01f;
+    bool coreml_dbn_activation_floor_set = false;
     std::size_t coreml_dbn_beats_per_bar = 4;
+    bool coreml_dbn_beats_per_bar_set = false;
     bool coreml_dbn_use_downbeat = true;
+    bool coreml_dbn_use_downbeat_set = false;
     float coreml_dbn_downbeat_weight = 1.0f;
+    bool coreml_dbn_downbeat_weight_set = false;
     std::string coreml_dbn_mode = "calmdad";
+    bool coreml_dbn_mode_set = false;
     float coreml_dbn_tempo_change_penalty = 0.05f;
+    bool coreml_dbn_tempo_change_penalty_set = false;
     float coreml_dbn_tempo_prior_weight = 0.0f;
+    bool coreml_dbn_tempo_prior_weight_set = false;
     std::size_t coreml_dbn_max_candidates = 4096;
+    bool coreml_dbn_max_candidates_set = false;
     float coreml_dbn_transition_reward = 0.7f;
+    bool coreml_dbn_transition_reward_set = false;
     bool coreml_dbn_use_all_candidates = true;
+    bool coreml_dbn_use_all_candidates_set = false;
     bool coreml_dbn_trace = false;
+    bool coreml_dbn_trace_set = false;
     bool coreml_disable_dbn = false;
     double coreml_dbn_window_seconds = 0.0;
+    bool coreml_dbn_window_seconds_set = false;
     bool coreml_dbn_window_best = false;
+    bool coreml_dbn_window_best_set = false;
     bool coreml_dbn_grid_align_downbeat_peak = false;
+    bool coreml_dbn_grid_align_downbeat_peak_set = false;
     bool coreml_dbn_grid_strong_start = false;
+    bool coreml_dbn_grid_strong_start_set = false;
     bool coreml_dbn_project_grid = false;
+    bool coreml_dbn_project_grid_set = false;
     bool coreml_dbn_window_intro_mid_outro = false;
+    bool coreml_dbn_window_intro_mid_outro_set = false;
     bool coreml_dbn_window_consensus = false;
+    bool coreml_dbn_window_consensus_set = false;
     bool coreml_dbn_window_stitch = false;
+    bool coreml_dbn_window_stitch_set = false;
     double coreml_output_latency_seconds = 0.0;
     double coreml_debug_activations_start_s = -1.0;
     double coreml_debug_activations_end_s = -1.0;
@@ -126,8 +148,8 @@ void print_usage(const char* exe) {
         << "  --ml-hop <frames>         CoreML feature hop size\n"
         << "  --ml-mels <bins>          CoreML mel bin count\n"
         << "  --ml-window-hop <frames>  CoreML window hop (fixed-frame mode)\n"
-        << "  --ml-min-bpm <bpm>        CoreML min BPM\n"
-        << "  --ml-max-bpm <bpm>        CoreML max BPM\n"
+        << "  --ml-min-bpm <bpm>        CoreML min BPM [70,180]\n"
+        << "  --ml-max-bpm <bpm>        CoreML max BPM [70,180]\n"
         << "  --ml-threshold <value>    CoreML activation threshold\n"
         << "  --ml-gap <ratio>          CoreML gap tolerance (0-1)\n"
         << "  --ml-offbeat <ratio>      CoreML offbeat tolerance (0-1)\n"
@@ -326,10 +348,18 @@ bool parse_args(int argc, char** argv, CliOptions* options) {
                 std::cerr << "Invalid ml min bpm: " << value << "\n";
                 return false;
             }
+            if (options->coreml_min_bpm < 70.0f || options->coreml_min_bpm > 180.0f) {
+                std::cerr << "ml min bpm out of range [70,180]: " << value << "\n";
+                return false;
+            }
         } else if (arg == "--ml-max-bpm") {
             std::string value = require_value(arg.c_str());
             if (!parse_float(value, &options->coreml_max_bpm)) {
                 std::cerr << "Invalid ml max bpm: " << value << "\n";
+                return false;
+            }
+            if (options->coreml_max_bpm < 70.0f || options->coreml_max_bpm > 180.0f) {
+                std::cerr << "ml max bpm out of range [70,180]: " << value << "\n";
                 return false;
             }
         } else if (arg == "--ml-threshold") {
@@ -368,9 +398,11 @@ bool parse_args(int argc, char** argv, CliOptions* options) {
             options->coreml_prefer_double_time = false;
         } else if (arg == "--ml-dbn") {
             options->coreml_use_dbn = true;
+            options->coreml_use_dbn_set = true;
         } else if (arg == "--ml-no-dbn") {
             options->coreml_disable_dbn = true;
             options->coreml_use_dbn = false;
+            options->coreml_use_dbn_set = true;
             options->beatthis_use_dbn = false;
         } else if (arg == "--ml-dbn-step") {
             std::string value = require_value(arg.c_str());
@@ -378,84 +410,106 @@ bool parse_args(int argc, char** argv, CliOptions* options) {
                 std::cerr << "Invalid ml dbn step: " << value << "\n";
                 return false;
             }
+            options->coreml_dbn_bpm_step_set = true;
         } else if (arg == "--ml-dbn-tol") {
             std::string value = require_value(arg.c_str());
             if (!parse_float(value, &options->coreml_dbn_interval_tolerance)) {
                 std::cerr << "Invalid ml dbn tolerance: " << value << "\n";
                 return false;
             }
+            options->coreml_dbn_interval_tolerance_set = true;
         } else if (arg == "--ml-dbn-floor") {
             std::string value = require_value(arg.c_str());
             if (!parse_float(value, &options->coreml_dbn_activation_floor)) {
                 std::cerr << "Invalid ml dbn activation floor: " << value << "\n";
                 return false;
             }
+            options->coreml_dbn_activation_floor_set = true;
         } else if (arg == "--ml-dbn-bpb") {
             std::string value = require_value(arg.c_str());
             if (!parse_size_t(value, &options->coreml_dbn_beats_per_bar)) {
                 std::cerr << "Invalid ml dbn beats per bar: " << value << "\n";
                 return false;
             }
+            options->coreml_dbn_beats_per_bar_set = true;
         } else if (arg == "--ml-dbn-no-downbeat") {
             options->coreml_dbn_use_downbeat = false;
+            options->coreml_dbn_use_downbeat_set = true;
         } else if (arg == "--ml-dbn-downbeat") {
             std::string value = require_value(arg.c_str());
             if (!parse_float(value, &options->coreml_dbn_downbeat_weight)) {
                 std::cerr << "Invalid ml dbn downbeat weight: " << value << "\n";
                 return false;
             }
+            options->coreml_dbn_downbeat_weight_set = true;
         } else if (arg == "--ml-dbn-mode") {
             options->coreml_dbn_mode = require_value(arg.c_str());
+            options->coreml_dbn_mode_set = true;
         } else if (arg == "--ml-dbn-tempo-pen") {
             std::string value = require_value(arg.c_str());
             if (!parse_float(value, &options->coreml_dbn_tempo_change_penalty)) {
                 std::cerr << "Invalid ml dbn tempo penalty: " << value << "\n";
                 return false;
             }
+            options->coreml_dbn_tempo_change_penalty_set = true;
         } else if (arg == "--ml-dbn-tempo-prior") {
             std::string value = require_value(arg.c_str());
             if (!parse_float(value, &options->coreml_dbn_tempo_prior_weight)) {
                 std::cerr << "Invalid ml dbn tempo prior: " << value << "\n";
                 return false;
             }
+            options->coreml_dbn_tempo_prior_weight_set = true;
         } else if (arg == "--ml-dbn-max-cand") {
             std::string value = require_value(arg.c_str());
             if (!parse_size_t(value, &options->coreml_dbn_max_candidates)) {
                 std::cerr << "Invalid ml dbn max candidates: " << value << "\n";
                 return false;
             }
+            options->coreml_dbn_max_candidates_set = true;
         } else if (arg == "--ml-dbn-reward") {
             std::string value = require_value(arg.c_str());
             if (!parse_float(value, &options->coreml_dbn_transition_reward)) {
                 std::cerr << "Invalid ml dbn transition reward: " << value << "\n";
                 return false;
             }
+            options->coreml_dbn_transition_reward_set = true;
         } else if (arg == "--ml-dbn-all-cand") {
             options->coreml_dbn_use_all_candidates = true;
+            options->coreml_dbn_use_all_candidates_set = true;
         } else if (arg == "--ml-dbn-trace") {
             options->coreml_dbn_trace = true;
+            options->coreml_dbn_trace_set = true;
         } else if (arg == "--ml-dbn-window") {
             const std::string value = require_value(arg.c_str());
             if (!parse_double(value, &options->coreml_dbn_window_seconds)) {
                 std::cerr << "Invalid ml dbn window: " << value << "\n";
                 return false;
             }
+            options->coreml_dbn_window_seconds_set = true;
         } else if (arg == "--ml-dbn-window-best") {
             options->coreml_dbn_window_best = true;
+            options->coreml_dbn_window_best_set = true;
         } else if (arg == "--ml-dbn-grid-align-downbeat") {
             options->coreml_dbn_grid_align_downbeat_peak = true;
+            options->coreml_dbn_grid_align_downbeat_peak_set = true;
         } else if (arg == "--ml-dbn-grid-strong-start") {
             options->coreml_dbn_grid_strong_start = true;
+            options->coreml_dbn_grid_strong_start_set = true;
         } else if (arg == "--ml-dbn-project-grid") {
             options->coreml_dbn_project_grid = true;
+            options->coreml_dbn_project_grid_set = true;
         } else if (arg == "--ml-dbn-no-project-grid") {
             options->coreml_dbn_project_grid = false;
+            options->coreml_dbn_project_grid_set = true;
         } else if (arg == "--ml-dbn-imo") {
             options->coreml_dbn_window_intro_mid_outro = true;
+            options->coreml_dbn_window_intro_mid_outro_set = true;
         } else if (arg == "--ml-dbn-consensus") {
             options->coreml_dbn_window_consensus = true;
+            options->coreml_dbn_window_consensus_set = true;
         } else if (arg == "--ml-dbn-stitch") {
             options->coreml_dbn_window_stitch = true;
+            options->coreml_dbn_window_stitch_set = true;
         } else if (arg == "--ml-output-latency") {
             std::string value = require_value(arg.c_str());
             if (!parse_double(value, &options->coreml_output_latency_seconds)) {
@@ -510,6 +564,10 @@ bool parse_args(int argc, char** argv, CliOptions* options) {
     if (options->input_path.empty()) {
         std::cerr << "Input path is required.\n";
         print_usage(argv[0]);
+        return false;
+    }
+    if (options->coreml_min_bpm > options->coreml_max_bpm) {
+        std::cerr << "Invalid bpm range: ml-min-bpm must be <= ml-max-bpm\n";
         return false;
     }
 
@@ -770,6 +828,92 @@ int main(int argc, char** argv) {
         if (ml_config.backend != beatit::CoreMLConfig::Backend::BeatThisExternal) {
             preset->apply(ml_config);
         }
+    }
+    // Explicit CLI model/io names must override preset values.
+    if (!options.coreml_model_path.empty()) {
+        ml_config.model_path = options.coreml_model_path;
+    }
+    if (!options.coreml_input_name.empty()) {
+        ml_config.input_name = options.coreml_input_name;
+    }
+    if (!options.coreml_beat_name.empty()) {
+        ml_config.beat_output_name = options.coreml_beat_name;
+    }
+    if (!options.coreml_downbeat_name.empty()) {
+        ml_config.downbeat_output_name = options.coreml_downbeat_name;
+    }
+    if (options.coreml_use_dbn_set) {
+        ml_config.use_dbn = options.coreml_use_dbn;
+    }
+    if (options.coreml_dbn_bpm_step_set) {
+        ml_config.dbn_bpm_step = options.coreml_dbn_bpm_step;
+    }
+    if (options.coreml_dbn_interval_tolerance_set) {
+        ml_config.dbn_interval_tolerance = options.coreml_dbn_interval_tolerance;
+    }
+    if (options.coreml_dbn_activation_floor_set) {
+        ml_config.dbn_activation_floor = options.coreml_dbn_activation_floor;
+    }
+    if (options.coreml_dbn_beats_per_bar_set) {
+        ml_config.dbn_beats_per_bar = options.coreml_dbn_beats_per_bar;
+    }
+    if (options.coreml_dbn_use_downbeat_set) {
+        ml_config.dbn_use_downbeat = options.coreml_dbn_use_downbeat;
+    }
+    if (options.coreml_dbn_downbeat_weight_set) {
+        ml_config.dbn_downbeat_weight = options.coreml_dbn_downbeat_weight;
+    }
+    if (options.coreml_dbn_mode_set) {
+        if (options.coreml_dbn_mode == "beatit") {
+            ml_config.dbn_mode = beatit::CoreMLConfig::DBNMode::Beatit;
+        } else if (options.coreml_dbn_mode == "calmdad") {
+            ml_config.dbn_mode = beatit::CoreMLConfig::DBNMode::Calmdad;
+        } else {
+            std::cerr << "Invalid ml dbn mode: " << options.coreml_dbn_mode << "\n";
+            return 1;
+        }
+    }
+    if (options.coreml_dbn_tempo_change_penalty_set) {
+        ml_config.dbn_tempo_change_penalty = options.coreml_dbn_tempo_change_penalty;
+    }
+    if (options.coreml_dbn_tempo_prior_weight_set) {
+        ml_config.dbn_tempo_prior_weight = options.coreml_dbn_tempo_prior_weight;
+    }
+    if (options.coreml_dbn_max_candidates_set) {
+        ml_config.dbn_max_candidates = options.coreml_dbn_max_candidates;
+    }
+    if (options.coreml_dbn_transition_reward_set) {
+        ml_config.dbn_transition_reward = options.coreml_dbn_transition_reward;
+    }
+    if (options.coreml_dbn_use_all_candidates_set) {
+        ml_config.dbn_use_all_candidates = options.coreml_dbn_use_all_candidates;
+    }
+    if (options.coreml_dbn_trace_set) {
+        ml_config.dbn_trace = options.coreml_dbn_trace;
+    }
+    if (options.coreml_dbn_window_seconds_set) {
+        ml_config.dbn_window_seconds = options.coreml_dbn_window_seconds;
+    }
+    if (options.coreml_dbn_window_best_set) {
+        ml_config.dbn_window_best = options.coreml_dbn_window_best;
+    }
+    if (options.coreml_dbn_grid_align_downbeat_peak_set) {
+        ml_config.dbn_grid_align_downbeat_peak = options.coreml_dbn_grid_align_downbeat_peak;
+    }
+    if (options.coreml_dbn_grid_strong_start_set) {
+        ml_config.dbn_grid_start_strong_peak = options.coreml_dbn_grid_strong_start;
+    }
+    if (options.coreml_dbn_project_grid_set) {
+        ml_config.dbn_project_grid = options.coreml_dbn_project_grid;
+    }
+    if (options.coreml_dbn_window_intro_mid_outro_set) {
+        ml_config.dbn_window_intro_mid_outro = options.coreml_dbn_window_intro_mid_outro;
+    }
+    if (options.coreml_dbn_window_consensus_set) {
+        ml_config.dbn_window_consensus = options.coreml_dbn_window_consensus;
+    }
+    if (options.coreml_dbn_window_stitch_set) {
+        ml_config.dbn_window_stitch = options.coreml_dbn_window_stitch;
     }
     if (options.coreml_disable_dbn) {
         ml_config.use_dbn = false;
