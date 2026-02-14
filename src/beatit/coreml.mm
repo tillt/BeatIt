@@ -4650,14 +4650,116 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                                       << "\n";
                         }
                         if (intro_valid && outro_valid && anchors_separated) {
-                            std::vector<std::size_t> global_beats;
-                            global_beats.reserve(intro_beats.size() + outro_beats.size());
-                            global_beats.insert(global_beats.end(), intro_beats.begin(), intro_beats.end());
-                            global_beats.insert(global_beats.end(), outro_beats.begin(), outro_beats.end());
-                            std::sort(global_beats.begin(), global_beats.end());
-                            dedupe_frames(global_beats);
-                            if (global_beats.size() >= 8) {
-                                bpm_from_global_fit = bpm_from_linear_fit(global_beats);
+                            auto window_tempo = [&](const std::vector<std::size_t>& beats) {
+                                if (beats.size() < 8) {
+                                    return std::pair<double, double>{0.0, 0.0};
+                                }
+                                std::vector<double> intervals;
+                                intervals.reserve(beats.size() - 1);
+                                for (std::size_t i = 1; i < beats.size(); ++i) {
+                                    if (beats[i] > beats[i - 1]) {
+                                        intervals.push_back(
+                                            static_cast<double>(beats[i] - beats[i - 1]));
+                                    }
+                                }
+                                if (intervals.size() < 4) {
+                                    return std::pair<double, double>{0.0, 0.0};
+                                }
+                                const std::size_t mid = intervals.size() / 2;
+                                std::nth_element(intervals.begin(),
+                                                 intervals.begin() +
+                                                     static_cast<std::ptrdiff_t>(mid),
+                                                 intervals.end());
+                                const double median_interval = intervals[mid];
+                                if (!(median_interval > 0.0)) {
+                                    return std::pair<double, double>{0.0, 0.0};
+                                }
+                                double sum = 0.0;
+                                double sum_sq = 0.0;
+                                for (double v : intervals) {
+                                    sum += v;
+                                    sum_sq += v * v;
+                                }
+                                const double n = static_cast<double>(intervals.size());
+                                const double mean = sum / n;
+                                const double var = std::max(0.0, (sum_sq / n) - (mean * mean));
+                                const double stdev = std::sqrt(var);
+                                const double cv = mean > 0.0 ? (stdev / mean) : 1.0;
+                                const double confidence =
+                                    (1.0 / (1.0 + cv)) *
+                                    std::min(1.0, n / 32.0);
+                                return std::pair<double, double>{
+                                    (60.0 * fps) / median_interval,
+                                    confidence};
+                            };
+                            const auto [intro_bpm, intro_conf] = window_tempo(intro_beats);
+                            const auto [outro_bpm, outro_conf] = window_tempo(outro_beats);
+                            struct ModeCandidate {
+                                double bpm = 0.0;
+                                double conf = 0.0;
+                                double mode = 1.0;
+                            };
+                            auto expand_modes = [&](double bpm, double conf) {
+                                std::vector<ModeCandidate> out;
+                                if (!(bpm > 0.0) || !(conf > 0.0)) {
+                                    return out;
+                                }
+                                static const double kModes[] = {
+                                    0.5, 1.0, 2.0, 3.0, (2.0 / 3.0), 1.5};
+                                for (double m : kModes) {
+                                    const double cand = bpm * m;
+                                    if (cand >= min_bpm && cand <= max_bpm) {
+                                        out.push_back({cand, conf, m});
+                                    }
+                                }
+                                return out;
+                            };
+                            const auto intro_modes = expand_modes(intro_bpm, intro_conf);
+                            const auto outro_modes = expand_modes(outro_bpm, outro_conf);
+                            double best_err = std::numeric_limits<double>::infinity();
+                            ModeCandidate best_intro{};
+                            ModeCandidate best_outro{};
+                            for (const auto& a : intro_modes) {
+                                for (const auto& b : outro_modes) {
+                                    const double mean = 0.5 * (a.bpm + b.bpm);
+                                    if (!(mean > 0.0)) {
+                                        continue;
+                                    }
+                                    const double rel =
+                                        std::abs(a.bpm - b.bpm) / mean;
+                                    const double weight =
+                                        std::max(1e-6, a.conf * b.conf);
+                                    const double score = rel / weight;
+                                    if (score < best_err) {
+                                        best_err = score;
+                                        best_intro = a;
+                                        best_outro = b;
+                                    }
+                                }
+                            }
+                            const double agree_rel = (best_intro.bpm > 0.0 && best_outro.bpm > 0.0)
+                                ? (std::abs(best_intro.bpm - best_outro.bpm) /
+                                   (0.5 * (best_intro.bpm + best_outro.bpm)))
+                                : std::numeric_limits<double>::infinity();
+                            if (agree_rel <= 0.025) {
+                                const double conf_sum = best_intro.conf + best_outro.conf;
+                                if (conf_sum > 0.0) {
+                                    bpm_from_global_fit =
+                                        ((best_intro.bpm * best_intro.conf) +
+                                         (best_outro.bpm * best_outro.conf)) /
+                                        conf_sum;
+                                }
+                            }
+                            if (config.dbn_trace) {
+                                std::cerr << "DBN tempo anchors: intro_bpm=" << intro_bpm
+                                          << " intro_conf=" << intro_conf
+                                          << " outro_bpm=" << outro_bpm
+                                          << " outro_conf=" << outro_conf
+                                          << " mode_match_intro=" << best_intro.mode
+                                          << " mode_match_outro=" << best_outro.mode
+                                          << " agree_rel=" << agree_rel
+                                          << " fused_bpm=" << bpm_from_global_fit
+                                          << "\n";
                             }
                         }
                     }
