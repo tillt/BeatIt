@@ -16,6 +16,8 @@ namespace {
 
 constexpr std::size_t kEdgeWindowBeats = 64;
 constexpr std::size_t kAlternationWindowBeats = 24;
+constexpr double kTargetBpm = 110.0;
+constexpr double kMaxBpmError = 2.0;
 constexpr double kMaxOffsetSlopeMsPerBeat = 0.10;
 constexpr double kMaxStartEndDeltaMs = 120.0;
 constexpr double kMaxOddEvenMedianGapMs = 180.0;
@@ -380,6 +382,12 @@ int main() {
     }
     if (!(result.estimated_bpm > 0.0)) {
         std::cerr << "Window alignment test failed: non-positive BPM.\n";
+        return 1;
+    }
+    if (std::fabs(result.estimated_bpm - kTargetBpm) > kMaxBpmError) {
+        std::cerr << "Window alignment test failed: estimated BPM "
+                  << result.estimated_bpm << " outside [" << (kTargetBpm - kMaxBpmError)
+                  << "," << (kTargetBpm + kMaxBpmError) << "].\n";
         return 1;
     }
 

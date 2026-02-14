@@ -19,6 +19,7 @@
 namespace {
 
 constexpr double kTargetBpm = 110.0;
+constexpr double kMaxBpmError = 2.0;
 constexpr double kMaxIntervalStdMilliseconds = 1.0;
 constexpr double kMaxPeakOffsetMeanAbsMilliseconds = 25.0;
 constexpr double kMaxPeakOffsetSlopeMsPerBeat = 0.05;
@@ -333,6 +334,20 @@ bool first_downbeat_sample_frame(const beatit::AnalysisResult& result,
     return false;
 }
 
+bool first_bar_is_complete_four_four(const beatit::AnalysisResult& result) {
+    std::vector<std::size_t> bar_indices;
+    bar_indices.reserve(result.coreml_beat_events.size() / 4);
+    for (std::size_t i = 0; i < result.coreml_beat_events.size(); ++i) {
+        if (is_bar_event(result.coreml_beat_events[i])) {
+            bar_indices.push_back(i);
+        }
+    }
+    if (bar_indices.size() < 2) {
+        return false;
+    }
+    return bar_indices[0] == 0 && bar_indices[1] == 4;
+}
+
 void write_index_series_csv(const std::filesystem::path& path,
                             const char* header,
                             const std::vector<unsigned long long>& values) {
@@ -624,6 +639,17 @@ int main() {
 
     if (!(result.estimated_bpm > 0.0)) {
         std::cerr << "Manucho alignment test failed: non-positive BPM.\n";
+        return 1;
+    }
+    if (std::fabs(result.estimated_bpm - kTargetBpm) > kMaxBpmError) {
+        std::cerr << "Manucho alignment test failed: estimated BPM "
+                  << result.estimated_bpm << " outside [" << (kTargetBpm - kMaxBpmError)
+                  << "," << (kTargetBpm + kMaxBpmError) << "].\n";
+        return 1;
+    }
+    if (!first_bar_is_complete_four_four(result)) {
+        std::cerr << "Manucho alignment test failed: opening bar is not complete 4/4 "
+                     "(expected first downbeats at beat indices 0 and 4).\n";
         return 1;
     }
 
