@@ -63,6 +63,10 @@ public:
         config.fixed_frames = 1500;
         config.window_hop_frames = 1488;
         config.window_border_frames = 6;
+        const double model_window_seconds =
+            static_cast<double>(
+                config.frame_size + (config.fixed_frames - 1) * config.hop_size) /
+            static_cast<double>(config.sample_rate);
         config.analysis_start_seconds = 0.0;
         config.min_bpm = 70.0f;
         config.max_bpm = 180.0f;
@@ -83,7 +87,7 @@ public:
         config.dbn_downbeat_phase_window_seconds = 2.0;
         config.dbn_downbeat_phase_max_delay_seconds = 0.3;
         config.use_minimal_postprocess = true;
-        config.dbn_window_seconds = 60.0;
+        config.dbn_window_seconds = model_window_seconds;
         config.dbn_window_start_seconds = 0.0;
         config.dbn_tempo_anchor_intro_seconds = 120.0;
         config.dbn_tempo_anchor_outro_offset_seconds = 60.0;
