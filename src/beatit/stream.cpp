@@ -409,6 +409,26 @@ float estimate_bpm_from_activation_autocorr_local(const std::vector<float>& acti
     return static_cast<float>(bpm);
 }
 
+float normalize_bpm_to_range_local(float bpm, float min_bpm, float max_bpm) {
+    if (!(bpm > 0.0f)) {
+        return bpm;
+    }
+    const float lo = std::max(1.0f, min_bpm);
+    const float hi = std::max(lo + 1.0f, max_bpm);
+    while (bpm < lo && (bpm * 2.0f) <= hi) {
+        bpm *= 2.0f;
+    }
+    while (bpm > hi && (bpm * 0.5f) >= lo) {
+        bpm *= 0.5f;
+    }
+    if (bpm < lo) {
+        bpm = lo;
+    } else if (bpm > hi) {
+        bpm = hi;
+    }
+    return bpm;
+}
+
 } // namespace
 
 #if defined(BEATIT_USE_TORCH)
@@ -1295,13 +1315,19 @@ AnalysisResult BeatitStream::finalize() {
                                                       0.0f,
                                                       last_active_frame,
                                                       full_frame_count);
-    const float peaks_bpm =
+    const float bpm_min = std::max(1.0f, coreml_config_.min_bpm);
+    const float bpm_max = std::max(bpm_min + 1.0f, coreml_config_.max_bpm);
+    const float peaks_bpm_raw =
         estimate_bpm_from_activation_peaks_local(coreml_beat_activation_, coreml_config_, sample_rate_);
-    const float autocorr_bpm =
+    const float autocorr_bpm_raw =
         estimate_bpm_from_activation_autocorr_local(coreml_beat_activation_, coreml_config_, sample_rate_);
-    const float comb_bpm =
+    const float comb_bpm_raw =
         estimate_bpm_from_activation_comb(coreml_beat_activation_, coreml_config_, sample_rate_);
-    const float beats_bpm = estimate_bpm_from_beats_local(base.beat_sample_frames, sample_rate_);
+    const float beats_bpm_raw = estimate_bpm_from_beats_local(base.beat_sample_frames, sample_rate_);
+    const float peaks_bpm = normalize_bpm_to_range_local(peaks_bpm_raw, bpm_min, bpm_max);
+    const float autocorr_bpm = normalize_bpm_to_range_local(autocorr_bpm_raw, bpm_min, bpm_max);
+    const float comb_bpm = normalize_bpm_to_range_local(comb_bpm_raw, bpm_min, bpm_max);
+    const float beats_bpm = normalize_bpm_to_range_local(beats_bpm_raw, bpm_min, bpm_max);
     const auto choose_candidate_bpm = [&](float peaks,
                                           float autocorr,
                                           float comb,
@@ -1429,7 +1455,23 @@ AnalysisResult BeatitStream::finalize() {
     const auto& bpm_frames = result.coreml_beat_projected_sample_frames.empty()
         ? result.coreml_beat_sample_frames
         : result.coreml_beat_projected_sample_frames;
-    result.estimated_bpm = estimate_bpm_from_beats_local(bpm_frames, sample_rate_);
+    float estimated_bpm =
+        normalize_bpm_to_range_local(estimate_bpm_from_beats_local(bpm_frames, sample_rate_),
+                                     bpm_min,
+                                     bpm_max);
+    const float anchored_bpm = normalize_bpm_to_range_local(reference_bpm, bpm_min, bpm_max);
+    if (anchored_bpm > 0.0f) {
+        if (!(estimated_bpm > 0.0f)) {
+            estimated_bpm = anchored_bpm;
+        } else {
+            const float rel_diff = std::abs(estimated_bpm - anchored_bpm) /
+                                   std::max(anchored_bpm, 1e-6f);
+            if (rel_diff > 0.15f) {
+                estimated_bpm = anchored_bpm;
+            }
+        }
+    }
+    result.estimated_bpm = estimated_bpm;
 
     if (prepend_samples_ > 0) {
         for (auto& frame : result.coreml_beat_sample_frames) {
