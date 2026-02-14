@@ -4664,7 +4664,7 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                 }
                 const bool quality_low =
                     quality_valid && (quality_qkur < 3.6);
-                const bool drop_global = quality_low && bpm_from_global_fit > 0.0;
+                const bool drop_global = false;
                 const bool drop_fit = quality_low && bpm_from_fit > 0.0;
                 const std::size_t downbeat_count = downbeat_stats.count;
                 const double downbeat_cv = (downbeat_count > 0 && downbeat_stats.mean_interval > 0.0)
@@ -4681,13 +4681,13 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                 const bool drop_ref = (quality_low || ref_mismatch) && reference_bpm > 0.0f;
                 double bpm_for_grid = 0.0;
                 std::string bpm_source = "none";
-                if (reference_bpm > 0.0f && !quality_low && !ref_mismatch &&
-                    config.dbn_window_consensus) {
-                    bpm_for_grid = reference_bpm;
-                    bpm_source = "reference";
-                } else if (!quality_low && bpm_from_global_fit > 0.0) {
+                if (bpm_from_global_fit > 0.0) {
                     bpm_for_grid = bpm_from_global_fit;
                     bpm_source = "global_fit";
+                } else if (reference_bpm > 0.0f && !quality_low && !ref_mismatch &&
+                           config.dbn_window_consensus) {
+                    bpm_for_grid = reference_bpm;
+                    bpm_source = "reference";
                 } else if (downbeat_override_ok && bpm_from_downbeats > 0.0) {
                     if (bpm_from_fit > 0.0) {
                         bpm_for_grid = bpm_from_fit;
