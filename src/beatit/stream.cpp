@@ -912,6 +912,96 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
             : (probes[selected_index].bpm > 0.0 ? probes[selected_index].bpm : 0.0);
         result = run_probe(anchor_start, probe_duration, repair_bpm);
     }
+    auto median_diff = [](const std::vector<unsigned long long>& frames) -> double {
+        if (frames.size() < 2) {
+            return 0.0;
+        }
+        std::vector<double> diffs;
+        diffs.reserve(frames.size() - 1);
+        for (std::size_t i = 1; i < frames.size(); ++i) {
+            if (frames[i] > frames[i - 1]) {
+                diffs.push_back(static_cast<double>(frames[i] - frames[i - 1]));
+            }
+        }
+        if (diffs.empty()) {
+            return 0.0;
+        }
+        auto mid = diffs.begin() + static_cast<long>(diffs.size() / 2);
+        std::nth_element(diffs.begin(), mid, diffs.end());
+        return *mid;
+    };
+    auto median_value = [](std::vector<double>& values) -> double {
+        if (values.empty()) {
+            return 0.0;
+        }
+        auto mid = values.begin() + static_cast<long>(values.size() / 2);
+        std::nth_element(values.begin(), mid, values.end());
+        return *mid;
+    };
+    auto apply_bounded_grid_refit = [&](AnalysisResult* r) {
+        if (!r) {
+            return;
+        }
+        auto& projected = r->coreml_beat_projected_sample_frames;
+        const auto& observed = r->coreml_beat_sample_frames;
+        if (projected.size() < 32 || observed.size() < 32) {
+            return;
+        }
+        const double base_step = median_diff(projected);
+        if (!(base_step > 0.0)) {
+            return;
+        }
+
+        std::vector<double> errors;
+        errors.reserve(projected.size());
+        for (unsigned long long frame : projected) {
+            auto it = std::lower_bound(observed.begin(), observed.end(), frame);
+            unsigned long long nearest = observed.front();
+            if (it == observed.end()) {
+                nearest = observed.back();
+            } else {
+                nearest = *it;
+                if (it != observed.begin()) {
+                    const unsigned long long prev = *(it - 1);
+                    if (frame - prev < nearest - frame) {
+                        nearest = prev;
+                    }
+                }
+            }
+            errors.push_back(static_cast<double>(nearest) - static_cast<double>(frame));
+        }
+        const std::size_t edge = std::min<std::size_t>(64, errors.size() / 2);
+        if (edge < 8) {
+            return;
+        }
+        std::vector<double> head(errors.begin(), errors.begin() + static_cast<long>(edge));
+        std::vector<double> tail(errors.end() - static_cast<long>(edge), errors.end());
+        const double head_med = median_value(head);
+        const double tail_med = median_value(tail);
+        const double err_delta = tail_med - head_med;
+        const double beats_span = static_cast<double>(projected.size() - 1);
+        if (!(beats_span > 0.0)) {
+            return;
+        }
+        const double per_beat_adjust = err_delta / beats_span;
+        const double ratio = 1.0 + (per_beat_adjust / base_step);
+        const double clamped_ratio = std::max(0.998, std::min(1.002, ratio));
+        if (std::abs(clamped_ratio - 1.0) < 1e-4) {
+            return;
+        }
+
+        const long long anchor = static_cast<long long>(projected.front());
+        for (std::size_t i = 0; i < projected.size(); ++i) {
+            const long long current = static_cast<long long>(projected[i]);
+            const double rel = static_cast<double>(current - anchor);
+            const long long adjusted = anchor + static_cast<long long>(std::llround(rel * clamped_ratio));
+            projected[i] = static_cast<unsigned long long>(std::max<long long>(0, adjusted));
+        }
+    };
+    if (low_confidence) {
+        apply_bounded_grid_refit(&result);
+    }
+
     {
         // Keep reported BPM consistent with the returned beat grid.
         const auto& bpm_frames = !result.coreml_beat_projected_sample_frames.empty()
@@ -926,6 +1016,25 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
         } else if (have_consensus && consensus_bpm > 0.0) {
             result.estimated_bpm = static_cast<float>(consensus_bpm);
         }
+    }
+    {
+        const auto& marker_feature_frames = result.coreml_beat_projected_feature_frames.empty()
+            ? result.coreml_beat_feature_frames
+            : result.coreml_beat_projected_feature_frames;
+        const auto& marker_sample_frames = result.coreml_beat_projected_sample_frames.empty()
+            ? result.coreml_beat_sample_frames
+            : result.coreml_beat_projected_sample_frames;
+        const auto& marker_downbeats = result.coreml_downbeat_projected_feature_frames.empty()
+            ? result.coreml_downbeat_feature_frames
+            : result.coreml_downbeat_projected_feature_frames;
+        result.coreml_beat_events =
+            build_shakespear_markers(marker_feature_frames,
+                                     marker_sample_frames,
+                                     marker_downbeats,
+                                     &result.coreml_beat_activation,
+                                     result.estimated_bpm,
+                                     sample_rate_,
+                                     original_config);
     }
     if (original_config.verbose) {
         std::cerr << "Sparse probes:";
