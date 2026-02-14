@@ -676,6 +676,91 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
         return best_bpm;
     };
 
+    auto score_intro_phase_ms = [&](const AnalysisResult& r, double bpm_hint) -> double {
+        if (sample_rate_ <= 0.0 || bpm_hint <= 0.0 || !provider) {
+            return std::numeric_limits<double>::infinity();
+        }
+        const auto& beats = !r.coreml_beat_projected_sample_frames.empty()
+            ? r.coreml_beat_projected_sample_frames
+            : r.coreml_beat_sample_frames;
+        if (beats.size() < 12) {
+            return std::numeric_limits<double>::infinity();
+        }
+
+        const std::size_t probe_beats = std::min<std::size_t>(24, beats.size());
+        const double beat_period_s = 60.0 / bpm_hint;
+        const double intro_s = std::max(20.0, beat_period_s * static_cast<double>(probe_beats + 4));
+
+        std::vector<float> intro_samples;
+        const std::size_t received = provider(0.0, intro_s, &intro_samples);
+        if (received == 0 || intro_samples.empty()) {
+            return std::numeric_limits<double>::infinity();
+        }
+        if (intro_samples.size() > received) {
+            intro_samples.resize(received);
+        }
+
+        const std::size_t radius = static_cast<std::size_t>(
+            std::llround(sample_rate_ * beat_period_s * 0.6));
+        if (radius == 0) {
+            return std::numeric_limits<double>::infinity();
+        }
+
+        std::vector<double> abs_offsets_ms;
+        abs_offsets_ms.reserve(probe_beats);
+        for (std::size_t i = 0; i < probe_beats; ++i) {
+            const std::size_t beat_frame = static_cast<std::size_t>(
+                std::min<unsigned long long>(beats[i], intro_samples.size() - 1));
+            const std::size_t start = beat_frame > radius ? beat_frame - radius : 0;
+            const std::size_t end = std::min(intro_samples.size() - 1, beat_frame + radius);
+            if (end <= start + 2) {
+                continue;
+            }
+
+            float window_max = 0.0f;
+            for (std::size_t p = start; p <= end; ++p) {
+                window_max = std::max(window_max, std::fabs(intro_samples[p]));
+            }
+            const float threshold = window_max * 0.6f;
+
+            std::size_t best_peak = beat_frame;
+            float best_value = 0.0f;
+            for (std::size_t p = start + 1; p < end; ++p) {
+                const float left = std::fabs(intro_samples[p - 1]);
+                const float value = std::fabs(intro_samples[p]);
+                const float right = std::fabs(intro_samples[p + 1]);
+                if (value < threshold) {
+                    continue;
+                }
+                if (value >= left && value > right && value > best_value) {
+                    best_value = value;
+                    best_peak = p;
+                }
+            }
+            if (best_value <= 0.0f) {
+                float max_value = 0.0f;
+                for (std::size_t p = start; p <= end; ++p) {
+                    const float value = std::fabs(intro_samples[p]);
+                    if (value > max_value) {
+                        max_value = value;
+                        best_peak = p;
+                    }
+                }
+            }
+
+            const double delta_frames = static_cast<double>(
+                static_cast<long long>(best_peak) - static_cast<long long>(beat_frame));
+            abs_offsets_ms.push_back(std::fabs((delta_frames * 1000.0) / sample_rate_));
+        }
+
+        if (abs_offsets_ms.size() < 8) {
+            return std::numeric_limits<double>::infinity();
+        }
+        auto mid = abs_offsets_ms.begin() + static_cast<long>(abs_offsets_ms.size() / 2);
+        std::nth_element(abs_offsets_ms.begin(), mid, abs_offsets_ms.end());
+        return *mid;
+    };
+
     double consensus_bpm = consensus_from_probes(probes);
     if (probes.size() >= 2 && consensus_bpm > 0.0) {
         double max_err = 0.0;
@@ -698,18 +783,65 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
         }
     }
 
+    std::vector<double> probe_mode_errors(probes.size(), 1.0);
+    bool have_consensus = consensus_bpm > 0.0;
+    for (std::size_t i = 0; i < probes.size(); ++i) {
+        if (!have_consensus) {
+            probe_mode_errors[i] = 0.0;
+            continue;
+        }
+        const auto modes = expand_modes(probes[i].bpm, probes[i].conf);
+        double mode_error = 1.0;
+        for (const auto& m : modes) {
+            mode_error = std::min(mode_error, relative_diff(consensus_bpm, m.first));
+        }
+        probe_mode_errors[i] = mode_error;
+    }
+
     const double anchor_start = clamp_start(
         std::max(0.0, original_config.dbn_window_start_seconds));
-    result = run_probe(anchor_start, probe_duration, consensus_bpm);
+    double best_mode_error = std::numeric_limits<double>::infinity();
+    for (double e : probe_mode_errors) {
+        best_mode_error = std::min(best_mode_error, e);
+    }
+    const double mode_slack = 0.005;
+    std::size_t selected_index = 0;
+    double selected_score = std::numeric_limits<double>::infinity();
+    for (std::size_t i = 0; i < probes.size(); ++i) {
+        if (probe_mode_errors[i] > best_mode_error + mode_slack) {
+            continue;
+        }
+        const double start_penalty = std::abs(probes[i].start - anchor_start) /
+            std::max(1.0, probe_duration);
+        const double intro_phase_ms = score_intro_phase_ms(
+            probes[i].analysis,
+            have_consensus ? consensus_bpm : probes[i].bpm);
+        const double phase_penalty = std::isfinite(intro_phase_ms) ? (intro_phase_ms / 40.0) : 10.0;
+        const double confidence_penalty = 1.0 / std::max(1e-6, probes[i].conf);
+        const double score = confidence_penalty + (start_penalty * 0.25) + phase_penalty;
+        if (score < selected_score) {
+            selected_score = score;
+            selected_index = i;
+        }
+    }
+
+    // Sparse mode returns directly from the best probe to avoid an extra anchor pass.
+    result = probes[selected_index].analysis;
+    if (have_consensus && result.estimated_bpm > 0.0) {
+        result.estimated_bpm = static_cast<float>(consensus_bpm);
+    }
     if (original_config.verbose) {
         std::cerr << "Sparse probes:";
-        for (const auto& p : probes) {
+        for (std::size_t i = 0; i < probes.size(); ++i) {
+            const auto& p = probes[i];
             std::cerr << " start=" << p.start
                       << " bpm=" << p.bpm
-                      << " conf=" << p.conf;
+                      << " conf=" << p.conf
+                      << " mode_err=" << probe_mode_errors[i];
         }
         std::cerr << " consensus=" << consensus_bpm
                   << " anchor_start=" << anchor_start
+                  << " selected_start=" << probes[selected_index].start
                   << "\n";
     }
     coreml_config_ = original_config;
