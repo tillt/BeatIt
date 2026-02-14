@@ -8,6 +8,7 @@
 
 #include "beatit/analysis.h"
 #include "beatit/coreml.h"
+#include "beatit/stream.h"
 #if defined(BEATIT_USE_TORCH)
 #include "beatit/torch_mel.h"
 #endif
@@ -1248,6 +1249,38 @@ AnalysisResult analyze(const std::vector<float>& samples,
 
     if (config.backend == CoreMLConfig::Backend::BeatThisExternal) {
         return analyze_with_beatthis(samples, sample_rate, config);
+    }
+    if (config.sparse_probe_mode) {
+        BeatitStream stream(sample_rate, config, true);
+        double start_seconds = 0.0;
+        double duration_seconds = 0.0;
+        if (!stream.request_analysis_window(&start_seconds, &duration_seconds)) {
+            stream.push(samples.data(), samples.size());
+            return stream.finalize();
+        }
+        const double total_duration_seconds = static_cast<double>(samples.size()) / sample_rate;
+        auto provider =
+            [&](double start_s, double duration_s, std::vector<float>* out_samples) -> std::size_t {
+                if (!out_samples || sample_rate <= 0.0 || samples.empty()) {
+                    return 0;
+                }
+                out_samples->clear();
+                const std::size_t begin = static_cast<std::size_t>(
+                    std::llround(std::max(0.0, start_s) * sample_rate));
+                const std::size_t count = static_cast<std::size_t>(
+                    std::llround(std::max(0.0, duration_s) * sample_rate));
+                const std::size_t end = std::min(samples.size(), begin + count);
+                if (begin >= end) {
+                    return 0;
+                }
+                out_samples->assign(samples.begin() + static_cast<long>(begin),
+                                    samples.begin() + static_cast<long>(end));
+                return out_samples->size();
+            };
+        return stream.analyze_window(start_seconds,
+                                     duration_seconds,
+                                     total_duration_seconds,
+                                     provider);
     }
     if (config.backend == CoreMLConfig::Backend::Torch) {
         CoreMLConfig base_config = config;

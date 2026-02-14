@@ -110,6 +110,8 @@ struct CliOptions {
     bool coreml_dbn_window_consensus_set = false;
     bool coreml_dbn_window_stitch = false;
     bool coreml_dbn_window_stitch_set = false;
+    bool coreml_sparse_probe_mode = false;
+    bool coreml_sparse_probe_mode_set = false;
     double coreml_output_latency_seconds = 0.0;
     double coreml_debug_activations_start_s = -1.0;
     double coreml_debug_activations_end_s = -1.0;
@@ -183,6 +185,7 @@ void print_usage(const char* exe) {
         << "  --ml-dbn-imo              Use intro/mid/outro window selection\n"
         << "  --ml-dbn-consensus        Use multi-window consensus BPM\n"
         << "  --ml-dbn-stitch           Stitch intro/mid/outro candidates into one DBN\n"
+        << "  --ml-sparse-probe         Enable sparse multi-window probing mode\n"
         << "  --ml-output-latency <sec> Subtract output latency from detected events\n"
         << "  --ml-activations-window <start> <end>\n"
         << "                           Dump beat/downbeat activations between seconds\n"
@@ -510,6 +513,9 @@ bool parse_args(int argc, char** argv, CliOptions* options) {
         } else if (arg == "--ml-dbn-stitch") {
             options->coreml_dbn_window_stitch = true;
             options->coreml_dbn_window_stitch_set = true;
+        } else if (arg == "--ml-sparse-probe") {
+            options->coreml_sparse_probe_mode = true;
+            options->coreml_sparse_probe_mode_set = true;
         } else if (arg == "--ml-output-latency") {
             std::string value = require_value(arg.c_str());
             if (!parse_double(value, &options->coreml_output_latency_seconds)) {
@@ -914,6 +920,9 @@ int main(int argc, char** argv) {
     }
     if (options.coreml_dbn_window_stitch_set) {
         ml_config.dbn_window_stitch = options.coreml_dbn_window_stitch;
+    }
+    if (options.coreml_sparse_probe_mode_set) {
+        ml_config.sparse_probe_mode = options.coreml_sparse_probe_mode;
     }
     if (options.coreml_disable_dbn) {
         ml_config.use_dbn = false;
