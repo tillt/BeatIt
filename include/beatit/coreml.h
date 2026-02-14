@@ -121,6 +121,8 @@ struct CoreMLConfig {
     bool dbn_window_consensus = false;
     bool dbn_window_stitch = false;
     bool dbn_window_best = true;
+    // Experimental: run sparse multi-window probing instead of full activation inference.
+    bool sparse_probe_mode = false;
     // Fit one global linear beat grid (frame ~= a + i*b) before projection.
     bool dbn_grid_global_fit = false;
     bool dbn_grid_align_downbeat_peak = true;

@@ -463,7 +463,21 @@ void BeatitStream::reset_state() {
 bool BeatitStream::request_analysis_window(double* start_seconds,
                                            double* duration_seconds) const {
     if (coreml_config_.max_analysis_seconds <= 0.0) {
-        return false;
+        const bool sparse_dynamic =
+            coreml_config_.sparse_probe_mode &&
+            coreml_config_.use_logit_consensus &&
+            coreml_config_.dbn_window_intro_mid_outro &&
+            coreml_config_.dbn_window_seconds > 0.0;
+        if (!sparse_dynamic) {
+            return false;
+        }
+        if (start_seconds) {
+            *start_seconds = 0.0;
+        }
+        if (duration_seconds) {
+            *duration_seconds = coreml_config_.dbn_window_seconds;
+        }
+        return true;
     }
 
     const double start =
@@ -494,28 +508,195 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
         return result;
     }
 
-    reset_state();
-
     CoreMLConfig original_config = coreml_config_;
-    coreml_config_.analysis_start_seconds = 0.0;
-    coreml_config_.dbn_window_start_seconds = 0.0;
-    coreml_config_.max_analysis_seconds = 0.0;
+    auto run_probe = [&](double probe_start,
+                         double probe_duration,
+                         double forced_reference_bpm = 0.0) -> AnalysisResult {
+        reset_state();
+        coreml_config_ = original_config;
+        coreml_config_.analysis_start_seconds = 0.0;
+        coreml_config_.dbn_window_start_seconds = 0.0;
+        coreml_config_.max_analysis_seconds = 0.0;
+        if (forced_reference_bpm > 0.0) {
+            coreml_config_.dbn_window_consensus = true;
+            tempo_reference_bpm_ = forced_reference_bpm;
+            tempo_reference_valid_ = true;
+        }
 
-    std::vector<float> window_samples;
-    const std::size_t received =
-        provider(std::max(0.0, start_seconds), duration_seconds, &window_samples);
-    if (received > 0 && window_samples.size() >= received) {
-        push(window_samples.data(), received);
-    } else if (!window_samples.empty()) {
-        push(window_samples.data(), window_samples.size());
+        std::vector<float> window_samples;
+        const std::size_t received =
+            provider(std::max(0.0, probe_start), probe_duration, &window_samples);
+        if (received > 0 && window_samples.size() >= received) {
+            push(window_samples.data(), received);
+        } else if (!window_samples.empty()) {
+            push(window_samples.data(), window_samples.size());
+        }
+
+        if (total_duration_seconds > 0.0 && sample_rate_ > 0.0) {
+            total_seen_samples_ = static_cast<std::size_t>(
+                std::llround(total_duration_seconds * sample_rate_));
+        }
+        return finalize();
+    };
+
+    const bool sparse_dynamic =
+        original_config.sparse_probe_mode &&
+        original_config.use_logit_consensus &&
+        original_config.dbn_window_intro_mid_outro &&
+        original_config.dbn_window_seconds > 0.0 &&
+        total_duration_seconds > 0.0;
+    if (!sparse_dynamic) {
+        result = run_probe(start_seconds, duration_seconds);
+        coreml_config_ = original_config;
+        return result;
     }
 
-    if (total_duration_seconds > 0.0 && sample_rate_ > 0.0) {
-        total_seen_samples_ = static_cast<std::size_t>(
-            std::llround(total_duration_seconds * sample_rate_));
+    const double probe_duration = std::max(20.0, original_config.dbn_window_seconds);
+    const double total = std::max(0.0, total_duration_seconds);
+    const double max_start = std::max(0.0, total - probe_duration);
+    const auto clamp_start = [&](double s) {
+        return std::min(std::max(0.0, s), max_start);
+    };
+
+    std::vector<double> probe_starts;
+    probe_starts.push_back(clamp_start(std::max(0.0, original_config.dbn_tempo_anchor_intro_seconds)));
+    probe_starts.push_back(clamp_start(total - 60.0 - probe_duration));
+    if (probe_starts.size() >= 2 && std::abs(probe_starts[1] - probe_starts[0]) < 1.0) {
+        probe_starts[1] = clamp_start(total * 0.5 - probe_duration * 0.5);
     }
 
-    result = finalize();
+    struct ProbeResult {
+        double start = 0.0;
+        AnalysisResult analysis;
+        double bpm = 0.0;
+        double conf = 0.0;
+    };
+    auto estimate_probe_confidence = [&](const AnalysisResult& r) -> double {
+        const auto& beats = !r.coreml_beat_projected_sample_frames.empty()
+            ? r.coreml_beat_projected_sample_frames
+            : r.coreml_beat_sample_frames;
+        if (beats.size() < 8 || sample_rate_ <= 0.0) {
+            return 0.0;
+        }
+        std::vector<double> intervals;
+        intervals.reserve(beats.size() - 1);
+        for (std::size_t i = 1; i < beats.size(); ++i) {
+            if (beats[i] > beats[i - 1]) {
+                intervals.push_back(static_cast<double>(beats[i] - beats[i - 1]) / sample_rate_);
+            }
+        }
+        if (intervals.size() < 4) {
+            return 0.0;
+        }
+        double sum = 0.0;
+        double sum_sq = 0.0;
+        for (double v : intervals) {
+            sum += v;
+            sum_sq += v * v;
+        }
+        const double n = static_cast<double>(intervals.size());
+        const double mean = sum / n;
+        if (!(mean > 0.0)) {
+            return 0.0;
+        }
+        const double var = std::max(0.0, (sum_sq / n) - (mean * mean));
+        const double cv = std::sqrt(var) / mean;
+        return (1.0 / (1.0 + cv)) * std::min(1.0, n / 32.0);
+    };
+    auto expand_modes = [&](double bpm, double conf) {
+        std::vector<std::pair<double, double>> out;
+        if (!(bpm > 0.0) || !(conf > 0.0)) {
+            return out;
+        }
+        static const double kModes[] = {0.5, 1.0, 2.0, 3.0, (2.0 / 3.0), 1.5};
+        for (double m : kModes) {
+            const double cand = bpm * m;
+            if (cand >= original_config.min_bpm && cand <= original_config.max_bpm) {
+                out.emplace_back(cand, conf);
+            }
+        }
+        return out;
+    };
+    auto relative_diff = [](double a, double b) {
+        const double mean = 0.5 * (a + b);
+        return mean > 0.0 ? (std::abs(a - b) / mean) : 1.0;
+    };
+
+    std::vector<ProbeResult> probes;
+    probes.reserve(3);
+    for (double s : probe_starts) {
+        ProbeResult p;
+        p.start = s;
+        p.analysis = run_probe(s, probe_duration);
+        p.bpm = p.analysis.estimated_bpm;
+        p.conf = estimate_probe_confidence(p.analysis);
+        probes.push_back(std::move(p));
+    }
+
+    auto consensus_from_probes = [&](const std::vector<ProbeResult>& values) {
+        std::vector<std::pair<double, double>> all_modes;
+        for (const auto& p : values) {
+            const auto modes = expand_modes(p.bpm, p.conf);
+            all_modes.insert(all_modes.end(), modes.begin(), modes.end());
+        }
+        if (all_modes.empty()) {
+            return 0.0;
+        }
+        double best_bpm = 0.0;
+        double best_score = std::numeric_limits<double>::infinity();
+        for (const auto& cand : all_modes) {
+            double score = 0.0;
+            for (const auto& p : values) {
+                const auto modes = expand_modes(p.bpm, p.conf);
+                double best_local = std::numeric_limits<double>::infinity();
+                for (const auto& m : modes) {
+                    best_local = std::min(best_local, relative_diff(cand.first, m.first));
+                }
+                score += best_local / std::max(1e-6, p.conf);
+            }
+            if (score < best_score) {
+                best_score = score;
+                best_bpm = cand.first;
+            }
+        }
+        return best_bpm;
+    };
+
+    double consensus_bpm = consensus_from_probes(probes);
+    if (probes.size() >= 2 && consensus_bpm > 0.0) {
+        double max_err = 0.0;
+        for (const auto& p : probes) {
+            const auto modes = expand_modes(p.bpm, p.conf);
+            double best_local = std::numeric_limits<double>::infinity();
+            for (const auto& m : modes) {
+                best_local = std::min(best_local, relative_diff(consensus_bpm, m.first));
+            }
+            max_err = std::max(max_err, best_local);
+        }
+        if (max_err > 0.025 && probes.size() == 2) {
+            ProbeResult p;
+            p.start = clamp_start(total * 0.5 - probe_duration * 0.5);
+            p.analysis = run_probe(p.start, probe_duration);
+            p.bpm = p.analysis.estimated_bpm;
+            p.conf = estimate_probe_confidence(p.analysis);
+            probes.push_back(std::move(p));
+            consensus_bpm = consensus_from_probes(probes);
+        }
+    }
+
+    const double anchor_start = probe_starts.empty() ? 0.0 : probe_starts.front();
+    result = run_probe(anchor_start, probe_duration, consensus_bpm);
+    if (original_config.verbose) {
+        std::cerr << "Sparse probes:";
+        for (const auto& p : probes) {
+            std::cerr << " start=" << p.start
+                      << " bpm=" << p.bpm
+                      << " conf=" << p.conf;
+        }
+        std::cerr << " consensus=" << consensus_bpm
+                  << " anchor_start=" << anchor_start
+                  << "\n";
+    }
     coreml_config_ = original_config;
     return result;
 }
