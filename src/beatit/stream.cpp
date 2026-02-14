@@ -521,6 +521,20 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
             coreml_config_.dbn_window_consensus = true;
             tempo_reference_bpm_ = forced_reference_bpm;
             tempo_reference_valid_ = true;
+            const float hard_min = std::max(1.0f, original_config.min_bpm);
+            const float hard_max = std::max(hard_min + 1.0f, original_config.max_bpm);
+            float local_min = static_cast<float>(forced_reference_bpm * 0.99);
+            float local_max = static_cast<float>(forced_reference_bpm * 1.01);
+            local_min = std::max(hard_min, local_min);
+            local_max = std::min(hard_max, local_max);
+            if (local_max <= local_min) {
+                local_min = std::max(hard_min, static_cast<float>(forced_reference_bpm * 0.985));
+                local_max = std::min(hard_max, static_cast<float>(forced_reference_bpm * 1.015));
+            }
+            if (local_max > local_min) {
+                coreml_config_.min_bpm = local_min;
+                coreml_config_.max_bpm = local_max;
+            }
         }
 
         std::vector<float> window_samples;
@@ -684,7 +698,8 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
         }
     }
 
-    const double anchor_start = probe_starts.empty() ? 0.0 : probe_starts.front();
+    const double anchor_start = clamp_start(
+        std::max(0.0, original_config.dbn_window_start_seconds));
     result = run_probe(anchor_start, probe_duration, consensus_bpm);
     if (original_config.verbose) {
         std::cerr << "Sparse probes:";

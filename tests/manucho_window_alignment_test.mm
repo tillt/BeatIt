@@ -320,6 +320,9 @@ int main() {
     config.use_dbn = true;
     config.max_analysis_seconds = 60.0;
     config.dbn_window_start_seconds = 0.0;
+#if defined(BEATIT_TEST_SPARSE_PROBE_MODE)
+    config.sparse_probe_mode = true;
+#endif
     if (const char* trace = std::getenv("BEATIT_WINDOW_TRACE")) {
         if (trace[0] != '\0' && trace[0] != '0') {
             config.verbose = true;
