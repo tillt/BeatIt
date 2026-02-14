@@ -112,6 +112,9 @@ struct CoreMLConfig {
 
     // DBN-only window start offset (seconds).
     double dbn_window_start_seconds = 120.0;
+    // Sparse tempo anchors for global BPM fit when multi-window mode is enabled.
+    double dbn_tempo_anchor_intro_seconds = 120.0;
+    double dbn_tempo_anchor_outro_offset_seconds = 60.0;
     bool dbn_project_grid = true;
     bool dbn_window_use_phase_energy = true;
     bool dbn_window_intro_mid_outro = false;

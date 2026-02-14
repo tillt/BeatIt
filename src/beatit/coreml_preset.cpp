@@ -85,9 +85,11 @@ public:
         config.use_minimal_postprocess = true;
         config.dbn_window_seconds = 60.0;
         config.dbn_window_start_seconds = 0.0;
+        config.dbn_tempo_anchor_intro_seconds = 120.0;
+        config.dbn_tempo_anchor_outro_offset_seconds = 60.0;
         config.dbn_window_use_phase_energy = true;
         config.dbn_window_best = true;
-        config.dbn_window_intro_mid_outro = false;
+        config.dbn_window_intro_mid_outro = true;
         config.dbn_window_consensus = false;
         config.dbn_project_grid = true;
         config.dbn_grid_global_fit = true;

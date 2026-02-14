@@ -4565,72 +4565,101 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                 };
                 const double bpm_from_fit = bpm_from_linear_fit(filtered_beats);
                 double bpm_from_global_fit = 0.0;
-                if (config.dbn_window_intro_mid_outro && used_frames > 0) {
-                    const std::size_t window_frames = static_cast<std::size_t>(
+                if (config.dbn_window_intro_mid_outro && used_frames > 0 && fps > 0.0) {
+                    const std::size_t requested_window_frames = static_cast<std::size_t>(
                         std::round(config.dbn_window_seconds * fps));
-                    const std::size_t edge_pad_frames = static_cast<std::size_t>(
-                        std::round(30.0 * fps));
-                    const std::size_t intro_start = std::min<std::size_t>(used_frames, edge_pad_frames);
-                    const std::size_t intro_end = std::min<std::size_t>(
-                        used_frames, intro_start + window_frames);
-                    const auto intro = std::pair<std::size_t, std::size_t>{intro_start, intro_end};
-                    const std::size_t mid_center = used_frames / 2;
-                    const std::size_t mid_start =
-                        (mid_center > (intro.second - intro.first) / 2)
-                            ? (mid_center - ((intro.second - intro.first) / 2))
-                            : 0;
-                    const auto mid = std::pair<std::size_t, std::size_t>{
-                        mid_start,
-                        std::min<std::size_t>(used_frames, mid_start + (intro.second - intro.first))};
-                    const std::size_t outro_end = used_frames > edge_pad_frames
-                        ? (used_frames - edge_pad_frames)
-                        : used_frames;
-                    const std::size_t outro_start =
-                        (outro_end > window_frames) ? (outro_end - window_frames) : 0;
-                    const auto outro = std::pair<std::size_t, std::size_t>{outro_start, outro_end};
-                    const std::vector<std::pair<std::size_t, std::size_t>> tempo_windows = {
-                        intro, mid, outro
-                    };
-                    if (config.dbn_trace) {
-                        auto print_window = [&](const char* name,
-                                                const std::pair<std::size_t, std::size_t>& w) {
-                            const double start_s = fps > 0.0 ? static_cast<double>(w.first) / fps : 0.0;
-                            const double end_s = fps > 0.0 ? static_cast<double>(w.second) / fps : 0.0;
-                            std::cerr << "DBN tempo window " << name
-                                      << ": frames=" << w.first << "-" << w.second
-                                      << " (" << start_s << "s-" << end_s << "s)\n";
+                    const std::size_t min_window_frames = static_cast<std::size_t>(std::round(15.0 * fps));
+                    const std::size_t window_frames = std::min<std::size_t>(
+                        used_frames, std::max<std::size_t>(requested_window_frames, min_window_frames));
+                    if (window_frames > 0 && used_frames >= window_frames) {
+                        const std::size_t max_start = used_frames - window_frames;
+                        const std::size_t intro_start = std::min<std::size_t>(
+                            static_cast<std::size_t>(
+                                std::round(std::max(0.0, config.dbn_tempo_anchor_intro_seconds) * fps)),
+                            max_start);
+                        std::size_t outro_end = used_frames;
+                        const std::size_t outro_offset_frames = static_cast<std::size_t>(
+                            std::round(std::max(0.0, config.dbn_tempo_anchor_outro_offset_seconds) * fps));
+                        if (outro_offset_frames < used_frames) {
+                            outro_end = used_frames - outro_offset_frames;
+                        }
+                        if (outro_end < window_frames) {
+                            outro_end = window_frames;
+                        }
+                        if (outro_end > used_frames) {
+                            outro_end = used_frames;
+                        }
+                        const std::size_t outro_start =
+                            (outro_end > window_frames) ? (outro_end - window_frames) : 0;
+                        const auto intro = std::pair<std::size_t, std::size_t>{
+                            intro_start, std::min<std::size_t>(used_frames, intro_start + window_frames)};
+                        const auto outro = std::pair<std::size_t, std::size_t>{outro_start, outro_end};
+                        const std::size_t intro_mid = intro.first + ((intro.second - intro.first) / 2);
+                        const std::size_t outro_mid = outro.first + ((outro.second - outro.first) / 2);
+                        const std::size_t anchor_gap_frames =
+                            (intro_mid > outro_mid) ? (intro_mid - outro_mid) : (outro_mid - intro_mid);
+                        const std::size_t min_anchor_gap_frames = std::max<std::size_t>(
+                            window_frames, static_cast<std::size_t>(std::round(45.0 * fps)));
+                        const bool anchors_separated = anchor_gap_frames >= min_anchor_gap_frames;
+                        auto decode_window_beats = [&](const std::pair<std::size_t, std::size_t>& w) {
+                            std::vector<std::size_t> beats;
+                            if (w.second <= w.first || w.second > result.beat_activation.size()) {
+                                return beats;
+                            }
+                            std::vector<float> w_beat(result.beat_activation.begin() + w.first,
+                                                      result.beat_activation.begin() + w.second);
+                            std::vector<float> w_downbeat;
+                            if (!result.downbeat_activation.empty() &&
+                                w.second <= result.downbeat_activation.size()) {
+                                w_downbeat.assign(result.downbeat_activation.begin() + w.first,
+                                                  result.downbeat_activation.begin() + w.second);
+                            }
+                            DBNDecodeResult tmp = decode_dbn_beats_calmdad(w_beat,
+                                                                            w_downbeat,
+                                                                            fps,
+                                                                            min_bpm,
+                                                                            max_bpm,
+                                                                            config.dbn_bpm_step,
+                                                                            config);
+                            beats.reserve(tmp.beat_frames.size());
+                            for (std::size_t frame : tmp.beat_frames) {
+                                beats.push_back(frame + w.first);
+                            }
+                            return beats;
                         };
-                        print_window("intro", intro);
-                        print_window("mid", mid);
-                        print_window("outro", outro);
-                    }
-                    std::vector<std::size_t> global_beats;
-                    for (const auto& w : tempo_windows) {
-                        if (w.second <= w.first) {
-                            continue;
+                        const std::vector<std::size_t> intro_beats = decode_window_beats(intro);
+                        const std::vector<std::size_t> outro_beats = decode_window_beats(outro);
+                        const bool intro_valid = intro_beats.size() >= 8;
+                        const bool outro_valid = outro_beats.size() >= 8;
+                        if (config.dbn_trace) {
+                            auto print_window = [&](const char* name,
+                                                    const std::pair<std::size_t, std::size_t>& w,
+                                                    std::size_t beat_count) {
+                                const double start_s = static_cast<double>(w.first) / fps;
+                                const double end_s = static_cast<double>(w.second) / fps;
+                                std::cerr << "DBN tempo window " << name
+                                          << ": frames=" << w.first << "-" << w.second
+                                          << " (" << start_s << "s-" << end_s << "s)"
+                                          << " beats=" << beat_count << "\n";
+                            };
+                            print_window("intro", intro, intro_beats.size());
+                            print_window("outro", outro, outro_beats.size());
+                            std::cerr << "DBN tempo anchors: gap_frames=" << anchor_gap_frames
+                                      << " min_gap_frames=" << min_anchor_gap_frames
+                                      << " separated=" << (anchors_separated ? "true" : "false")
+                                      << "\n";
                         }
-                        std::vector<float> w_beat(result.beat_activation.begin() + w.first,
-                                                  result.beat_activation.begin() + w.second);
-                        std::vector<float> w_downbeat;
-                        if (!result.downbeat_activation.empty()) {
-                            w_downbeat.assign(result.downbeat_activation.begin() + w.first,
-                                              result.downbeat_activation.begin() + w.second);
+                        if (intro_valid && outro_valid && anchors_separated) {
+                            std::vector<std::size_t> global_beats;
+                            global_beats.reserve(intro_beats.size() + outro_beats.size());
+                            global_beats.insert(global_beats.end(), intro_beats.begin(), intro_beats.end());
+                            global_beats.insert(global_beats.end(), outro_beats.begin(), outro_beats.end());
+                            std::sort(global_beats.begin(), global_beats.end());
+                            dedupe_frames(global_beats);
+                            if (global_beats.size() >= 8) {
+                                bpm_from_global_fit = bpm_from_linear_fit(global_beats);
+                            }
                         }
-                        DBNDecodeResult tmp = decode_dbn_beats_calmdad(w_beat,
-                                                                      w_downbeat,
-                                                                      fps,
-                                                                      min_bpm,
-                                                                      max_bpm,
-                                                                      config.dbn_bpm_step,
-                                                                      config);
-                        for (std::size_t frame : tmp.beat_frames) {
-                            global_beats.push_back(frame + w.first);
-                        }
-                    }
-                    if (!global_beats.empty()) {
-                        std::sort(global_beats.begin(), global_beats.end());
-                        dedupe_frames(global_beats);
-                        bpm_from_global_fit = bpm_from_linear_fit(global_beats);
                     }
                 }
                 const bool quality_low =
