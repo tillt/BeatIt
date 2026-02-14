@@ -4679,9 +4679,33 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                 const bool ref_mismatch =
                     downbeat_override_ok && bpm_from_downbeats > 0.0 && ref_downbeat_ratio > 0.005;
                 const bool drop_ref = (quality_low || ref_mismatch) && reference_bpm > 0.0f;
+                const auto rel_bpm_diff = [](double a, double b) -> double {
+                    if (!(a > 0.0) || !(b > 0.0)) {
+                        return 0.0;
+                    }
+                    return std::abs(a - b) / std::max(a, b);
+                };
+                const double fit_reference_bpm =
+                    (bpm_from_fit > 0.0)
+                        ? bpm_from_fit
+                        : ((bpm_from_peaks_median_full > 0.0)
+                               ? bpm_from_peaks_median_full
+                               : static_cast<double>(reference_bpm));
+                bool global_fit_plausible = bpm_from_global_fit > 0.0;
+                if (global_fit_plausible && fit_reference_bpm > 0.0) {
+                    const double global_fit_diff =
+                        rel_bpm_diff(bpm_from_global_fit, fit_reference_bpm);
+                    // Reject anchor fit when it diverges materially from decoded beat tempo evidence.
+                    global_fit_plausible = global_fit_diff <= 0.08;
+                    if (!global_fit_plausible && config.verbose) {
+                        std::cerr << "DBN grid: rejecting global_fit bpm=" << bpm_from_global_fit
+                                  << " reference_bpm=" << fit_reference_bpm
+                                  << " rel_diff=" << global_fit_diff << "\n";
+                    }
+                }
                 double bpm_for_grid = 0.0;
                 std::string bpm_source = "none";
-                if (bpm_from_global_fit > 0.0) {
+                if (bpm_from_global_fit > 0.0 && global_fit_plausible) {
                     bpm_for_grid = bpm_from_global_fit;
                     bpm_source = "global_fit";
                 } else if (reference_bpm > 0.0f && !quality_low && !ref_mismatch &&
