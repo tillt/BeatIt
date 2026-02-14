@@ -28,6 +28,9 @@ constexpr double kMaxIntroMedianAbsOffsetMs = 90.0;
 constexpr std::size_t kEarlyBeatCountForDriftCheck = 24;
 constexpr double kMaxEarlyMedianAbsOffsetMs = 20.0;
 constexpr double kMaxEarlyP90AbsOffsetMs = 60.0;
+constexpr std::size_t kFinalBeatCountForDriftCheck = 24;
+constexpr double kMaxFinalMedianAbsOffsetMs = 20.0;
+constexpr double kMaxFinalP90AbsOffsetMs = 60.0;
 
 std::string compile_model_if_needed(const std::string& path, std::string* error) {
     NSString* ns_path = [NSString stringWithUTF8String:path.c_str()];
@@ -753,6 +756,16 @@ int main() {
         early_median_abs_offset_ms = median(early_abs);
         early_p90_abs_offset_ms = percentile_ceil(early_abs, 0.90);
     }
+    const std::size_t final_count =
+        std::min<std::size_t>(kFinalBeatCountForDriftCheck, abs_offset_ms.size());
+    double final_median_abs_offset_ms = 0.0;
+    double final_p90_abs_offset_ms = 0.0;
+    if (final_count > 0) {
+        std::vector<double> final_abs(abs_offset_ms.end() - static_cast<long>(final_count),
+                                      abs_offset_ms.end());
+        final_median_abs_offset_ms = median(final_abs);
+        final_p90_abs_offset_ms = percentile_ceil(final_abs, 0.90);
+    }
 
     std::string dump_error;
     std::filesystem::path dump_dir;
@@ -799,6 +812,18 @@ int main() {
         std::cerr << "Manucho alignment test failed: first-" << kEarlyBeatCountForDriftCheck
                   << " p90 abs offset " << early_p90_abs_offset_ms << "ms > "
                   << kMaxEarlyP90AbsOffsetMs << "ms\n";
+        return 1;
+    }
+    if (final_median_abs_offset_ms > kMaxFinalMedianAbsOffsetMs) {
+        std::cerr << "Manucho alignment test failed: last-" << kFinalBeatCountForDriftCheck
+                  << " median abs offset " << final_median_abs_offset_ms << "ms > "
+                  << kMaxFinalMedianAbsOffsetMs << "ms\n";
+        return 1;
+    }
+    if (final_p90_abs_offset_ms > kMaxFinalP90AbsOffsetMs) {
+        std::cerr << "Manucho alignment test failed: last-" << kFinalBeatCountForDriftCheck
+                  << " p90 abs offset " << final_p90_abs_offset_ms << "ms > "
+                  << kMaxFinalP90AbsOffsetMs << "ms\n";
         return 1;
     }
     if (std::fabs(peak_offset_slope_ms_per_beat) > kMaxPeakOffsetSlopeMsPerBeat) {
