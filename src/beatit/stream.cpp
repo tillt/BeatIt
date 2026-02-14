@@ -1455,20 +1455,15 @@ AnalysisResult BeatitStream::finalize() {
     const auto& bpm_frames = result.coreml_beat_projected_sample_frames.empty()
         ? result.coreml_beat_sample_frames
         : result.coreml_beat_projected_sample_frames;
+    // Keep reported BPM consistent with the returned beat grid.
     float estimated_bpm =
         normalize_bpm_to_range_local(estimate_bpm_from_beats_local(bpm_frames, sample_rate_),
                                      bpm_min,
                                      bpm_max);
-    const float anchored_bpm = normalize_bpm_to_range_local(reference_bpm, bpm_min, bpm_max);
-    if (anchored_bpm > 0.0f) {
-        if (!(estimated_bpm > 0.0f)) {
+    if (!(estimated_bpm > 0.0f)) {
+        const float anchored_bpm = normalize_bpm_to_range_local(reference_bpm, bpm_min, bpm_max);
+        if (anchored_bpm > 0.0f) {
             estimated_bpm = anchored_bpm;
-        } else {
-            const float rel_diff = std::abs(estimated_bpm - anchored_bpm) /
-                                   std::max(anchored_bpm, 1e-6f);
-            if (rel_diff > 0.15f) {
-                estimated_bpm = anchored_bpm;
-            }
         }
     }
     result.estimated_bpm = estimated_bpm;
