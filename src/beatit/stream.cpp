@@ -868,44 +868,113 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
 
     const double anchor_start = clamp_start(
         std::max(0.0, original_config.dbn_window_start_seconds));
-    double best_mode_error = std::numeric_limits<double>::infinity();
-    for (double e : probe_mode_errors) {
-        best_mode_error = std::min(best_mode_error, e);
-    }
-    const double mode_slack = 0.005;
-    std::size_t selected_index = 0;
-    double selected_score = std::numeric_limits<double>::infinity();
-    IntroPhaseMetrics selected_intro_metrics;
+    std::vector<IntroPhaseMetrics> probe_intro_metrics(probes.size());
     for (std::size_t i = 0; i < probes.size(); ++i) {
-        if (probe_mode_errors[i] > best_mode_error + mode_slack) {
-            continue;
-        }
-        const double start_penalty = std::abs(probes[i].start - anchor_start) /
-            std::max(1.0, probe_duration);
-        const IntroPhaseMetrics intro_metrics = measure_intro_phase(
+        probe_intro_metrics[i] = measure_intro_phase(
             probes[i].analysis,
             have_consensus ? consensus_bpm : probes[i].bpm);
-        const double phase_penalty =
-            std::isfinite(intro_metrics.median_abs_ms) ? (intro_metrics.median_abs_ms / 40.0) : 10.0;
-        const double confidence_penalty = 1.0 / std::max(1e-6, probes[i].conf);
-        const double score = confidence_penalty + (start_penalty * 0.25) + phase_penalty;
-        if (score < selected_score) {
-            selected_score = score;
-            selected_index = i;
-            selected_intro_metrics = intro_metrics;
-        }
     }
+
+    struct DecisionOutcome {
+        std::size_t selected_index = 0;
+        double selected_score = std::numeric_limits<double>::infinity();
+        double score_margin = 0.0;
+        bool low_confidence = true;
+        std::string mode;
+    };
+    auto decide_legacy = [&]() {
+        DecisionOutcome out;
+        out.mode = "legacy";
+        double best_mode_error = std::numeric_limits<double>::infinity();
+        for (double e : probe_mode_errors) {
+            best_mode_error = std::min(best_mode_error, e);
+        }
+        const double mode_slack = 0.005;
+        double second_best = std::numeric_limits<double>::infinity();
+        for (std::size_t i = 0; i < probes.size(); ++i) {
+            if (probe_mode_errors[i] > best_mode_error + mode_slack) {
+                continue;
+            }
+            const double start_penalty = std::abs(probes[i].start - anchor_start) /
+                std::max(1.0, probe_duration);
+            const auto& intro = probe_intro_metrics[i];
+            const double phase_penalty =
+                std::isfinite(intro.median_abs_ms) ? (intro.median_abs_ms / 40.0) : 10.0;
+            const double confidence_penalty = 1.0 / std::max(1e-6, probes[i].conf);
+            const double score = confidence_penalty + (start_penalty * 0.25) + phase_penalty;
+            if (score < out.selected_score) {
+                second_best = out.selected_score;
+                out.selected_score = score;
+                out.selected_index = i;
+            } else if (score < second_best) {
+                second_best = score;
+            }
+        }
+        out.score_margin = std::isfinite(second_best)
+            ? std::max(0.0, second_best - out.selected_score)
+            : 0.0;
+        const auto& intro = probe_intro_metrics[out.selected_index];
+        out.low_confidence =
+            (probe_mode_errors[out.selected_index] > 0.015) ||
+            (probes[out.selected_index].conf < 0.70) ||
+            (std::isfinite(intro.median_abs_ms) && intro.median_abs_ms > 90.0) ||
+            (std::isfinite(intro.odd_even_gap_ms) && intro.odd_even_gap_ms > 180.0);
+        return out;
+    };
+    auto decide_unified = [&]() {
+        DecisionOutcome out;
+        out.mode = "unified";
+        double second_best = std::numeric_limits<double>::infinity();
+        for (std::size_t i = 0; i < probes.size(); ++i) {
+            const auto& intro = probe_intro_metrics[i];
+            const double tempo_term = probe_mode_errors[i];
+            const double phase_term =
+                std::isfinite(intro.median_abs_ms) ? (intro.median_abs_ms / 120.0) : 2.0;
+            const double stability_term =
+                std::isfinite(intro.odd_even_gap_ms) ? (intro.odd_even_gap_ms / 220.0) : 1.0;
+            const double start_prior = std::abs(probes[i].start - anchor_start) /
+                std::max(1.0, probe_duration);
+            const double confidence_term = 1.0 - std::min(1.0, std::max(0.0, probes[i].conf));
+            const double score =
+                (2.4 * tempo_term) +
+                (1.2 * phase_term) +
+                (0.9 * stability_term) +
+                (0.5 * confidence_term) +
+                (0.15 * start_prior);
+            if (score < out.selected_score) {
+                second_best = out.selected_score;
+                out.selected_score = score;
+                out.selected_index = i;
+            } else if (score < second_best) {
+                second_best = score;
+            }
+        }
+        out.score_margin = std::isfinite(second_best)
+            ? std::max(0.0, second_best - out.selected_score)
+            : 0.0;
+        const auto& intro = probe_intro_metrics[out.selected_index];
+        out.low_confidence =
+            (out.score_margin < 0.06) ||
+            (probes[out.selected_index].conf < 0.55) ||
+            (probe_mode_errors[out.selected_index] > 0.03) ||
+            (std::isfinite(intro.median_abs_ms) && intro.median_abs_ms > 110.0) ||
+            (std::isfinite(intro.odd_even_gap_ms) && intro.odd_even_gap_ms > 220.0);
+        return out;
+    };
+    const bool use_legacy_decision =
+        std::getenv("BEATIT_SPARSE_DECISION_LEGACY") != nullptr;
+    const DecisionOutcome decision =
+        use_legacy_decision ? decide_legacy() : decide_unified();
+
+    const std::size_t selected_index = decision.selected_index;
+    const double selected_score = decision.selected_score;
+    const double score_margin = decision.score_margin;
+    const bool low_confidence = decision.low_confidence;
+    const IntroPhaseMetrics selected_intro_metrics = probe_intro_metrics[selected_index];
 
     // Sparse mode returns directly from the best probe to avoid an extra anchor pass.
     result = probes[selected_index].analysis;
     const double selected_mode_error = probe_mode_errors[selected_index];
-    const bool low_confidence =
-        (selected_mode_error > 0.015) ||
-        (probes[selected_index].conf < 0.70) ||
-        (std::isfinite(selected_intro_metrics.median_abs_ms) &&
-         selected_intro_metrics.median_abs_ms > 90.0) ||
-        (std::isfinite(selected_intro_metrics.odd_even_gap_ms) &&
-         selected_intro_metrics.odd_even_gap_ms > 180.0);
     if (low_confidence) {
         const double repair_bpm = have_consensus
             ? consensus_bpm
@@ -1047,7 +1116,10 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
         }
         std::cerr << " consensus=" << consensus_bpm
                   << " anchor_start=" << anchor_start
+                  << " decision=" << decision.mode
                   << " selected_start=" << probes[selected_index].start
+                  << " selected_score=" << selected_score
+                  << " score_margin=" << score_margin
                   << " selected_mode_err=" << selected_mode_error
                   << " selected_conf=" << probes[selected_index].conf
                   << " selected_intro_abs_ms=" << selected_intro_metrics.median_abs_ms
