@@ -617,8 +617,30 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
         const double cv = std::sqrt(var) / mean;
         return (1.0 / (1.0 + cv)) * std::min(1.0, n / 32.0);
     };
+    auto mode_penalty = [](double mode) {
+        const double kTol = 1e-6;
+        if (std::fabs(mode - 1.0) < kTol) {
+            return 1.0;
+        }
+        if (std::fabs(mode - 0.5) < kTol || std::fabs(mode - 2.0) < kTol) {
+            return 1.15;
+        }
+        if (std::fabs(mode - 1.5) < kTol || std::fabs(mode - (2.0 / 3.0)) < kTol) {
+            return 1.9;
+        }
+        if (std::fabs(mode - 3.0) < kTol) {
+            return 2.4;
+        }
+        return 2.0;
+    };
     auto expand_modes = [&](double bpm, double conf) {
-        std::vector<std::pair<double, double>> out;
+        struct ModeCand {
+            double bpm = 0.0;
+            double conf = 0.0;
+            double mode = 1.0;
+            double penalty = 1.0;
+        };
+        std::vector<ModeCand> out;
         if (!(bpm > 0.0) || !(conf > 0.0)) {
             return out;
         }
@@ -626,7 +648,7 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
         for (double m : kModes) {
             const double cand = bpm * m;
             if (cand >= original_config.min_bpm && cand <= original_config.max_bpm) {
-                out.emplace_back(cand, conf);
+                out.push_back({cand, conf, m, mode_penalty(m)});
             }
         }
         return out;
@@ -648,10 +670,18 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
     }
 
     auto consensus_from_probes = [&](const std::vector<ProbeResult>& values) {
-        std::vector<std::pair<double, double>> all_modes;
+        struct ConsensusCand {
+            double bpm = 0.0;
+            double conf = 0.0;
+            double mode = 1.0;
+            double penalty = 1.0;
+        };
+        std::vector<ConsensusCand> all_modes;
         for (const auto& p : values) {
             const auto modes = expand_modes(p.bpm, p.conf);
-            all_modes.insert(all_modes.end(), modes.begin(), modes.end());
+            for (const auto& m : modes) {
+                all_modes.push_back({m.bpm, m.conf, m.mode, m.penalty});
+            }
         }
         if (all_modes.empty()) {
             return 0.0;
@@ -664,13 +694,14 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
                 const auto modes = expand_modes(p.bpm, p.conf);
                 double best_local = std::numeric_limits<double>::infinity();
                 for (const auto& m : modes) {
-                    best_local = std::min(best_local, relative_diff(cand.first, m.first));
+                    best_local = std::min(best_local, relative_diff(cand.bpm, m.bpm) * m.penalty);
                 }
                 score += best_local / std::max(1e-6, p.conf);
             }
+            score *= cand.penalty;
             if (score < best_score) {
                 best_score = score;
-                best_bpm = cand.first;
+                best_bpm = cand.bpm;
             }
         }
         return best_bpm;
@@ -805,7 +836,7 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
             const auto modes = expand_modes(p.bpm, p.conf);
             double best_local = std::numeric_limits<double>::infinity();
             for (const auto& m : modes) {
-                best_local = std::min(best_local, relative_diff(consensus_bpm, m.first));
+                best_local = std::min(best_local, relative_diff(consensus_bpm, m.bpm) * m.penalty);
             }
             max_err = std::max(max_err, best_local);
         }
@@ -830,7 +861,7 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
         const auto modes = expand_modes(probes[i].bpm, probes[i].conf);
         double mode_error = 1.0;
         for (const auto& m : modes) {
-            mode_error = std::min(mode_error, relative_diff(consensus_bpm, m.first));
+            mode_error = std::min(mode_error, relative_diff(consensus_bpm, m.bpm) * m.penalty);
         }
         probe_mode_errors[i] = mode_error;
     }
