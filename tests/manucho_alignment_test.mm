@@ -25,6 +25,9 @@ constexpr double kMaxPeakOffsetMeanAbsMilliseconds = 25.0;
 constexpr double kMaxPeakOffsetSlopeMsPerBeat = 0.05;
 constexpr std::size_t kIntroBeatCountForPhaseCheck = 64;
 constexpr double kMaxIntroMedianAbsOffsetMs = 90.0;
+constexpr std::size_t kEarlyBeatCountForDriftCheck = 24;
+constexpr double kMaxEarlyMedianAbsOffsetMs = 20.0;
+constexpr double kMaxEarlyP90AbsOffsetMs = 60.0;
 
 std::string compile_model_if_needed(const std::string& path, std::string* error) {
     NSString* ns_path = [NSString stringWithUTF8String:path.c_str()];
@@ -260,6 +263,21 @@ double median(std::vector<double> values) {
     auto mid = values.begin() + static_cast<long>(values.size() / 2);
     std::nth_element(values.begin(), mid, values.end());
     return *mid;
+}
+
+double percentile_ceil(std::vector<double> values, double p) {
+    if (values.empty()) {
+        return 0.0;
+    }
+    const double clamped = std::clamp(p, 0.0, 1.0);
+    const std::size_t n = values.size();
+    const std::size_t rank = static_cast<std::size_t>(
+        std::ceil(clamped * static_cast<double>(n)));
+    const std::size_t index = (rank == 0) ? 0 : std::min<std::size_t>(n - 1, rank - 1);
+    std::nth_element(values.begin(),
+                     values.begin() + static_cast<long>(index),
+                     values.end());
+    return values[index];
 }
 
 std::vector<std::size_t> project_downbeats_from_beats(const std::vector<unsigned long long>& beats,
@@ -725,6 +743,16 @@ int main() {
                                       abs_offset_ms.begin() + static_cast<long>(intro_count));
         intro_median_abs_offset_ms = median(std::move(intro_abs));
     }
+    const std::size_t early_count =
+        std::min<std::size_t>(kEarlyBeatCountForDriftCheck, abs_offset_ms.size());
+    double early_median_abs_offset_ms = 0.0;
+    double early_p90_abs_offset_ms = 0.0;
+    if (early_count > 0) {
+        std::vector<double> early_abs(abs_offset_ms.begin(),
+                                      abs_offset_ms.begin() + static_cast<long>(early_count));
+        early_median_abs_offset_ms = median(early_abs);
+        early_p90_abs_offset_ms = percentile_ceil(early_abs, 0.90);
+    }
 
     std::string dump_error;
     std::filesystem::path dump_dir;
@@ -759,6 +787,18 @@ int main() {
         std::cerr << "Manucho alignment test failed: intro median abs offset "
                   << intro_median_abs_offset_ms << "ms > "
                   << kMaxIntroMedianAbsOffsetMs << "ms\n";
+        return 1;
+    }
+    if (early_median_abs_offset_ms > kMaxEarlyMedianAbsOffsetMs) {
+        std::cerr << "Manucho alignment test failed: first-" << kEarlyBeatCountForDriftCheck
+                  << " median abs offset " << early_median_abs_offset_ms << "ms > "
+                  << kMaxEarlyMedianAbsOffsetMs << "ms\n";
+        return 1;
+    }
+    if (early_p90_abs_offset_ms > kMaxEarlyP90AbsOffsetMs) {
+        std::cerr << "Manucho alignment test failed: first-" << kEarlyBeatCountForDriftCheck
+                  << " p90 abs offset " << early_p90_abs_offset_ms << "ms > "
+                  << kMaxEarlyP90AbsOffsetMs << "ms\n";
         return 1;
     }
     if (std::fabs(peak_offset_slope_ms_per_beat) > kMaxPeakOffsetSlopeMsPerBeat) {
