@@ -18,10 +18,12 @@ constexpr std::size_t kEdgeWindowBeats = 64;
 constexpr std::size_t kAlternationWindowBeats = 24;
 constexpr double kTargetBpm = 110.0;
 constexpr double kMaxBpmError = 2.0;
-constexpr double kMaxOffsetSlopeMsPerBeat = 0.10;
-constexpr double kMaxStartEndDeltaMs = 120.0;
-constexpr double kMaxOddEvenMedianGapMs = 180.0;
-constexpr double kMaxIntroMedianAbsOffsetMs = 90.0;
+constexpr double kMaxOffsetSlopeMsPerBeat = 0.05;
+constexpr double kMaxStartEndDeltaMs = 80.0;
+constexpr double kMaxOddEvenMedianGapMs = 80.0;
+constexpr double kMaxIntroMedianAbsOffsetMs = 60.0;
+constexpr std::size_t kTempoEdgeIntervals = 64;
+constexpr double kMaxTempoEdgeBpmDelta = 0.05;
 
 std::string compile_model_if_needed(const std::string& path, std::string* error) {
     NSString* ns_path = [NSString stringWithUTF8String:path.c_str()];
@@ -226,6 +228,73 @@ double linear_slope(const std::vector<double>& values) {
     return (n * sxy - sx * sy) / den;
 }
 
+bool is_bar_event(const beatit::BeatEvent& event) {
+    return (static_cast<unsigned long long>(event.style) &
+            static_cast<unsigned long long>(beatit::BeatEventStyleBar)) != 0ULL;
+}
+
+bool first_bar_is_complete_four_four(const beatit::AnalysisResult& result) {
+    std::vector<std::size_t> bar_indices;
+    bar_indices.reserve(result.coreml_beat_events.size() / 4);
+    for (std::size_t i = 0; i < result.coreml_beat_events.size(); ++i) {
+        if (is_bar_event(result.coreml_beat_events[i])) {
+            bar_indices.push_back(i);
+        }
+    }
+    if (bar_indices.size() < 2) {
+        return false;
+    }
+    return bar_indices[0] == 0 && bar_indices[1] == 4;
+}
+
+bool bars_repeat_every_four_beats(const beatit::AnalysisResult& result) {
+    std::vector<std::size_t> bar_indices;
+    bar_indices.reserve(result.coreml_beat_events.size() / 4);
+    for (std::size_t i = 0; i < result.coreml_beat_events.size(); ++i) {
+        if (is_bar_event(result.coreml_beat_events[i])) {
+            bar_indices.push_back(i);
+        }
+    }
+    if (bar_indices.size() < 2) {
+        return false;
+    }
+    for (std::size_t i = 1; i < bar_indices.size(); ++i) {
+        if ((bar_indices[i] - bar_indices[i - 1]) != 4) {
+            return false;
+        }
+    }
+    return true;
+}
+
+double median_interval_seconds(const std::vector<unsigned long long>& beat_frames,
+                               double sample_rate,
+                               std::size_t interval_count,
+                               bool from_end) {
+    if (beat_frames.size() < 3 || sample_rate <= 0.0 || interval_count == 0) {
+        return 0.0;
+    }
+    std::vector<double> intervals;
+    intervals.reserve(beat_frames.size() - 1);
+    for (std::size_t i = 1; i < beat_frames.size(); ++i) {
+        if (beat_frames[i] > beat_frames[i - 1]) {
+            intervals.push_back(
+                static_cast<double>(beat_frames[i] - beat_frames[i - 1]) / sample_rate);
+        }
+    }
+    if (intervals.empty()) {
+        return 0.0;
+    }
+
+    const std::size_t n = std::min(interval_count, intervals.size());
+    std::vector<double> slice;
+    if (from_end) {
+        slice.assign(intervals.end() - static_cast<long>(n), intervals.end());
+    } else {
+        slice.assign(intervals.begin(), intervals.begin() + static_cast<long>(n));
+    }
+    return median(slice);
+}
+
 std::vector<double> compute_strong_peak_offsets_ms(const std::vector<unsigned long long>& beat_frames,
                                                    const std::vector<float>& mono,
                                                    double sample_rate,
@@ -383,6 +452,15 @@ int main() {
                   << result.coreml_beat_events.size() << "\n";
         return 1;
     }
+    if (!first_bar_is_complete_four_four(result)) {
+        std::cerr << "Window alignment test failed: opening bar is not complete 4/4 "
+                     "(expected first downbeats at beat indices 0 and 4).\n";
+        return 1;
+    }
+    if (!bars_repeat_every_four_beats(result)) {
+        std::cerr << "Window alignment test failed: bar markers are not consistently every 4 beats.\n";
+        return 1;
+    }
     if (!(result.estimated_bpm > 0.0)) {
         std::cerr << "Window alignment test failed: non-positive BPM.\n";
         return 1;
@@ -398,6 +476,10 @@ int main() {
     beat_frames.reserve(result.coreml_beat_events.size());
     for (const auto& event : result.coreml_beat_events) {
         beat_frames.push_back(event.frame);
+    }
+    if (result.coreml_downbeat_feature_frames.empty()) {
+        std::cerr << "Window alignment test failed: missing downbeat feature frames.\n";
+        return 1;
     }
 
     const std::vector<double> offsets_ms =
@@ -434,6 +516,13 @@ int main() {
         }
     }
     const double odd_even_gap_ms = std::fabs(median(even) - median(odd));
+    const double early_interval_s =
+        median_interval_seconds(beat_frames, sample_rate, kTempoEdgeIntervals, false);
+    const double late_interval_s =
+        median_interval_seconds(beat_frames, sample_rate, kTempoEdgeIntervals, true);
+    const double early_bpm = early_interval_s > 0.0 ? (60.0 / early_interval_s) : 0.0;
+    const double late_bpm = late_interval_s > 0.0 ? (60.0 / late_interval_s) : 0.0;
+    const double edge_bpm_delta = std::fabs(early_bpm - late_bpm);
 
     std::cout << "Window alignment metrics: bpm=" << result.estimated_bpm
               << " start_median_ms=" << start_median_ms
@@ -442,6 +531,9 @@ int main() {
               << " delta_ms=" << start_end_delta_ms
               << " slope_ms_per_beat=" << slope_ms_per_beat
               << " odd_even_gap_ms=" << odd_even_gap_ms
+              << " early_bpm=" << early_bpm
+              << " late_bpm=" << late_bpm
+              << " edge_bpm_delta=" << edge_bpm_delta
               << "\n";
 
     if (start_median_abs_ms > kMaxIntroMedianAbsOffsetMs) {
@@ -463,6 +555,15 @@ int main() {
     if (odd_even_gap_ms > kMaxOddEvenMedianGapMs) {
         std::cerr << "Window alignment test failed: odd/even median gap "
                   << odd_even_gap_ms << "ms > " << kMaxOddEvenMedianGapMs << "ms\n";
+        return 1;
+    }
+    if (!(early_bpm > 0.0) || !(late_bpm > 0.0)) {
+        std::cerr << "Window alignment test failed: invalid edge BPM estimate.\n";
+        return 1;
+    }
+    if (edge_bpm_delta > kMaxTempoEdgeBpmDelta) {
+        std::cerr << "Window alignment test failed: edge BPM delta " << edge_bpm_delta
+                  << " > " << kMaxTempoEdgeBpmDelta << "\n";
         return 1;
     }
 
