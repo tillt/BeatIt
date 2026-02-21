@@ -23,7 +23,6 @@ CANONICAL: Dict[str, CanonicalTrack] = {
     "training/acht.wav": CanonicalTrack(bpm=120.0, onset_s=40.742, peak_s=40.786),
     "training/best.wav": CanonicalTrack(bpm=125.0, onset_s=0.049, peak_s=0.108),
     "training/eureka.wav": CanonicalTrack(bpm=120.0, onset_s=0.000, peak_s=0.033),
-    "training/eureka_from_mp3.wav": CanonicalTrack(bpm=120.0, onset_s=0.000, peak_s=0.033),
 }
 
 
@@ -66,22 +65,62 @@ FIRST_BEAT_FLOOR_RE = re.compile(r"first beat floor: .*sample_frame=(\d+)\s*\(s 
 MAX_BEAT_FIRST2S_RE = re.compile(r"max beat activation \\(first 2s\\):\\s*([0-9.]+)")
 
 
-def run_beatit(beatit: Path, model: Path, wav: str, extra_args: List[str]) -> str:
+def run_beatit(beatit: Path,
+               backend: str,
+               model: Optional[Path],
+               wav: str,
+               extra_args: List[str]) -> Tuple[str, str, int]:
     cmd = [
         str(beatit),
         "--input",
         wav,
         "--ml-backend",
-        "torch",
-        "--torch-model",
-        str(model),
-        "--ml-preset",
-        "beatthis",
+        backend,
         "--ml-verbose",
-    ] + extra_args
+    ]
+
+    if backend == "torch":
+        if model is None:
+            raise ValueError("torch backend requires --model")
+        cmd += [
+            "--torch-model",
+            str(model),
+            "--ml-preset",
+            "beatthis",
+        ]
+    elif backend == "coreml":
+        cmd += ["--ml-beatthis"]
+        if model is not None:
+            cmd += ["--model", str(model)]
+    elif backend == "beatthis":
+        if model is None:
+            raise ValueError("beatthis backend requires --model checkpoint")
+        cmd += ["--beatthis-checkpoint", str(model)]
+    else:
+        raise ValueError(f"Unsupported backend: {backend}")
+
+    cmd += extra_args
     env = dict(**os.environ)
     env["BEATIT_DEBUG_BPM"] = "1"
-    return subprocess.check_output(cmd, text=True, stderr=subprocess.STDOUT, env=env)
+    tmpdir = Path("build/coreml_tmp")
+    home = Path("build/coreml_home")
+    cache = Path("build/coreml_cache")
+    tmpdir.mkdir(parents=True, exist_ok=True)
+    home.mkdir(parents=True, exist_ok=True)
+    cache.mkdir(parents=True, exist_ok=True)
+    env["TMPDIR"] = str(tmpdir.resolve())
+    env["HOME"] = str(home.resolve())
+    env["XDG_CACHE_HOME"] = str(cache.resolve())
+    proc = subprocess.run(cmd,
+                          text=True,
+                          stdout=subprocess.PIPE,
+                          stderr=subprocess.STDOUT,
+                          env=env,
+                          check=False)
+    output = proc.stdout or ""
+    if proc.returncode == 0:
+        return output, "ok", 0
+    return output, "error", proc.returncode
 
 
 def parse_bpm(output: str) -> float:
@@ -280,7 +319,8 @@ def score(bpm_err: float, downbeat_err: float) -> float:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--beatit", default="build/beatit")
-    parser.add_argument("--model", default="models/beatthis.pt")
+    parser.add_argument("--backend", default="coreml", choices=["coreml", "torch", "beatthis"])
+    parser.add_argument("--model", default="")
     parser.add_argument("--sample-rate", type=float, default=44100.0)
     parser.add_argument("--flags", nargs="*", default=[])
     parser.add_argument("--pass-args", nargs=argparse.REMAINDER, default=[])
@@ -289,7 +329,7 @@ def main() -> None:
     args = parser.parse_args()
 
     beatit = Path(args.beatit)
-    model = Path(args.model)
+    model = Path(args.model) if args.model else None
 
     print(
         "file,bpm_est,bpm_err,anchor_peaks,anchor_autocorr,anchor_comb,anchor_beats,anchor_chosen,"
@@ -307,13 +347,12 @@ def main() -> None:
         "first_beat_peak_s,first_beat_peak_err_s,"
         "first_beat_floor_s,first_beat_floor_err_s,"
         "max_beat_first2s,"
+        "run_status,run_code,"
         "downbeat_onset_s,downbeat_peak_s,score"
     )
     extra_args = [arg for arg in (args.flags + args.pass_args) if arg != "--"]
     if "--ml-verbose" not in extra_args:
         extra_args.append("--ml-verbose")
-    if "--ml-dbn-trace" not in extra_args:
-        extra_args.append("--ml-dbn-trace")
     if not args.no_dbn:
         extra_args += ["--ml-dbn"]
     else:
@@ -322,7 +361,7 @@ def main() -> None:
     for wav, canon in CANONICAL.items():
         if only and wav not in only:
             continue
-        output = run_beatit(beatit, model, wav, extra_args)
+        output, run_status, run_code = run_beatit(beatit, args.backend, model, wav, extra_args)
         bpm_est = parse_bpm(output)
         anchor_peaks, anchor_autocorr, anchor_comb, anchor_beats, anchor_chosen = parse_tempo_anchor(output)
         peak_median_bpm = parse_peak_median_bpm(output)
@@ -441,6 +480,7 @@ def main() -> None:
             f"{first_peak_s:.3f},{first_peak_err:.3f},"
             f"{first_floor_s:.3f},{first_floor_err:.3f},"
             f"{max_beat_first2s:.5f},"
+            f"{run_status},{run_code},"
             f"{canon.onset_s if canon.onset_s is not None else 'nan'},"
             f"{canon.peak_s if canon.peak_s is not None else 'nan'},"
             f"{total:.3f}"
