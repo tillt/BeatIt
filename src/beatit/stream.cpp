@@ -1053,6 +1053,7 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
     };
     struct EdgeOffsetMetrics {
         double median_ms = std::numeric_limits<double>::infinity();
+        double mad_ms = std::numeric_limits<double>::infinity();
         std::size_t count = 0;
     };
     auto measure_edge_offsets = [&](const std::vector<unsigned long long>& beats,
@@ -1155,7 +1156,14 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
             return metrics;
         }
         metrics.count = offsets_ms.size();
-        metrics.median_ms = median_value(offsets_ms);
+        std::vector<double> med_buf = offsets_ms;
+        metrics.median_ms = median_value(med_buf);
+        std::vector<double> abs_dev;
+        abs_dev.reserve(offsets_ms.size());
+        for (double v : offsets_ms) {
+            abs_dev.push_back(std::fabs(v - metrics.median_ms));
+        }
+        metrics.mad_ms = median_value(abs_dev);
         return metrics;
     };
     auto apply_bounded_grid_refit = [&](AnalysisResult* r) {
@@ -1456,16 +1464,57 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
             }
             return selected;
         };
-        auto measure_window_pair = [&](const std::vector<unsigned long long>& beats) {
+        auto measure_window_pair = [&](const std::vector<unsigned long long>& beats,
+                                       double first_window_start_s,
+                                       double last_window_start_s) {
             const std::vector<unsigned long long> first_window_beats =
-                select_window_beats(beats, first_probe_start);
+                select_window_beats(beats, first_window_start_s);
             const std::vector<unsigned long long> last_window_beats =
-                select_window_beats(beats, last_probe_start);
+                select_window_beats(beats, last_window_start_s);
             return std::pair<EdgeOffsetMetrics, EdgeOffsetMetrics>{
                 measure_edge_offsets(first_window_beats, bpm_hint, false),
                 measure_edge_offsets(last_window_beats, bpm_hint, true)};
         };
-        auto [intro, outro] = measure_window_pair(*projected);
+        auto window_usable = [](const EdgeOffsetMetrics& m) {
+            return m.count >= 10 &&
+                   std::isfinite(m.median_ms) &&
+                   std::isfinite(m.mad_ms) &&
+                   m.mad_ms <= 120.0;
+        };
+        const double shift_step = std::clamp(probe_duration * 0.25, 5.0, 20.0);
+        double first_window_start = first_probe_start;
+        double last_window_start = last_probe_start;
+        EdgeOffsetMetrics intro;
+        EdgeOffsetMetrics outro;
+        std::size_t quality_shift_rounds = 0;
+        for (; quality_shift_rounds < 6; ++quality_shift_rounds) {
+            auto pair = measure_window_pair(*projected, first_window_start, last_window_start);
+            intro = pair.first;
+            outro = pair.second;
+            const bool intro_ok = window_usable(intro);
+            const bool outro_ok = window_usable(outro);
+            if (intro_ok && outro_ok) {
+                break;
+            }
+            bool moved = false;
+            if (!intro_ok) {
+                const double next = clamp_start(first_window_start + shift_step);
+                if (next > first_window_start + 0.5) {
+                    first_window_start = next;
+                    moved = true;
+                }
+            }
+            if (!outro_ok) {
+                const double next = clamp_start(last_window_start - shift_step);
+                if (next + 0.5 < last_window_start) {
+                    last_window_start = next;
+                    moved = true;
+                }
+            }
+            if (!moved || (last_window_start - first_window_start) < std::max(1.0, shift_step)) {
+                break;
+            }
+        }
         if (intro.count < 8 || outro.count < 8 ||
             !std::isfinite(intro.median_ms) || !std::isfinite(outro.median_ms)) {
             return;
@@ -1518,7 +1567,7 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
         EdgeOffsetMetrics post_intro = intro;
         EdgeOffsetMetrics post_outro = outro;
         if (second_pass_enabled) {
-            auto measured = measure_window_pair(*projected);
+            auto measured = measure_window_pair(*projected, first_window_start, last_window_start);
             post_intro = measured.first;
             post_outro = measured.second;
             if (post_intro.count >= 8 && post_outro.count >= 8 &&
@@ -1529,7 +1578,8 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
                 const double pass2_applied =
                     apply_scale(&candidate, pass2_ratio, 0.9998, 1.0002, 1e-6);
                 if (pass2_applied != 1.0) {
-                    auto candidate_measured = measure_window_pair(candidate);
+                    auto candidate_measured =
+                        measure_window_pair(candidate, first_window_start, last_window_start);
                     const EdgeOffsetMetrics cand_intro = candidate_measured.first;
                     const EdgeOffsetMetrics cand_outro = candidate_measured.second;
                     if (cand_intro.count >= 8 && cand_outro.count >= 8 &&
@@ -1626,6 +1676,9 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
                       << " second_pass=" << (second_pass_enabled ? 1 : 0)
                       << " first_probe_start_s=" << first_probe_start
                       << " last_probe_start_s=" << last_probe_start
+                      << " first_window_start_s=" << first_window_start
+                      << " last_window_start_s=" << last_window_start
+                      << " quality_shift_rounds=" << quality_shift_rounds
                       << " intro_ms=" << intro.median_ms
                       << " outro_ms=" << outro.median_ms
                       << " post_intro_ms=" << post_intro.median_ms
