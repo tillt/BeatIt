@@ -1265,11 +1265,14 @@ AnalysisResult analyze(const std::vector<float>& samples,
                     return 0;
                 }
                 out_samples->clear();
-                const std::size_t begin = static_cast<std::size_t>(
-                    std::llround(std::max(0.0, start_s) * sample_rate));
-                const std::size_t count = static_cast<std::size_t>(
-                    std::llround(std::max(0.0, duration_s) * sample_rate));
-                const std::size_t end = std::min(samples.size(), begin + count);
+                const double clamped_start = std::max(0.0, start_s);
+                const double clamped_duration = std::max(0.0, duration_s);
+                const double begin_d = std::floor(clamped_start * sample_rate);
+                const double end_d = std::ceil((clamped_start + clamped_duration) * sample_rate);
+                const std::size_t begin = static_cast<std::size_t>(std::max(0.0, begin_d));
+                const std::size_t end = std::min(
+                    samples.size(),
+                    static_cast<std::size_t>(std::max(0.0, end_d)));
                 if (begin >= end) {
                     return 0;
                 }

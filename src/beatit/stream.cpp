@@ -571,8 +571,11 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
         return std::min(std::max(0.0, s), max_start);
     };
 
-    const double left_anchor_start =
-        clamp_start(std::max(0.0, original_config.dbn_tempo_anchor_intro_seconds));
+    const double intro_bound_s =
+        (total < 420.0) ? std::max(0.0, total * 0.25)
+                        : std::max(0.0, original_config.dbn_tempo_anchor_intro_seconds);
+    const double left_anchor_start = clamp_start(
+        std::min(std::max(0.0, original_config.dbn_tempo_anchor_intro_seconds), intro_bound_s));
     const double right_anchor_start = clamp_start(
         total - std::max(0.0, original_config.dbn_tempo_anchor_outro_offset_seconds) - probe_duration);
     const double inward_step = std::clamp(probe_duration * 0.5, 15.0, 45.0);
@@ -660,7 +663,7 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
         if (!(bpm > 0.0) || !(conf > 0.0)) {
             return out;
         }
-        static const double kModes[] = {0.5, 1.0, 2.0, 3.0, (2.0 / 3.0), 1.5};
+        static const double kModes[] = {0.5, 1.0, 2.0};
         for (double m : kModes) {
             const double cand = bpm * m;
             if (cand >= original_config.min_bpm && cand <= original_config.max_bpm) {
@@ -706,6 +709,7 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
         double best_score = std::numeric_limits<double>::infinity();
         for (const auto& cand : all_modes) {
             double score = 0.0;
+            double support = 0.0;
             for (const auto& p : values) {
                 const auto modes = expand_modes(p.bpm, p.conf);
                 double best_local = std::numeric_limits<double>::infinity();
@@ -713,8 +717,12 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
                     best_local = std::min(best_local, relative_diff(cand.bpm, m.bpm) * m.penalty);
                 }
                 score += best_local / std::max(1e-6, p.conf);
+                if (best_local <= 0.02) {
+                    support += p.conf;
+                }
             }
             score *= cand.penalty;
+            score /= (1.0 + (0.8 * support));
             if (score < best_score) {
                 best_score = score;
                 best_bpm = cand.bpm;
@@ -884,6 +892,10 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
 
     const double anchor_start = clamp_start(
         std::max(0.0, original_config.dbn_window_start_seconds));
+    const bool short_track_dynamic_left =
+        (total < 420.0) &&
+        (left_anchor_start + 1.0 <
+         std::max(0.0, original_config.dbn_tempo_anchor_intro_seconds));
     std::vector<IntroPhaseMetrics> probe_intro_metrics(probes.size());
     for (std::size_t i = 0; i < probes.size(); ++i) {
         probe_intro_metrics[i] = measure_intro_phase(
@@ -992,7 +1004,19 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
         const double repair_bpm = have_consensus
             ? consensus_bpm
             : (probes[selected_index].bpm > 0.0 ? probes[selected_index].bpm : 0.0);
-        result = run_probe(anchor_start, probe_duration, repair_bpm);
+        double repair_start = short_track_dynamic_left ? left_anchor_start : anchor_start;
+        if (have_consensus && !probes.empty()) {
+            std::size_t best_mode_index = 0;
+            double best_mode_error = probe_mode_errors[0];
+            for (std::size_t i = 1; i < probes.size(); ++i) {
+                if (probe_mode_errors[i] < best_mode_error) {
+                    best_mode_error = probe_mode_errors[i];
+                    best_mode_index = i;
+                }
+            }
+            repair_start = probes[best_mode_index].start;
+        }
+        result = run_probe(repair_start, probe_duration, repair_bpm);
     }
     auto median_diff = [](const std::vector<unsigned long long>& frames) -> double {
         if (frames.size() < 2) {
@@ -1360,7 +1384,9 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
                       << "\n";
         }
     };
-    apply_sparse_anchor_state_refit(&result);
+    if (!short_track_dynamic_left) {
+        apply_sparse_anchor_state_refit(&result);
+    }
     auto apply_waveform_edge_refit = [&](AnalysisResult* r) {
         if (!r || sample_rate_ <= 0.0 || !provider) {
             return;
@@ -1546,6 +1572,41 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
                             global_outro = cand_outro;
                             global_guard_ratio = guard_applied;
                         }
+                    }
+                }
+            }
+        }
+        if (global_intro.count >= 8 && global_outro.count >= 8 &&
+            std::isfinite(global_intro.median_ms) && std::isfinite(global_outro.median_ms) &&
+            (global_intro.median_ms * global_outro.median_ms) > 0.0) {
+            const double mean_ms = 0.5 * (global_intro.median_ms + global_outro.median_ms);
+            const double beat_ms = 60000.0 / std::max(1e-6, bpm_hint);
+            const double max_shift_ms = std::max(40.0, beat_ms * 0.35);
+            const double clamped_shift_ms = std::clamp(mean_ms, -max_shift_ms, max_shift_ms);
+            const long long shift_frames = static_cast<long long>(
+                std::llround((clamped_shift_ms * sample_rate_) / 1000.0));
+            if (shift_frames != 0) {
+                std::vector<unsigned long long> candidate = *projected;
+                for (std::size_t i = 0; i < candidate.size(); ++i) {
+                    const long long shifted =
+                        static_cast<long long>(candidate[i]) + shift_frames;
+                    candidate[i] =
+                        static_cast<unsigned long long>(std::max<long long>(0, shifted));
+                }
+                const EdgeOffsetMetrics cand_intro =
+                    measure_edge_offsets(candidate, bpm_hint, false);
+                const EdgeOffsetMetrics cand_outro =
+                    measure_edge_offsets(candidate, bpm_hint, true);
+                if (cand_intro.count >= 8 && cand_outro.count >= 8 &&
+                    std::isfinite(cand_intro.median_ms) && std::isfinite(cand_outro.median_ms)) {
+                    const bool improves_intro =
+                        std::abs(cand_intro.median_ms) + 5.0 < std::abs(global_intro.median_ms);
+                    const bool improves_outro =
+                        std::abs(cand_outro.median_ms) + 5.0 < std::abs(global_outro.median_ms);
+                    if (improves_intro && improves_outro) {
+                        *projected = std::move(candidate);
+                        global_intro = cand_intro;
+                        global_outro = cand_outro;
                     }
                 }
             }
