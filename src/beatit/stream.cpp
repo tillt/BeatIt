@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <cstdlib>
 #include <dlfcn.h>
 #include <iostream>
@@ -1007,6 +1008,56 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
         double median_ms = std::numeric_limits<double>::infinity();
         std::size_t count = 0;
     };
+    auto measure_logit_edge_offsets = [&](const std::vector<unsigned long long>& projected,
+                                          const std::vector<unsigned long long>& observed,
+                                          bool from_end) -> EdgeOffsetMetrics {
+        EdgeOffsetMetrics metrics;
+        if (sample_rate_ <= 0.0 || projected.size() < 16 || observed.size() < 16) {
+            return metrics;
+        }
+        const std::size_t probe_beats = std::min<std::size_t>(32, projected.size());
+        std::vector<unsigned long long> edge_beats;
+        edge_beats.reserve(probe_beats);
+        if (from_end) {
+            edge_beats.insert(edge_beats.end(),
+                              projected.end() - static_cast<long>(probe_beats),
+                              projected.end());
+        } else {
+            edge_beats.insert(edge_beats.end(),
+                              projected.begin(),
+                              projected.begin() + static_cast<long>(probe_beats));
+        }
+        if (edge_beats.empty()) {
+            return metrics;
+        }
+
+        std::vector<double> offsets_ms;
+        offsets_ms.reserve(edge_beats.size());
+        for (unsigned long long frame : edge_beats) {
+            auto it = std::lower_bound(observed.begin(), observed.end(), frame);
+            unsigned long long nearest = observed.front();
+            if (it == observed.end()) {
+                nearest = observed.back();
+            } else {
+                nearest = *it;
+                if (it != observed.begin()) {
+                    const unsigned long long prev = *(it - 1);
+                    if ((frame - prev) < (nearest - frame)) {
+                        nearest = prev;
+                    }
+                }
+            }
+            const double delta_frames =
+                static_cast<double>(static_cast<long long>(nearest) - static_cast<long long>(frame));
+            offsets_ms.push_back((delta_frames * 1000.0) / sample_rate_);
+        }
+        if (offsets_ms.size() < 8) {
+            return metrics;
+        }
+        metrics.count = offsets_ms.size();
+        metrics.median_ms = median_value(offsets_ms);
+        return metrics;
+    };
     auto measure_edge_offsets = [&](const std::vector<unsigned long long>& beats,
                                     double bpm_hint,
                                     bool from_end) -> EdgeOffsetMetrics {
@@ -1173,10 +1224,196 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
     if (low_confidence) {
         apply_bounded_grid_refit(&result);
     }
+    auto apply_sparse_anchor_state_refit = [&](AnalysisResult* r) {
+        if (!r || sample_rate_ <= 0.0 || probes.size() < 2) {
+            return;
+        }
+
+        std::vector<unsigned long long>* projected = nullptr;
+        if (!r->coreml_beat_projected_sample_frames.empty()) {
+            projected = &r->coreml_beat_projected_sample_frames;
+        } else if (!r->coreml_beat_sample_frames.empty()) {
+            projected = &r->coreml_beat_sample_frames;
+        }
+        if (!projected || projected->size() < 64) {
+            return;
+        }
+
+        struct AnchorObservation {
+            double local_step = 0.0;
+            double weight = 0.0;
+            double start = 0.0;
+        };
+
+        auto nearest_index = [](const std::vector<unsigned long long>& beats,
+                                unsigned long long frame) -> std::size_t {
+            if (beats.empty()) {
+                return 0;
+            }
+            auto it = std::lower_bound(beats.begin(), beats.end(), frame);
+            if (it == beats.end()) {
+                return beats.size() - 1;
+            }
+            const std::size_t right = static_cast<std::size_t>(it - beats.begin());
+            if (right == 0) {
+                return 0;
+            }
+            const std::size_t left = right - 1;
+            const unsigned long long left_frame = beats[left];
+            const unsigned long long right_frame = beats[right];
+            return (frame - left_frame) <= (right_frame - frame) ? left : right;
+        };
+
+        auto local_step_around = [&](const std::vector<unsigned long long>& beats,
+                                     std::size_t center) -> double {
+            if (beats.size() < 8) {
+                return 0.0;
+            }
+            const std::size_t left = center > 12 ? center - 12 : 1;
+            const std::size_t right = std::min<std::size_t>(beats.size() - 1, center + 12);
+            std::vector<double> diffs;
+            diffs.reserve(right - left + 1);
+            for (std::size_t i = left; i <= right; ++i) {
+                if (beats[i] > beats[i - 1]) {
+                    diffs.push_back(static_cast<double>(beats[i] - beats[i - 1]));
+                }
+            }
+            if (diffs.size() < 4) {
+                return median_diff(beats);
+            }
+            return median_value(diffs);
+        };
+
+        std::vector<AnchorObservation> anchors;
+        anchors.reserve(probes.size());
+        for (const auto& probe : probes) {
+            const auto& probe_beats = !probe.analysis.coreml_beat_projected_sample_frames.empty()
+                ? probe.analysis.coreml_beat_projected_sample_frames
+                : probe.analysis.coreml_beat_sample_frames;
+            if (probe_beats.size() < 64) {
+                continue;
+            }
+            const double center_s = std::max(0.0, probe.start + (probe_duration * 0.5));
+            const unsigned long long center_frame =
+                static_cast<unsigned long long>(std::llround(center_s * sample_rate_));
+            const std::size_t src_idx = nearest_index(probe_beats, center_frame);
+            if (src_idx >= probe_beats.size()) {
+                continue;
+            }
+            const double local_step = local_step_around(probe_beats, src_idx);
+            if (!(local_step > 0.0)) {
+                continue;
+            }
+            const double weight = std::clamp(probe.conf, 0.15, 1.0);
+            anchors.push_back({local_step, weight, probe.start});
+        }
+        if (anchors.size() < 2) {
+            return;
+        }
+
+        const double base_step = median_diff(*projected);
+        if (!(base_step > 0.0)) {
+            return;
+        }
+
+        auto normalize_step = [&](double step) -> double {
+            if (!(step > 0.0)) {
+                return 0.0;
+            }
+            const double harmonics[] = {0.5, 1.0, 2.0, 1.5, (2.0 / 3.0), 3.0};
+            double best = step;
+            double best_err = std::numeric_limits<double>::infinity();
+            for (double h : harmonics) {
+                const double candidate = step * h;
+                const double err = std::fabs(candidate - base_step);
+                if (err < best_err) {
+                    best_err = err;
+                    best = candidate;
+                }
+            }
+            return best;
+        };
+
+        std::vector<double> normalized_steps;
+        normalized_steps.reserve(anchors.size());
+        double weighted_step_sum = 0.0;
+        double weighted_sum = 0.0;
+        double step_min = std::numeric_limits<double>::infinity();
+        double step_max = 0.0;
+        for (const auto& a : anchors) {
+            const double normalized = normalize_step(a.local_step);
+            if (!(normalized > 0.0)) {
+                continue;
+            }
+            normalized_steps.push_back(normalized);
+            weighted_step_sum += a.weight * normalized;
+            weighted_sum += a.weight;
+            step_min = std::min(step_min, normalized);
+            step_max = std::max(step_max, normalized);
+        }
+        if (normalized_steps.size() < 2 || !(weighted_sum > 0.0)) {
+            return;
+        }
+
+        const double spread_ratio = (step_max - step_min) / std::max(1e-6, base_step);
+        if (spread_ratio > 0.004) {
+            return;
+        }
+
+        const double step_target = weighted_step_sum / weighted_sum;
+        if (!(step_target > 0.0)) {
+            return;
+        }
+        const double raw_ratio = step_target / base_step;
+        const double ratio = std::clamp(raw_ratio, 0.9997, 1.0003);
+        if (std::abs(ratio - 1.0) < 1e-5) {
+            return;
+        }
+
+        const long long anchor = static_cast<long long>(projected->front());
+        const double adjusted_step = base_step * ratio;
+        if (!(adjusted_step > 0.0)) {
+            return;
+        }
+
+        for (std::size_t i = 0; i < projected->size(); ++i) {
+            const double rel = static_cast<double>(i) * adjusted_step;
+            const long long adjusted = anchor + static_cast<long long>(std::llround(rel));
+            (*projected)[i] =
+                static_cast<unsigned long long>(std::max<long long>(0, adjusted));
+        }
+
+        if (original_config.verbose) {
+            std::cerr << "Sparse anchor state refit:"
+                      << " anchors=" << anchors.size()
+                      << " spread_ratio=" << spread_ratio
+                      << " step_target=" << step_target
+                      << " ratio=" << raw_ratio
+                      << " ratio_applied=" << ratio
+                      << " base_step=" << base_step
+                      << "\n";
+        }
+    };
+    apply_sparse_anchor_state_refit(&result);
     auto apply_waveform_edge_refit = [&](AnalysisResult* r) {
         if (!r || sample_rate_ <= 0.0 || !provider) {
             return;
         }
+        const bool second_pass_enabled = []() {
+            const char* v = std::getenv("BEATIT_EDGE_REFIT_SECOND_PASS");
+            if (!v || v[0] == '\0') {
+                return true;
+            }
+            return !(v[0] == '0' || v[0] == 'f' || v[0] == 'F' ||
+                     v[0] == 'n' || v[0] == 'N');
+        }();
+        const bool use_logit_source = []() {
+            const char* v = std::getenv("BEATIT_EDGE_REFIT_SOURCE");
+            if (!v) {
+                return false;
+            }
+            return std::strcmp(v, "logits") == 0;
+        }();
         std::vector<unsigned long long>* projected = nullptr;
         if (!r->coreml_beat_projected_sample_frames.empty()) {
             projected = &r->coreml_beat_projected_sample_frames;
@@ -1194,45 +1431,112 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
             return;
         }
 
-        const EdgeOffsetMetrics intro = measure_edge_offsets(*projected, bpm_hint, false);
-        const EdgeOffsetMetrics outro = measure_edge_offsets(*projected, bpm_hint, true);
+        auto measure_pair = [&](const std::vector<unsigned long long>& beats) {
+            if (use_logit_source) {
+                return std::pair<EdgeOffsetMetrics, EdgeOffsetMetrics>{
+                    measure_logit_edge_offsets(beats, r->coreml_beat_sample_frames, false),
+                    measure_logit_edge_offsets(beats, r->coreml_beat_sample_frames, true)};
+            }
+            return std::pair<EdgeOffsetMetrics, EdgeOffsetMetrics>{
+                measure_edge_offsets(beats, bpm_hint, false),
+                measure_edge_offsets(beats, bpm_hint, true)};
+        };
+        auto [intro, outro] = measure_pair(*projected);
         if (intro.count < 8 || outro.count < 8 ||
             !std::isfinite(intro.median_ms) || !std::isfinite(outro.median_ms)) {
             return;
         }
 
-        const double base_step = median_diff(*projected);
-        const double beats_span = static_cast<double>(projected->size() - 1);
-        if (!(base_step > 0.0) || !(beats_span > 0.0)) {
+        auto apply_scale = [&](std::vector<unsigned long long>* beats,
+                               double ratio,
+                               double min_ratio,
+                               double max_ratio,
+                               double min_delta) -> double {
+            if (!beats || beats->size() < 2) {
+                return 1.0;
+            }
+            const double clamped_ratio = std::clamp(ratio, min_ratio, max_ratio);
+            if (std::abs(clamped_ratio - 1.0) < min_delta) {
+                return 1.0;
+            }
+            const long long anchor = static_cast<long long>(beats->front());
+            for (std::size_t i = 0; i < beats->size(); ++i) {
+                const long long current = static_cast<long long>((*beats)[i]);
+                const double rel = static_cast<double>(current - anchor);
+                const long long adjusted =
+                    anchor + static_cast<long long>(std::llround(rel * clamped_ratio));
+                (*beats)[i] =
+                    static_cast<unsigned long long>(std::max<long long>(0, adjusted));
+            }
+            return clamped_ratio;
+        };
+
+        const auto compute_ratio = [&](const std::vector<unsigned long long>& beats,
+                                       const EdgeOffsetMetrics& a,
+                                       const EdgeOffsetMetrics& b) -> double {
+            const double base_step = median_diff(beats);
+            const double beats_span = static_cast<double>(beats.size() - 1);
+            if (!(base_step > 0.0) || !(beats_span > 0.0)) {
+                return 1.0;
+            }
+            const double err_delta_frames = ((b.median_ms - a.median_ms) * sample_rate_) / 1000.0;
+            const double per_beat_adjust = err_delta_frames / beats_span;
+            return 1.0 + (per_beat_adjust / base_step);
+        };
+
+        const double ratio = compute_ratio(*projected, intro, outro);
+        const double applied_ratio =
+            apply_scale(projected, ratio, 0.9995, 1.0005, 1e-5);
+        if (applied_ratio == 1.0) {
             return;
         }
 
-        const double err_delta_frames =
-            ((outro.median_ms - intro.median_ms) * sample_rate_) / 1000.0;
-        const double per_beat_adjust = err_delta_frames / beats_span;
-        const double ratio = 1.0 + (per_beat_adjust / base_step);
-        const double clamped_ratio = std::clamp(ratio, 0.9995, 1.0005);
-        if (std::abs(clamped_ratio - 1.0) < 1e-5) {
-            return;
-        }
-
-        const long long anchor = static_cast<long long>(projected->front());
-        for (std::size_t i = 0; i < projected->size(); ++i) {
-            const long long current = static_cast<long long>((*projected)[i]);
-            const double rel = static_cast<double>(current - anchor);
-            const long long adjusted =
-                anchor + static_cast<long long>(std::llround(rel * clamped_ratio));
-            (*projected)[i] =
-                static_cast<unsigned long long>(std::max<long long>(0, adjusted));
+        EdgeOffsetMetrics post_intro = intro;
+        EdgeOffsetMetrics post_outro = outro;
+        if (second_pass_enabled) {
+            auto measured = measure_pair(*projected);
+            post_intro = measured.first;
+            post_outro = measured.second;
+            if (post_intro.count >= 8 && post_outro.count >= 8 &&
+                std::isfinite(post_intro.median_ms) && std::isfinite(post_outro.median_ms)) {
+                const double post_delta = std::abs(post_outro.median_ms - post_intro.median_ms);
+                std::vector<unsigned long long> candidate = *projected;
+                const double pass2_ratio = compute_ratio(candidate, post_intro, post_outro);
+                const double pass2_applied =
+                    apply_scale(&candidate, pass2_ratio, 0.9998, 1.0002, 1e-6);
+                if (pass2_applied != 1.0) {
+                    auto candidate_measured = measure_pair(candidate);
+                    const EdgeOffsetMetrics cand_intro = candidate_measured.first;
+                    const EdgeOffsetMetrics cand_outro = candidate_measured.second;
+                    if (cand_intro.count >= 8 && cand_outro.count >= 8 &&
+                        std::isfinite(cand_intro.median_ms) && std::isfinite(cand_outro.median_ms)) {
+                        const double cand_delta = std::abs(cand_outro.median_ms - cand_intro.median_ms);
+                        const bool improves_delta = cand_delta <= post_delta;
+                        const bool keeps_intro =
+                            std::abs(cand_intro.median_ms) <= (std::abs(post_intro.median_ms) + 3.0);
+                        if (improves_delta && keeps_intro) {
+                            *projected = std::move(candidate);
+                            post_intro = cand_intro;
+                            post_outro = cand_outro;
+                        }
+                    }
+                }
+            }
         }
 
         if (original_config.verbose) {
+            const double err_delta_frames =
+                ((outro.median_ms - intro.median_ms) * sample_rate_) / 1000.0;
             std::cerr << "Sparse edge refit:"
+                      << " source=" << (use_logit_source ? "logits" : "waveform")
+                      << " second_pass=" << (second_pass_enabled ? 1 : 0)
                       << " intro_ms=" << intro.median_ms
                       << " outro_ms=" << outro.median_ms
+                      << " post_intro_ms=" << post_intro.median_ms
+                      << " post_outro_ms=" << post_outro.median_ms
                       << " delta_frames=" << err_delta_frames
                       << " ratio=" << ratio
-                      << " ratio_applied=" << clamped_ratio
+                      << " ratio_applied=" << applied_ratio
                       << " beats=" << projected->size()
                       << "\n";
         }
