@@ -20,6 +20,7 @@ constexpr double kTargetBpm = 110.0;
 constexpr double kMaxBpmError = 2.0;
 constexpr double kMaxOffsetSlopeMsPerBeat = 0.05;
 constexpr double kMaxStartEndDeltaMs = 80.0;
+constexpr double kMaxStartEndDeltaBeats = 0.12;
 constexpr double kMaxOddEvenMedianGapMs = 80.0;
 constexpr double kMaxIntroMedianAbsOffsetMs = 60.0;
 constexpr std::size_t kTempoEdgeIntervals = 64;
@@ -501,6 +502,11 @@ int main() {
     const double start_median_abs_ms = median(first_abs);
     const double end_median_ms = median(last);
     const double start_end_delta_ms = end_median_ms - start_median_ms;
+    const double ms_per_beat = result.estimated_bpm > 0.0
+                                   ? (60000.0 / result.estimated_bpm)
+                                   : 0.0;
+    const double start_end_delta_beats =
+        ms_per_beat > 0.0 ? (std::fabs(start_end_delta_ms) / ms_per_beat) : 0.0;
     const double slope_ms_per_beat = linear_slope(offsets_ms);
 
     const std::size_t alt_n = std::min<std::size_t>(kAlternationWindowBeats, offsets_ms.size());
@@ -529,6 +535,7 @@ int main() {
               << " start_median_abs_ms=" << start_median_abs_ms
               << " end_median_ms=" << end_median_ms
               << " delta_ms=" << start_end_delta_ms
+              << " delta_beats=" << start_end_delta_beats
               << " slope_ms_per_beat=" << slope_ms_per_beat
               << " odd_even_gap_ms=" << odd_even_gap_ms
               << " early_bpm=" << early_bpm
@@ -550,6 +557,12 @@ int main() {
     if (std::fabs(start_end_delta_ms) > kMaxStartEndDeltaMs) {
         std::cerr << "Window alignment test failed: start/end delta " << start_end_delta_ms
                   << "ms > " << kMaxStartEndDeltaMs << "ms\n";
+        return 1;
+    }
+    if (start_end_delta_beats > kMaxStartEndDeltaBeats) {
+        std::cerr << "Window alignment test failed: start/end delta "
+                  << start_end_delta_beats << " beats > "
+                  << kMaxStartEndDeltaBeats << " beats\n";
         return 1;
     }
     if (odd_even_gap_ms > kMaxOddEvenMedianGapMs) {
