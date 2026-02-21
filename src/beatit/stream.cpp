@@ -981,11 +981,18 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
             ? std::max(0.0, second_best - out.selected_score)
             : 0.0;
         const auto& intro = probe_intro_metrics[out.selected_index];
+        const bool severe_intro_miss =
+            std::isfinite(intro.median_abs_ms) && intro.median_abs_ms > 220.0;
+        const bool intro_miss_with_weak_conf =
+            std::isfinite(intro.median_abs_ms) &&
+            intro.median_abs_ms > 170.0 &&
+            probes[out.selected_index].conf < 0.80;
         out.low_confidence =
             (out.score_margin < 0.06) ||
             (probes[out.selected_index].conf < 0.55) ||
             (probe_mode_errors[out.selected_index] > 0.03) ||
-            (std::isfinite(intro.median_abs_ms) && intro.median_abs_ms > 110.0) ||
+            severe_intro_miss ||
+            intro_miss_with_weak_conf ||
             (std::isfinite(intro.odd_even_gap_ms) && intro.odd_even_gap_ms > 220.0);
         return out;
     };
