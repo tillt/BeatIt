@@ -2500,7 +2500,7 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
         }
     };
 
-    auto fill_beats_from_frames_raw = [&](const std::vector<std::size_t>& frames) {
+    [[maybe_unused]] auto fill_beats_from_frames_raw = [&](const std::vector<std::size_t>& frames) {
         result.beat_feature_frames.clear();
         result.beat_feature_frames.reserve(frames.size());
         result.beat_sample_frames.clear();
@@ -5691,15 +5691,14 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                                 const std::size_t tail_begin = samples.size() - edge;
                                 const double end_offset =
                                     median_of_offsets(samples, tail_begin, edge);
-                                const std::size_t start_index = samples[edge / 2].beat_index;
-                                const std::size_t end_index =
-                                    samples[tail_begin + edge / 2].beat_index;
+                                const std::size_t start_index = samples.front().beat_index;
+                                const std::size_t end_index = samples.back().beat_index;
                                 const double index_delta =
                                     static_cast<double>(end_index - start_index);
                                 if (index_delta > 0.0) {
                                     const double step_correction =
                                         (end_offset - start_offset) / index_delta;
-                                    const double max_step_correction = step_frames * 0.02;
+                                    const double max_step_correction = step_frames * 0.01;
                                     const double clamped_correction =
                                         std::clamp(step_correction,
                                                    -max_step_correction,
@@ -5714,6 +5713,8 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                                             std::cerr << "DBN grid drift-correct:"
                                                       << " start_offset=" << start_offset
                                                       << " end_offset=" << end_offset
+                                                      << " start_index=" << start_index
+                                                      << " end_index=" << end_index
                                                       << " step_correction=" << step_correction
                                                       << " step_applied=" << clamped_correction
                                                       << " step_frames=" << step_frames
@@ -5825,7 +5826,9 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                 }
             }
 
-            fill_beats_from_frames_raw(decoded.beat_frames);
+            // Use the refined peak interpolation path for decoded DBN beats as well,
+            // so sample-frame timing is not quantized to integer feature frames.
+            fill_beats_from_frames(decoded.beat_frames);
             if (config.dbn_project_grid && decoded.beat_frames.size() >= 2 && projected_bpm > 0.0) {
                 fill_beats_from_bpm_grid_into(decoded.beat_frames.front(),
                                               projected_bpm,
