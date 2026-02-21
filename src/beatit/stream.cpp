@@ -11,7 +11,6 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
-#include <cstring>
 #include <cstdlib>
 #include <dlfcn.h>
 #include <iostream>
@@ -1008,56 +1007,6 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
         double median_ms = std::numeric_limits<double>::infinity();
         std::size_t count = 0;
     };
-    auto measure_logit_edge_offsets = [&](const std::vector<unsigned long long>& projected,
-                                          const std::vector<unsigned long long>& observed,
-                                          bool from_end) -> EdgeOffsetMetrics {
-        EdgeOffsetMetrics metrics;
-        if (sample_rate_ <= 0.0 || projected.size() < 16 || observed.size() < 16) {
-            return metrics;
-        }
-        const std::size_t probe_beats = std::min<std::size_t>(32, projected.size());
-        std::vector<unsigned long long> edge_beats;
-        edge_beats.reserve(probe_beats);
-        if (from_end) {
-            edge_beats.insert(edge_beats.end(),
-                              projected.end() - static_cast<long>(probe_beats),
-                              projected.end());
-        } else {
-            edge_beats.insert(edge_beats.end(),
-                              projected.begin(),
-                              projected.begin() + static_cast<long>(probe_beats));
-        }
-        if (edge_beats.empty()) {
-            return metrics;
-        }
-
-        std::vector<double> offsets_ms;
-        offsets_ms.reserve(edge_beats.size());
-        for (unsigned long long frame : edge_beats) {
-            auto it = std::lower_bound(observed.begin(), observed.end(), frame);
-            unsigned long long nearest = observed.front();
-            if (it == observed.end()) {
-                nearest = observed.back();
-            } else {
-                nearest = *it;
-                if (it != observed.begin()) {
-                    const unsigned long long prev = *(it - 1);
-                    if ((frame - prev) < (nearest - frame)) {
-                        nearest = prev;
-                    }
-                }
-            }
-            const double delta_frames =
-                static_cast<double>(static_cast<long long>(nearest) - static_cast<long long>(frame));
-            offsets_ms.push_back((delta_frames * 1000.0) / sample_rate_);
-        }
-        if (offsets_ms.size() < 8) {
-            return metrics;
-        }
-        metrics.count = offsets_ms.size();
-        metrics.median_ms = median_value(offsets_ms);
-        return metrics;
-    };
     auto measure_edge_offsets = [&](const std::vector<unsigned long long>& beats,
                                     double bpm_hint,
                                     bool from_end) -> EdgeOffsetMetrics {
@@ -1407,13 +1356,6 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
             return !(v[0] == '0' || v[0] == 'f' || v[0] == 'F' ||
                      v[0] == 'n' || v[0] == 'N');
         }();
-        const bool use_logit_source = []() {
-            const char* v = std::getenv("BEATIT_EDGE_REFIT_SOURCE");
-            if (!v) {
-                return false;
-            }
-            return std::strcmp(v, "logits") == 0;
-        }();
         std::vector<unsigned long long>* projected = nullptr;
         if (!r->coreml_beat_projected_sample_frames.empty()) {
             projected = &r->coreml_beat_projected_sample_frames;
@@ -1432,11 +1374,6 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
         }
 
         auto measure_pair = [&](const std::vector<unsigned long long>& beats) {
-            if (use_logit_source) {
-                return std::pair<EdgeOffsetMetrics, EdgeOffsetMetrics>{
-                    measure_logit_edge_offsets(beats, r->coreml_beat_sample_frames, false),
-                    measure_logit_edge_offsets(beats, r->coreml_beat_sample_frames, true)};
-            }
             return std::pair<EdgeOffsetMetrics, EdgeOffsetMetrics>{
                 measure_edge_offsets(beats, bpm_hint, false),
                 measure_edge_offsets(beats, bpm_hint, true)};
@@ -1528,7 +1465,6 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
             const double err_delta_frames =
                 ((outro.median_ms - intro.median_ms) * sample_rate_) / 1000.0;
             std::cerr << "Sparse edge refit:"
-                      << " source=" << (use_logit_source ? "logits" : "waveform")
                       << " second_pass=" << (second_pass_enabled ? 1 : 0)
                       << " intro_ms=" << intro.median_ms
                       << " outro_ms=" << outro.median_ms
