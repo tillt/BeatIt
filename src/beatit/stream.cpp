@@ -571,9 +571,26 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
         return std::min(std::max(0.0, s), max_start);
     };
 
+    const double left_anchor_start =
+        clamp_start(std::max(0.0, original_config.dbn_tempo_anchor_intro_seconds));
+    const double right_anchor_start = clamp_start(
+        total - std::max(0.0, original_config.dbn_tempo_anchor_outro_offset_seconds) - probe_duration);
+    const double inward_step = std::clamp(probe_duration * 0.5, 15.0, 45.0);
+
     std::vector<double> probe_starts;
-    probe_starts.push_back(clamp_start(std::max(0.0, original_config.dbn_tempo_anchor_intro_seconds)));
-    probe_starts.push_back(clamp_start(total - 60.0 - probe_duration));
+    auto push_unique_start = [&](double start_s) {
+        const double clamped = clamp_start(start_s);
+        for (double existing : probe_starts) {
+            if (std::abs(existing - clamped) < 1.0) {
+                return;
+            }
+        }
+        probe_starts.push_back(clamped);
+    };
+    push_unique_start(left_anchor_start);
+    push_unique_start(left_anchor_start + inward_step);
+    push_unique_start(right_anchor_start);
+    push_unique_start(right_anchor_start - inward_step);
     if (probe_starts.size() >= 2 && std::abs(probe_starts[1] - probe_starts[0]) < 1.0) {
         probe_starts[1] = clamp_start(total * 0.5 - probe_duration * 0.5);
     }
@@ -658,7 +675,7 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
     };
 
     std::vector<ProbeResult> probes;
-    probes.reserve(3);
+    probes.reserve(probe_starts.size() + 1);
     for (double s : probe_starts) {
         ProbeResult p;
         p.start = s;
@@ -1373,12 +1390,49 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
             return;
         }
 
-        auto measure_pair = [&](const std::vector<unsigned long long>& beats) {
-            return std::pair<EdgeOffsetMetrics, EdgeOffsetMetrics>{
-                measure_edge_offsets(beats, bpm_hint, false),
-                measure_edge_offsets(beats, bpm_hint, true)};
+        std::size_t first_probe_index = 0;
+        std::size_t last_probe_index = 0;
+        for (std::size_t i = 1; i < probes.size(); ++i) {
+            if (probes[i].start < probes[first_probe_index].start) {
+                first_probe_index = i;
+            }
+            if (probes[i].start > probes[last_probe_index].start) {
+                last_probe_index = i;
+            }
+        }
+        const double first_probe_start = probes[first_probe_index].start;
+        const double last_probe_start = probes[last_probe_index].start;
+        if (std::abs(last_probe_start - first_probe_start) < 1.0) {
+            return;
+        }
+
+        auto select_window_beats = [&](const std::vector<unsigned long long>& beats,
+                                       double window_start_s) {
+            std::vector<unsigned long long> selected;
+            if (sample_rate_ <= 0.0 || beats.empty()) {
+                return selected;
+            }
+            const unsigned long long window_start_frame = static_cast<unsigned long long>(
+                std::llround(std::max(0.0, window_start_s) * sample_rate_));
+            const unsigned long long window_end_frame = static_cast<unsigned long long>(
+                std::llround(std::max(0.0, window_start_s + probe_duration) * sample_rate_));
+            auto begin_it = std::lower_bound(beats.begin(), beats.end(), window_start_frame);
+            auto end_it = std::upper_bound(beats.begin(), beats.end(), window_end_frame);
+            if (begin_it < end_it) {
+                selected.insert(selected.end(), begin_it, end_it);
+            }
+            return selected;
         };
-        auto [intro, outro] = measure_pair(*projected);
+        auto measure_window_pair = [&](const std::vector<unsigned long long>& beats) {
+            const std::vector<unsigned long long> first_window_beats =
+                select_window_beats(beats, first_probe_start);
+            const std::vector<unsigned long long> last_window_beats =
+                select_window_beats(beats, last_probe_start);
+            return std::pair<EdgeOffsetMetrics, EdgeOffsetMetrics>{
+                measure_edge_offsets(first_window_beats, bpm_hint, false),
+                measure_edge_offsets(last_window_beats, bpm_hint, true)};
+        };
+        auto [intro, outro] = measure_window_pair(*projected);
         if (intro.count < 8 || outro.count < 8 ||
             !std::isfinite(intro.median_ms) || !std::isfinite(outro.median_ms)) {
             return;
@@ -1431,7 +1485,7 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
         EdgeOffsetMetrics post_intro = intro;
         EdgeOffsetMetrics post_outro = outro;
         if (second_pass_enabled) {
-            auto measured = measure_pair(*projected);
+            auto measured = measure_window_pair(*projected);
             post_intro = measured.first;
             post_outro = measured.second;
             if (post_intro.count >= 8 && post_outro.count >= 8 &&
@@ -1442,7 +1496,7 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
                 const double pass2_applied =
                     apply_scale(&candidate, pass2_ratio, 0.9998, 1.0002, 1e-6);
                 if (pass2_applied != 1.0) {
-                    auto candidate_measured = measure_pair(candidate);
+                    auto candidate_measured = measure_window_pair(candidate);
                     const EdgeOffsetMetrics cand_intro = candidate_measured.first;
                     const EdgeOffsetMetrics cand_outro = candidate_measured.second;
                     if (cand_intro.count >= 8 && cand_outro.count >= 8 &&
@@ -1461,15 +1515,56 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
             }
         }
 
+        // Final safety pass: minimize whole-file edge drift while preserving intro alignment.
+        EdgeOffsetMetrics global_intro = measure_edge_offsets(*projected, bpm_hint, false);
+        EdgeOffsetMetrics global_outro = measure_edge_offsets(*projected, bpm_hint, true);
+        double global_guard_ratio = 1.0;
+        if (global_intro.count >= 8 && global_outro.count >= 8 &&
+            std::isfinite(global_intro.median_ms) && std::isfinite(global_outro.median_ms)) {
+            const double global_delta = std::abs(global_outro.median_ms - global_intro.median_ms);
+            if (global_delta > 30.0) {
+                std::vector<unsigned long long> candidate = *projected;
+                const double guard_ratio =
+                    compute_ratio(candidate, global_intro, global_outro);
+                const double guard_applied =
+                    apply_scale(&candidate, guard_ratio, 0.99985, 1.00015, 1e-6);
+                if (guard_applied != 1.0) {
+                    const EdgeOffsetMetrics cand_intro =
+                        measure_edge_offsets(candidate, bpm_hint, false);
+                    const EdgeOffsetMetrics cand_outro =
+                        measure_edge_offsets(candidate, bpm_hint, true);
+                    if (cand_intro.count >= 8 && cand_outro.count >= 8 &&
+                        std::isfinite(cand_intro.median_ms) && std::isfinite(cand_outro.median_ms)) {
+                        const double cand_delta =
+                            std::abs(cand_outro.median_ms - cand_intro.median_ms);
+                        const bool improves_delta = cand_delta <= (global_delta - 1.0);
+                        const bool keeps_intro =
+                            std::abs(cand_intro.median_ms) <= (std::abs(global_intro.median_ms) + 4.0);
+                        if (improves_delta && keeps_intro) {
+                            *projected = std::move(candidate);
+                            global_intro = cand_intro;
+                            global_outro = cand_outro;
+                            global_guard_ratio = guard_applied;
+                        }
+                    }
+                }
+            }
+        }
+
         if (original_config.verbose) {
             const double err_delta_frames =
                 ((outro.median_ms - intro.median_ms) * sample_rate_) / 1000.0;
             std::cerr << "Sparse edge refit:"
                       << " second_pass=" << (second_pass_enabled ? 1 : 0)
+                      << " first_probe_start_s=" << first_probe_start
+                      << " last_probe_start_s=" << last_probe_start
                       << " intro_ms=" << intro.median_ms
                       << " outro_ms=" << outro.median_ms
                       << " post_intro_ms=" << post_intro.median_ms
                       << " post_outro_ms=" << post_outro.median_ms
+                      << " global_intro_ms=" << global_intro.median_ms
+                      << " global_outro_ms=" << global_outro.median_ms
+                      << " global_ratio_applied=" << global_guard_ratio
                       << " delta_frames=" << err_delta_frames
                       << " ratio=" << ratio
                       << " ratio_applied=" << applied_ratio
