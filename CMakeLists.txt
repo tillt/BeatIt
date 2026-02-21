@@ -199,112 +199,6 @@ endif()
 
 enable_testing()
 
-find_package(Python3 COMPONENTS Interpreter)
-
-set(BEATIT_SYNTH_AUDIO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/training/generated")
-set(BEATIT_SYNTH_AUDIO_120 "${BEATIT_SYNTH_AUDIO_DIR}/synthetic_click_120bpm.wav")
-set(BEATIT_SYNTH_AUDIO_90 "${BEATIT_SYNTH_AUDIO_DIR}/synthetic_click_90bpm.wav")
-set(BEATIT_SYNTH_AUDIO_TEST "${CMAKE_CURRENT_SOURCE_DIR}/training/test.wav")
-
-if(Python3_Interpreter_FOUND)
-    add_custom_command(
-        OUTPUT
-            "${BEATIT_SYNTH_AUDIO_TEST}"
-            "${BEATIT_SYNTH_AUDIO_120}"
-            "${BEATIT_SYNTH_AUDIO_90}"
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_SOURCE_DIR}/training"
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${BEATIT_SYNTH_AUDIO_DIR}"
-        COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/training/generate_test_audio.py"
-            --out "${BEATIT_SYNTH_AUDIO_TEST}"
-            --bpm 123
-            --duration 20
-            --sample-rate 44100
-            --frequency 200
-            --click-ms 10
-            --amplitude 0.5
-        COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/training/generate_test_audio.py"
-            --out "${BEATIT_SYNTH_AUDIO_120}" --bpm 120 --duration 10
-        COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/training/generate_test_audio.py"
-            --out "${BEATIT_SYNTH_AUDIO_90}" --bpm 90 --duration 10
-        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/training/generate_test_audio.py"
-        COMMENT "Generating synthetic test audio"
-    )
-
-    add_custom_target(generate_test_audio
-        DEPENDS
-            "${BEATIT_SYNTH_AUDIO_TEST}"
-            "${BEATIT_SYNTH_AUDIO_120}"
-            "${BEATIT_SYNTH_AUDIO_90}"
-    )
-else()
-    message(STATUS "Python3 not found; synthetic test audio will not be generated.")
-endif()
-
-add_executable(beatit_streaming_synthetic_tests
-    tests/streaming_coreml_synthetic_test.mm
-)
-
-target_link_libraries(beatit_streaming_synthetic_tests
-    PRIVATE
-        beatit_lib
-)
-
-target_compile_definitions(beatit_streaming_synthetic_tests PRIVATE
-    BEATIT_TEST_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/models/beatit.mlpackage"
-    BEATIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
-)
-
-if(APPLE)
-    target_compile_options(beatit_streaming_synthetic_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
-    target_link_libraries(beatit_streaming_synthetic_tests PRIVATE "-framework CoreML" "-framework Foundation")
-    target_link_options(beatit_streaming_synthetic_tests PRIVATE "-Wl,-no_warn_duplicate_libraries")
-endif()
-
-if(TARGET generate_test_audio)
-    add_dependencies(beatit_streaming_synthetic_tests generate_test_audio)
-endif()
-
-add_test(NAME beatit_streaming_synthetic_tests COMMAND beatit_streaming_synthetic_tests)
-set_tests_properties(beatit_streaming_synthetic_tests PROPERTIES
-    ENVIRONMENT
-        "TMPDIR=${CMAKE_CURRENT_BINARY_DIR}/coreml_tmp;HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_home;XDG_CACHE_HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_cache"
-    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-    SKIP_RETURN_CODE 77
-)
-
-add_executable(beatit_streaming_decoded_audio_tests
-    tests/streaming_coreml_decoded_audio_test.mm
-)
-
-target_link_libraries(beatit_streaming_decoded_audio_tests
-    PRIVATE
-        beatit_lib
-)
-
-target_compile_definitions(beatit_streaming_decoded_audio_tests PRIVATE
-    BEATIT_TEST_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/models/beatit.mlpackage"
-    BEATIT_TEST_AUDIO_PATH="${CMAKE_CURRENT_SOURCE_DIR}/training/test.wav"
-    BEATIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
-)
-
-if(APPLE)
-    target_compile_options(beatit_streaming_decoded_audio_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
-    target_link_libraries(beatit_streaming_decoded_audio_tests PRIVATE "-framework AVFoundation" "-framework CoreMedia" "-framework CoreML" "-framework Foundation")
-    target_link_options(beatit_streaming_decoded_audio_tests PRIVATE "-Wl,-no_warn_duplicate_libraries")
-endif()
-
-if(TARGET generate_test_audio)
-    add_dependencies(beatit_streaming_decoded_audio_tests generate_test_audio)
-endif()
-
-add_test(NAME beatit_streaming_decoded_audio_tests COMMAND beatit_streaming_decoded_audio_tests)
-set_tests_properties(beatit_streaming_decoded_audio_tests PROPERTIES
-    ENVIRONMENT
-        "TMPDIR=${CMAKE_CURRENT_BINARY_DIR}/coreml_tmp;HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_home;XDG_CACHE_HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_cache"
-    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-    SKIP_RETURN_CODE 77
-)
-
 add_executable(beatit_dbn_tests
     tests/dbn_decoder_test.mm
 )
@@ -347,54 +241,27 @@ set_tests_properties(beatit_dbn_purelove_tests PROPERTIES
     SKIP_RETURN_CODE 77
 )
 
-add_executable(beatit_manucho_alignment_tests
-    tests/manucho_alignment_test.mm
+add_executable(beatit_sparse_tempo_grid_consistency_tests
+    tests/sparse_tempo_grid_consistency_test.mm
 )
 
-target_link_libraries(beatit_manucho_alignment_tests
+target_link_libraries(beatit_sparse_tempo_grid_consistency_tests
     PRIVATE
         beatit_lib
 )
 
-target_compile_definitions(beatit_manucho_alignment_tests PRIVATE
+target_compile_definitions(beatit_sparse_tempo_grid_consistency_tests PRIVATE
     BEATIT_TEST_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/models/beatit.mlpackage"
     BEATIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
 )
 
 if(APPLE)
-    target_compile_options(beatit_manucho_alignment_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
-    target_link_libraries(beatit_manucho_alignment_tests PRIVATE "-framework AVFoundation" "-framework CoreML" "-framework Foundation")
+    target_compile_options(beatit_sparse_tempo_grid_consistency_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
+    target_link_libraries(beatit_sparse_tempo_grid_consistency_tests PRIVATE "-framework AVFoundation" "-framework CoreML" "-framework Foundation")
 endif()
 
-add_test(NAME beatit_manucho_alignment_tests COMMAND beatit_manucho_alignment_tests)
-set_tests_properties(beatit_manucho_alignment_tests PROPERTIES
-    ENVIRONMENT
-        "TMPDIR=${CMAKE_CURRENT_BINARY_DIR}/coreml_tmp;HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_home;XDG_CACHE_HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_cache"
-    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-    SKIP_RETURN_CODE 77
-)
-
-add_executable(beatit_manucho_window_alignment_tests
-    tests/manucho_window_alignment_test.mm
-)
-
-target_link_libraries(beatit_manucho_window_alignment_tests
-    PRIVATE
-        beatit_lib
-)
-
-target_compile_definitions(beatit_manucho_window_alignment_tests PRIVATE
-    BEATIT_TEST_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/models/beatit.mlpackage"
-    BEATIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
-)
-
-if(APPLE)
-    target_compile_options(beatit_manucho_window_alignment_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
-    target_link_libraries(beatit_manucho_window_alignment_tests PRIVATE "-framework AVFoundation" "-framework CoreML" "-framework Foundation")
-endif()
-
-add_test(NAME beatit_manucho_window_alignment_tests COMMAND beatit_manucho_window_alignment_tests)
-set_tests_properties(beatit_manucho_window_alignment_tests PROPERTIES
+add_test(NAME beatit_sparse_tempo_grid_consistency_tests COMMAND beatit_sparse_tempo_grid_consistency_tests)
+set_tests_properties(beatit_sparse_tempo_grid_consistency_tests PROPERTIES
     ENVIRONMENT
         "TMPDIR=${CMAKE_CURRENT_BINARY_DIR}/coreml_tmp;HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_home;XDG_CACHE_HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_cache"
     WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
@@ -423,6 +290,34 @@ endif()
 
 add_test(NAME beatit_manucho_window_alignment_sparse_tests COMMAND beatit_manucho_window_alignment_sparse_tests)
 set_tests_properties(beatit_manucho_window_alignment_sparse_tests PROPERTIES
+    ENVIRONMENT
+        "TMPDIR=${CMAKE_CURRENT_BINARY_DIR}/coreml_tmp;HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_home;XDG_CACHE_HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_cache"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    SKIP_RETURN_CODE 77
+)
+
+add_executable(beatit_enigma_window_alignment_sparse_tests
+    tests/enigma_window_alignment_test.mm
+)
+
+target_link_libraries(beatit_enigma_window_alignment_sparse_tests
+    PRIVATE
+        beatit_lib
+)
+
+target_compile_definitions(beatit_enigma_window_alignment_sparse_tests PRIVATE
+    BEATIT_TEST_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/models/beatit.mlpackage"
+    BEATIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+    BEATIT_TEST_SPARSE_PROBE_MODE=1
+)
+
+if(APPLE)
+    target_compile_options(beatit_enigma_window_alignment_sparse_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
+    target_link_libraries(beatit_enigma_window_alignment_sparse_tests PRIVATE "-framework AVFoundation" "-framework CoreML" "-framework Foundation")
+endif()
+
+add_test(NAME beatit_enigma_window_alignment_sparse_tests COMMAND beatit_enigma_window_alignment_sparse_tests)
+set_tests_properties(beatit_enigma_window_alignment_sparse_tests PROPERTIES
     ENVIRONMENT
         "TMPDIR=${CMAKE_CURRENT_BINARY_DIR}/coreml_tmp;HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_home;XDG_CACHE_HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_cache"
     WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
@@ -484,24 +379,5 @@ if(BEATIT_USE_TORCH)
         SKIP_RETURN_CODE 77
     )
 endif()
-
-add_executable(beatit_coreml_stream_tests
-    tests/torch_stream_test.mm
-)
-
-target_link_libraries(beatit_coreml_stream_tests
-    PRIVATE
-        beatit_lib
-)
-
-if(APPLE)
-    target_compile_options(beatit_coreml_stream_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
-endif()
-
-add_test(NAME beatit_coreml_stream_tests COMMAND beatit_coreml_stream_tests)
-set_tests_properties(beatit_coreml_stream_tests PROPERTIES
-    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-    SKIP_RETURN_CODE 77
-)
 
 install(TARGETS beatit beatit_lib)
