@@ -3173,7 +3173,7 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
         return (60.0 * fps) / median;
     };
 
-    if (!config.use_dbn && config.use_logit_consensus) {
+    if (!config.use_dbn) {
         auto refine_peak_position = [&](std::size_t frame,
                                         const std::vector<float>& activation) -> double {
             if (activation.empty()) {
@@ -3590,31 +3590,17 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
             std::max(config.activation_threshold, config.dbn_activation_floor);
         std::pair<std::size_t, std::size_t> window{0, used_frames};
         bool window_energy = false;
-        const bool use_best_window = config.dbn_window_best;
         const bool phase_energy_ok =
             phase_energy && !phase_energy->empty() && phase_energy->size() >= used_frames;
-        if (use_best_window) {
-            const bool prefer_phase = config.dbn_window_use_phase_energy && phase_energy_ok;
-            if (prefer_phase) {
-                window = select_dbn_window_energy(*phase_energy,
-                                                  config.dbn_window_seconds,
-                                                  false);
-                window_energy = true;
-            } else {
-                window = select_dbn_window_energy(result.beat_activation,
-                                                  config.dbn_window_seconds,
-                                                  false);
-                window_energy = false;
-            }
-        } else if (config.dbn_window_use_phase_energy && phase_energy_ok) {
+        if (phase_energy_ok) {
             window = select_dbn_window_energy(*phase_energy,
                                               config.dbn_window_seconds,
-                                              config.dbn_window_intro_mid_outro);
+                                              false);
             window_energy = true;
         } else {
             window = select_dbn_window(result.beat_activation,
                                        config.dbn_window_seconds,
-                                       config.dbn_window_intro_mid_outro,
+                                       true,
                                        min_bpm,
                                        max_bpm,
                                        window_peak_threshold);
@@ -3642,8 +3628,7 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                           << " end=" << window_end
                           << " frames=" << (window_end - window_start)
                           << " (" << ((window_end - window_start) / fps) << "s)"
-                          << " selector=" << (use_best_window ? "best-energy"
-                                       : (window_energy ? "energy" : "tempo"))
+                          << " selector=" << (window_energy ? "best-energy-phase" : "tempo")
                           << " energy=" << (window_energy ? "phase" : "beat")
                           << "\n";
             }
@@ -3764,7 +3749,7 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                     std::cerr << "DBN calmdad prior: insufficient peaks for clamp\n";
                 }
             }
-            if (use_window && config.dbn_window_intro_mid_outro && config.dbn_window_stitch) {
+            if (false) {
                 const std::size_t window_frames = static_cast<std::size_t>(
                     std::round(config.dbn_window_seconds * fps));
                 const std::size_t intro_end = std::min<std::size_t>(used_frames, window_frames);
@@ -4052,7 +4037,7 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                               << " downbeats=" << decoded.downbeat_frames.size()
                               << "\n";
                 }
-            } else if (use_window && config.dbn_window_intro_mid_outro && config.dbn_window_consensus) {
+            } else if (false) {
                 const std::size_t window_frames = static_cast<std::size_t>(
                     std::round(config.dbn_window_seconds * fps));
                 const auto best_span =
@@ -4565,7 +4550,7 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                 };
                 const double bpm_from_fit = bpm_from_linear_fit(filtered_beats);
                 double bpm_from_global_fit = 0.0;
-                if (config.dbn_window_intro_mid_outro && used_frames > 0 && fps > 0.0) {
+                if (true && used_frames > 0 && fps > 0.0) {
                     const std::size_t requested_window_frames = static_cast<std::size_t>(
                         std::round(config.dbn_window_seconds * fps));
                     const std::size_t min_window_frames = static_cast<std::size_t>(std::round(15.0 * fps));
@@ -4781,6 +4766,10 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                 const bool ref_mismatch =
                     downbeat_override_ok && bpm_from_downbeats > 0.0 && ref_downbeat_ratio > 0.005;
                 const bool drop_ref = (quality_low || ref_mismatch) && reference_bpm > 0.0f;
+                const bool allow_reference_grid_bpm =
+                    reference_bpm > 0.0f &&
+                    ((static_cast<double>(max_bpm) - static_cast<double>(min_bpm)) <=
+                     std::max(2.0, static_cast<double>(reference_bpm) * 0.05));
                 bool global_fit_plausible = false;
                 if (bpm_from_global_fit > 0.0 && bpm_from_fit > 0.0) {
                     const double diff = std::abs(bpm_from_global_fit - bpm_from_fit);
@@ -4797,8 +4786,7 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                 if (global_fit_plausible) {
                     bpm_for_grid = bpm_from_global_fit;
                     bpm_source = "global_fit";
-                } else if (reference_bpm > 0.0f && !quality_low && !ref_mismatch &&
-                           config.dbn_window_consensus) {
+                } else if (allow_reference_grid_bpm && !quality_low && !ref_mismatch) {
                     bpm_for_grid = reference_bpm;
                     bpm_source = "reference";
                 } else if (downbeat_override_ok && bpm_from_downbeats > 0.0) {
@@ -4822,8 +4810,7 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                     bpm_for_grid = bpm_from_peaks;
                     bpm_source = "peaks";
                 }
-                if (bpm_for_grid <= 0.0 && reference_bpm > 0.0f &&
-                    config.dbn_window_consensus) {
+                if (bpm_for_grid <= 0.0 && allow_reference_grid_bpm) {
                     bpm_for_grid = reference_bpm;
                     bpm_source = "reference_fallback";
                 }

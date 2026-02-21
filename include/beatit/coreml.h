@@ -77,7 +77,6 @@ struct CoreMLConfig {
     float offbeat_tolerance = 0.10f;
     std::size_t tempo_window_beats = 8;
     bool use_dbn = true;
-    bool use_logit_consensus = false;
     double logit_block_seconds = 120.0;
     double logit_block_hop_seconds = 60.0;
     double logit_phase_window_seconds = 2.0;
@@ -116,12 +115,8 @@ struct CoreMLConfig {
     double dbn_tempo_anchor_intro_seconds = 120.0;
     double dbn_tempo_anchor_outro_offset_seconds = 60.0;
     bool dbn_project_grid = true;
-    bool dbn_window_use_phase_energy = true;
-    bool dbn_window_intro_mid_outro = false;
-    bool dbn_window_consensus = false;
-    bool dbn_window_stitch = false;
-    bool dbn_window_best = true;
-    // Experimental: run sparse multi-window probing instead of full activation inference.
+    // Run sparse multi-window probing (single-switch mode) instead of full activation inference.
+    // When enabled, BeatIt auto-enables the required internal DBN/consensus logic.
     bool sparse_probe_mode = false;
     // Fit one global linear beat grid (frame ~= a + i*b) before projection.
     bool dbn_grid_global_fit = false;

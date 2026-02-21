@@ -465,8 +465,6 @@ bool BeatitStream::request_analysis_window(double* start_seconds,
     if (coreml_config_.max_analysis_seconds <= 0.0) {
         const bool sparse_dynamic =
             coreml_config_.sparse_probe_mode &&
-            coreml_config_.use_logit_consensus &&
-            coreml_config_.dbn_window_intro_mid_outro &&
             coreml_config_.dbn_window_seconds > 0.0;
         if (!sparse_dynamic) {
             return false;
@@ -475,7 +473,7 @@ bool BeatitStream::request_analysis_window(double* start_seconds,
             *start_seconds = 0.0;
         }
         if (duration_seconds) {
-            *duration_seconds = coreml_config_.dbn_window_seconds;
+            *duration_seconds = std::max(20.0, coreml_config_.dbn_window_seconds);
         }
         return true;
     }
@@ -514,11 +512,14 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
                          double forced_reference_bpm = 0.0) -> AnalysisResult {
         reset_state();
         coreml_config_ = original_config;
+        if (coreml_config_.sparse_probe_mode) {
+            // Sparse mode is intentionally single-switch for callers.
+            coreml_config_.use_dbn = true;
+        }
         coreml_config_.analysis_start_seconds = 0.0;
         coreml_config_.dbn_window_start_seconds = 0.0;
         coreml_config_.max_analysis_seconds = 0.0;
         if (forced_reference_bpm > 0.0) {
-            coreml_config_.dbn_window_consensus = true;
             tempo_reference_bpm_ = forced_reference_bpm;
             tempo_reference_valid_ = true;
             const float hard_min = std::max(1.0f, original_config.min_bpm);
@@ -555,8 +556,6 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
 
     const bool sparse_dynamic =
         original_config.sparse_probe_mode &&
-        original_config.use_logit_consensus &&
-        original_config.dbn_window_intro_mid_outro &&
         original_config.dbn_window_seconds > 0.0 &&
         total_duration_seconds > 0.0;
     if (!sparse_dynamic) {
@@ -882,7 +881,7 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
         bool low_confidence = true;
         std::string mode;
     };
-    auto decide_legacy = [&]() {
+    [[maybe_unused]] auto decide_legacy = [&]() {
         DecisionOutcome out;
         out.mode = "legacy";
         double best_mode_error = std::numeric_limits<double>::infinity();
@@ -961,10 +960,7 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
             (std::isfinite(intro.odd_even_gap_ms) && intro.odd_even_gap_ms > 220.0);
         return out;
     };
-    const bool use_legacy_decision =
-        std::getenv("BEATIT_SPARSE_DECISION_LEGACY") != nullptr;
-    const DecisionOutcome decision =
-        use_legacy_decision ? decide_legacy() : decide_unified();
+    const DecisionOutcome decision = decide_unified();
 
     const std::size_t selected_index = decision.selected_index;
     const double selected_score = decision.selected_score;
@@ -2069,9 +2065,6 @@ AnalysisResult BeatitStream::finalize() {
     base_config.prefer_double_time = false;
     base_config.synthetic_fill = false;
     base_config.dbn_window_seconds = 0.0;
-    base_config.dbn_window_intro_mid_outro = false;
-    base_config.dbn_window_consensus = false;
-    base_config.dbn_window_stitch = false;
 
     std::size_t last_active_frame = 0;
     std::size_t full_frame_count = 0;

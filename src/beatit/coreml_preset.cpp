@@ -63,16 +63,17 @@ public:
         config.fixed_frames = 1500;
         config.window_hop_frames = 1488;
         config.window_border_frames = 6;
+        const double frame_size_d = static_cast<double>(config.frame_size);
+        const double fixed_frames_d = static_cast<double>(config.fixed_frames);
+        const double hop_size_d = static_cast<double>(config.hop_size);
+        const double sample_rate_d = static_cast<double>(config.sample_rate);
         const double model_window_seconds =
-            static_cast<double>(
-                config.frame_size + (config.fixed_frames - 1) * config.hop_size) /
-            static_cast<double>(config.sample_rate);
+            (frame_size_d + ((fixed_frames_d - 1.0) * hop_size_d)) / sample_rate_d;
         config.analysis_start_seconds = 0.0;
         config.min_bpm = 70.0f;
         config.max_bpm = 180.0f;
         config.output_latency_seconds = 0.016;
         config.use_dbn = true;
-        config.use_logit_consensus = true;
         config.logit_block_seconds = 120.0;
         config.logit_block_hop_seconds = 60.0;
         config.logit_phase_window_seconds = 2.0;
@@ -91,22 +92,15 @@ public:
         config.dbn_window_start_seconds = 0.0;
         config.dbn_tempo_anchor_intro_seconds = 120.0;
         config.dbn_tempo_anchor_outro_offset_seconds = 60.0;
-        config.dbn_window_use_phase_energy = true;
-        config.dbn_window_best = true;
-        config.dbn_window_intro_mid_outro = true;
-        config.dbn_window_consensus = false;
         config.dbn_project_grid = true;
         config.dbn_grid_global_fit = true;
         config.dbn_trace = false;
         config.dbn_grid_align_downbeat_peak = true;
         config.dbn_grid_start_strong_peak = true;
         config.dbn_grid_start_advance_seconds = 0.06f;
-        if (config.use_logit_consensus) {
-            config.max_analysis_seconds = 0.0;
-            config.dbn_window_start_seconds = 0.0;
-        } else {
-            config.max_analysis_seconds = config.dbn_window_seconds;
-        }
+        config.max_analysis_seconds = 0.0;
+        config.dbn_window_start_seconds = 0.0;
+        config.sparse_probe_mode = true;
         config.torch_batch_size = 1;
         config.prepend_silence_seconds = 1.0;
         config.model_path = "coreml_out/BeatThis_small0.mlpackage";
