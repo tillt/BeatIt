@@ -118,23 +118,7 @@ CPU-only (for environments where GPU/MPS is unavailable):
 BEATIT_TEST_CPU_ONLY=1 ctest --test-dir build --output-on-failure
 ```
 
-Main regression tracks currently covered by dedicated sparse/window tests include:
-
-- `manucho`
-- `enigma`
-- `vamp`
-- `bazaar`
-- `intelligence`
-- `neural`
-
-## Notes
-
-- BeatIt is a library/CLI project; it has no UI.
-- Ambient or spoken-word material may legitimately return weak/no beat grids.
-- Additional benchmark notes live in `DBN_BENCHMARK.md`.
-
 ## Credits
 
 - BeatTrack — Matthew Rice — https://github.com/mhrice/BeatTrack — MIT
 - Beat This! — Francesco Foscarin, Jan Schlueter, Gerhard Widmer — https://github.com/CPJKU/beat_this — MIT
-- rotary-embedding-torch — Phil Wang — https://github.com/lucidrains/rotary-embedding-torch — MIT
