@@ -133,6 +133,26 @@ float estimate_bpm_from_beats(const std::vector<unsigned long long>& beat_sample
     return static_cast<float>(60.0 / avg);
 }
 
+float normalize_bpm_to_range(float bpm, float min_bpm, float max_bpm) {
+    if (!(bpm > 0.0f)) {
+        return bpm;
+    }
+    const float lo = std::max(1.0f, min_bpm);
+    const float hi = std::max(lo + 1.0f, max_bpm);
+    while (bpm < lo && (bpm * 2.0f) <= hi) {
+        bpm *= 2.0f;
+    }
+    while (bpm > hi && (bpm * 0.5f) >= lo) {
+        bpm *= 0.5f;
+    }
+    if (bpm < lo) {
+        bpm = lo;
+    } else if (bpm > hi) {
+        bpm = hi;
+    }
+    return bpm;
+}
+
 float estimate_bpm_from_activation(const std::vector<float>& activation,
                                    const CoreMLConfig& config,
                                    double sample_rate) {

@@ -7,7 +7,6 @@
 
 #include "beatit/stream.h"
 #include "beatit/stream_activation_accumulator.h"
-#include "beatit/stream_bpm_utils.h"
 #include "beatit/stream_inference_backend.h"
 
 #include <algorithm>
@@ -110,19 +109,17 @@ AnalysisResult BeatitStream::finalize() {
                                                       full_frame_count);
     const float bpm_min = std::max(1.0f, coreml_config_.min_bpm);
     const float bpm_max = std::max(bpm_min + 1.0f, coreml_config_.max_bpm);
-    const float peaks_bpm_raw = detail::estimate_bpm_from_activation_peaks_local(
+    const float peaks_bpm_raw = estimate_bpm_from_activation(
         coreml_beat_activation_, coreml_config_, sample_rate_);
-    const float autocorr_bpm_raw = detail::estimate_bpm_from_activation_autocorr_local(
+    const float autocorr_bpm_raw = estimate_bpm_from_activation_autocorr(
         coreml_beat_activation_, coreml_config_, sample_rate_);
     const float comb_bpm_raw =
         estimate_bpm_from_activation_comb(coreml_beat_activation_, coreml_config_, sample_rate_);
-    const float beats_bpm_raw =
-        detail::estimate_bpm_from_beats_local(base.beat_sample_frames, sample_rate_);
-    const float peaks_bpm = detail::normalize_bpm_to_range_local(peaks_bpm_raw, bpm_min, bpm_max);
-    const float autocorr_bpm =
-        detail::normalize_bpm_to_range_local(autocorr_bpm_raw, bpm_min, bpm_max);
-    const float comb_bpm = detail::normalize_bpm_to_range_local(comb_bpm_raw, bpm_min, bpm_max);
-    const float beats_bpm = detail::normalize_bpm_to_range_local(beats_bpm_raw, bpm_min, bpm_max);
+    const float beats_bpm_raw = estimate_bpm_from_beats(base.beat_sample_frames, sample_rate_);
+    const float peaks_bpm = normalize_bpm_to_range(peaks_bpm_raw, bpm_min, bpm_max);
+    const float autocorr_bpm = normalize_bpm_to_range(autocorr_bpm_raw, bpm_min, bpm_max);
+    const float comb_bpm = normalize_bpm_to_range(comb_bpm_raw, bpm_min, bpm_max);
+    const float beats_bpm = normalize_bpm_to_range(beats_bpm_raw, bpm_min, bpm_max);
     const auto choose_candidate_bpm = [&](float peaks,
                                           float autocorr,
                                           float comb,
@@ -252,11 +249,9 @@ AnalysisResult BeatitStream::finalize() {
         : result.coreml_beat_projected_sample_frames;
     // Keep reported BPM consistent with the returned beat grid.
     float estimated_bpm =
-        detail::normalize_bpm_to_range_local(
-            detail::estimate_bpm_from_beats_local(bpm_frames, sample_rate_), bpm_min, bpm_max);
+        normalize_bpm_to_range(estimate_bpm_from_beats(bpm_frames, sample_rate_), bpm_min, bpm_max);
     if (!(estimated_bpm > 0.0f)) {
-        const float anchored_bpm =
-            detail::normalize_bpm_to_range_local(reference_bpm, bpm_min, bpm_max);
+        const float anchored_bpm = normalize_bpm_to_range(reference_bpm, bpm_min, bpm_max);
         if (anchored_bpm > 0.0f) {
             estimated_bpm = anchored_bpm;
         }

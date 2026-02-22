@@ -34,7 +34,6 @@ set(BEATIT_LIB_SOURCES
     src/beatit/coreml_preset.cpp
     src/beatit/refiner.cpp
     src/beatit/stream_activation_accumulator.cpp
-    src/beatit/stream_bpm_utils.cpp
     src/beatit/stream_finalize.cpp
     src/beatit/stream_inference_backend.cpp
     src/beatit/stream_sparse.cpp
@@ -111,7 +110,6 @@ if(APPLE)
         src/beatit/coreml_preset.cpp
         src/beatit/refiner.cpp
         src/beatit/stream_activation_accumulator.cpp
-        src/beatit/stream_bpm_utils.cpp
         src/beatit/stream_finalize.cpp
         src/beatit/stream_inference_backend.cpp
         src/beatit/stream_sparse.cpp

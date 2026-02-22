@@ -55,5 +55,6 @@ float estimate_bpm_from_activation_comb(const std::vector<float>& activation,
                                         double sample_rate);
 float estimate_bpm_from_beats(const std::vector<unsigned long long>& beat_samples,
                               double sample_rate);
+float normalize_bpm_to_range(float bpm, float min_bpm, float max_bpm);
 
 } // namespace beatit

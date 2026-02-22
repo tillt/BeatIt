@@ -345,6 +345,20 @@ double median_interval_seconds(const std::vector<unsigned long long>& beat_frame
     return median(slice);
 }
 
+double median_abs_frame_delta(const std::vector<unsigned long long>& a,
+                              const std::vector<unsigned long long>& b) {
+    if (a.empty() || b.empty()) {
+        return 0.0;
+    }
+    const std::size_t n = std::min(a.size(), b.size());
+    std::vector<double> deltas;
+    deltas.reserve(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        deltas.push_back(std::fabs(static_cast<double>(a[i]) - static_cast<double>(b[i])));
+    }
+    return median(deltas);
+}
+
 std::vector<double> compute_strong_peak_offsets_ms(const std::vector<unsigned long long>& beat_frames,
                                                    const std::vector<float>& mono,
                                                    double sample_rate,
@@ -463,14 +477,6 @@ int main() {
         return 1;
     }
 
-    beatit::BeatitStream stream(sample_rate, config, true);
-    double start_s = 0.0;
-    double duration_s = 0.0;
-    if (!stream.request_analysis_window(&start_s, &duration_s)) {
-        std::cerr << "Window alignment test failed: request_analysis_window returned false.\n";
-        return 1;
-    }
-
     const double total_duration_s = static_cast<double>(mono.size()) / sample_rate;
     auto provider =
         [&](double start_seconds, double duration_seconds, std::vector<float>* out_samples) -> std::size_t {
@@ -494,8 +500,54 @@ int main() {
             return out_samples->size();
         };
 
-    beatit::AnalysisResult result =
-        stream.analyze_window(start_s, duration_s, total_duration_s, provider);
+    auto analyze_for_seed_order = [&](const char* order) {
+        if (order && order[0] != '\0') {
+            setenv("BEATIT_SPARSE_SEED_ORDER", order, 1);
+        } else {
+            unsetenv("BEATIT_SPARSE_SEED_ORDER");
+        }
+        beatit::BeatitStream stream(sample_rate, config, true);
+        double start_s = 0.0;
+        double duration_s = 0.0;
+        if (!stream.request_analysis_window(&start_s, &duration_s)) {
+            std::cerr << "Window alignment test failed: request_analysis_window returned false.\n";
+            return beatit::AnalysisResult{};
+        }
+        return stream.analyze_window(start_s, duration_s, total_duration_s, provider);
+    };
+
+    const beatit::AnalysisResult baseline_result = analyze_for_seed_order(nullptr);
+    const beatit::AnalysisResult right_first_result = analyze_for_seed_order("right_first");
+    unsetenv("BEATIT_SPARSE_SEED_ORDER");
+
+    const auto& baseline_grid = baseline_result.coreml_beat_projected_sample_frames.empty()
+        ? baseline_result.coreml_beat_sample_frames
+        : baseline_result.coreml_beat_projected_sample_frames;
+    const auto& right_first_grid = right_first_result.coreml_beat_projected_sample_frames.empty()
+        ? right_first_result.coreml_beat_sample_frames
+        : right_first_result.coreml_beat_projected_sample_frames;
+    if (baseline_grid.size() != right_first_grid.size()) {
+        std::cerr << "Window alignment test failed: probe seed order changed beat count: baseline="
+                  << baseline_grid.size()
+                  << " right_first=" << right_first_grid.size() << "\n";
+        return 1;
+    }
+    const double order_bpm_delta =
+        std::fabs(baseline_result.estimated_bpm - right_first_result.estimated_bpm);
+    const double order_grid_median_delta_frames =
+        median_abs_frame_delta(baseline_grid, right_first_grid);
+    if (order_bpm_delta > 0.05) {
+        std::cerr << "Window alignment test failed: probe seed order changed BPM by "
+                  << order_bpm_delta << "\n";
+        return 1;
+    }
+    if (order_grid_median_delta_frames > 2.0) {
+        std::cerr << "Window alignment test failed: probe seed order changed grid by median "
+                  << order_grid_median_delta_frames << " frames.\n";
+        return 1;
+    }
+
+    beatit::AnalysisResult result = baseline_result;
 
     if (result.coreml_beat_events.size() < kEdgeWindowBeats) {
         std::cerr << "Window alignment test failed: too few beat events: "

@@ -8,7 +8,6 @@
 
 #include "beatit/stream.h"
 #include "beatit/stream_activation_accumulator.h"
-#include "beatit/stream_bpm_utils.h"
 #include "beatit/stream_inference_backend.h"
 #include "beatit/stream_sparse.h"
 
@@ -21,7 +20,7 @@ namespace beatit {
 
 BeatitStream::~BeatitStream() = default;
 
-void BeatitStream::reset_state() {
+void BeatitStream::reset_state(bool reset_tempo_anchor) {
     resampler_.src_index = 0.0;
     resampler_.buffer.clear();
     resampled_buffer_.clear();
@@ -38,6 +37,10 @@ void BeatitStream::reset_state() {
     phase_energy_state_ = 0.0;
     phase_energy_sum_sq_ = 0.0;
     phase_energy_sample_count_ = 0;
+    if (reset_tempo_anchor) {
+        tempo_reference_bpm_ = 0.0;
+        tempo_reference_valid_ = false;
+    }
     perf_ = {};
 }
 
@@ -93,7 +96,7 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
     auto run_probe = [&](double probe_start,
                          double probe_duration,
                          double forced_reference_bpm = 0.0) -> AnalysisResult {
-        reset_state();
+        reset_state(true);
         coreml_config_ = original_config;
         if (coreml_config_.sparse_probe_mode) {
             // Sparse mode is intentionally single-switch for callers.
@@ -153,8 +156,8 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
         total_duration_seconds,
         provider,
         run_probe,
-        detail::estimate_bpm_from_beats_local,
-        detail::normalize_bpm_to_range_local);
+        estimate_bpm_from_beats,
+        normalize_bpm_to_range);
 
     coreml_config_ = original_config;
     return result;
@@ -343,6 +346,25 @@ void BeatitStream::process_torch_windows() {
     }
 }
 
+void BeatitStream::accumulate_phase_energy(std::size_t begin_sample, std::size_t end_sample) {
+    if (coreml_config_.hop_size == 0 || end_sample <= begin_sample) {
+        return;
+    }
+    for (std::size_t i = begin_sample; i < end_sample; ++i) {
+        const double input = resampled_buffer_[i];
+        phase_energy_state_ += phase_energy_alpha_ * (input - phase_energy_state_);
+        phase_energy_sum_sq_ += phase_energy_state_ * phase_energy_state_;
+        phase_energy_sample_count_++;
+        if (phase_energy_sample_count_ >= coreml_config_.hop_size) {
+            const double rms =
+                std::sqrt(phase_energy_sum_sq_ / static_cast<double>(phase_energy_sample_count_));
+            coreml_phase_energy_.push_back(static_cast<float>(rms));
+            phase_energy_sum_sq_ = 0.0;
+            phase_energy_sample_count_ = 0;
+        }
+    }
+}
+
 void BeatitStream::push(const float* samples, std::size_t count) {
     if (!samples || count == 0 || !coreml_enabled_) {
         return;
@@ -369,21 +391,7 @@ void BeatitStream::push(const float* samples, std::size_t count) {
         std::vector<float> silence(prepend_samples_, 0.0f);
         resampler_.push(silence.data(), silence.size(), &resampled_buffer_);
         const std::size_t after_size = resampled_buffer_.size();
-        if (after_size > before_size && coreml_config_.hop_size > 0) {
-            for (std::size_t i = before_size; i < after_size; ++i) {
-                const double input = resampled_buffer_[i];
-                phase_energy_state_ += phase_energy_alpha_ * (input - phase_energy_state_);
-                phase_energy_sum_sq_ += phase_energy_state_ * phase_energy_state_;
-                phase_energy_sample_count_++;
-                if (phase_energy_sample_count_ >= coreml_config_.hop_size) {
-                    const double rms = std::sqrt(
-                        phase_energy_sum_sq_ / static_cast<double>(phase_energy_sample_count_));
-                    coreml_phase_energy_.push_back(static_cast<float>(rms));
-                    phase_energy_sum_sq_ = 0.0;
-                    phase_energy_sample_count_ = 0;
-                }
-            }
-        }
+        accumulate_phase_energy(before_size, after_size);
         prepend_done_ = true;
     }
 
@@ -422,21 +430,7 @@ void BeatitStream::push(const float* samples, std::size_t count) {
     perf_.resample_ms +=
         std::chrono::duration<double, std::milli>(resample_end - resample_start).count();
     const std::size_t after_size = resampled_buffer_.size();
-    if (after_size > before_size && coreml_config_.hop_size > 0) {
-        for (std::size_t i = before_size; i < after_size; ++i) {
-            const double input = resampled_buffer_[i];
-            phase_energy_state_ += phase_energy_alpha_ * (input - phase_energy_state_);
-            phase_energy_sum_sq_ += phase_energy_state_ * phase_energy_state_;
-            phase_energy_sample_count_++;
-            if (phase_energy_sample_count_ >= coreml_config_.hop_size) {
-                const double rms =
-                    std::sqrt(phase_energy_sum_sq_ / static_cast<double>(phase_energy_sample_count_));
-                coreml_phase_energy_.push_back(static_cast<float>(rms));
-                phase_energy_sum_sq_ = 0.0;
-                phase_energy_sample_count_ = 0;
-            }
-        }
-    }
+    accumulate_phase_energy(before_size, after_size);
     const auto process_start = std::chrono::steady_clock::now();
     if (coreml_config_.backend == CoreMLConfig::Backend::Torch) {
         process_torch_windows();

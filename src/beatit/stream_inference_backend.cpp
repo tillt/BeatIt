@@ -83,6 +83,78 @@ public:
 };
 
 #if defined(BEATIT_USE_TORCH)
+bool forward_torch_model(torch::jit::script::Module* module,
+                         const std::vector<torch::IValue>& inputs,
+                         const CoreMLConfig& config,
+                         StreamInferenceTiming* timing,
+                         torch::IValue* output) {
+    if (!module || !output) {
+        return false;
+    }
+    try {
+        c10::InferenceMode inference_guard(true);
+        const auto forward_start = std::chrono::steady_clock::now();
+        *output = module->forward(inputs);
+        const auto forward_end = std::chrono::steady_clock::now();
+        if (timing) {
+            timing->torch_forward_ms +=
+                std::chrono::duration<double, std::milli>(forward_end - forward_start).count();
+        }
+    } catch (const c10::Error& err) {
+        if (config.verbose) {
+            std::cerr << "Torch backend: forward failed: " << err.what() << "\n";
+        }
+        return false;
+    } catch (const std::exception& err) {
+        if (config.verbose) {
+            std::cerr << "Torch backend: forward exception: " << err.what() << "\n";
+        }
+        return false;
+    } catch (...) {
+        if (config.verbose) {
+            std::cerr << "Torch backend: forward unknown exception\n";
+        }
+        return false;
+    }
+    return true;
+}
+
+bool extract_torch_output_tensors(const torch::IValue& output,
+                                  const CoreMLConfig& config,
+                                  torch::Tensor* beat_tensor,
+                                  torch::Tensor* downbeat_tensor) {
+    if (!beat_tensor || !downbeat_tensor) {
+        return false;
+    }
+    *beat_tensor = torch::Tensor();
+    *downbeat_tensor = torch::Tensor();
+
+    if (output.isTuple()) {
+        const auto tuple = output.toTuple();
+        const auto& elements = tuple->elements();
+        if (elements.size() >= 2 && elements[0].isTensor() && elements[1].isTensor()) {
+            *beat_tensor = elements[0].toTensor();
+            *downbeat_tensor = elements[1].toTensor();
+        }
+    } else if (output.isGenericDict()) {
+        auto dict = output.toGenericDict();
+        if (dict.contains("beat")) {
+            *beat_tensor = dict.at("beat").toTensor();
+        }
+        if (dict.contains("downbeat")) {
+            *downbeat_tensor = dict.at("downbeat").toTensor();
+        }
+    }
+
+    if (!beat_tensor->defined()) {
+        if (config.verbose) {
+            std::cerr << "Torch backend: unexpected output signature.\n";
+        }
+        return false;
+    }
+    return true;
+}
+
 class TorchStreamInferenceBackend final : public StreamInferenceBackend {
 public:
     std::size_t max_batch_size(const CoreMLConfig& config) const override {
@@ -157,55 +229,13 @@ public:
         std::vector<torch::IValue> inputs;
         inputs.reserve(1);
         inputs.emplace_back(input);
-        try {
-            c10::InferenceMode inference_guard(true);
-            const auto forward_start = std::chrono::steady_clock::now();
-            output = torch_state_->module.forward(inputs);
-            const auto forward_end = std::chrono::steady_clock::now();
-            if (timing) {
-                timing->torch_forward_ms +=
-                    std::chrono::duration<double, std::milli>(forward_end - forward_start).count();
-            }
-        } catch (const c10::Error& err) {
-            if (config.verbose) {
-                std::cerr << "Torch backend: forward failed: " << err.what() << "\n";
-            }
-            return false;
-        } catch (const std::exception& err) {
-            if (config.verbose) {
-                std::cerr << "Torch backend: forward exception: " << err.what() << "\n";
-            }
-            return false;
-        } catch (...) {
-            if (config.verbose) {
-                std::cerr << "Torch backend: forward unknown exception\n";
-            }
+        if (!forward_torch_model(&torch_state_->module, inputs, config, timing, &output)) {
             return false;
         }
 
         torch::Tensor beat_tensor;
         torch::Tensor downbeat_tensor;
-        if (output.isTuple()) {
-            const auto tuple = output.toTuple();
-            const auto& elements = tuple->elements();
-            if (elements.size() >= 2 && elements[0].isTensor() && elements[1].isTensor()) {
-                beat_tensor = elements[0].toTensor();
-                downbeat_tensor = elements[1].toTensor();
-            }
-        } else if (output.isGenericDict()) {
-            auto dict = output.toGenericDict();
-            if (dict.contains("beat")) {
-                beat_tensor = dict.at("beat").toTensor();
-            }
-            if (dict.contains("downbeat")) {
-                downbeat_tensor = dict.at("downbeat").toTensor();
-            }
-        }
-
-        if (!beat_tensor.defined()) {
-            if (config.verbose) {
-                std::cerr << "Torch backend: unexpected output signature.\n";
-            }
+        if (!extract_torch_output_tensors(output, config, &beat_tensor, &downbeat_tensor)) {
             return false;
         }
 
@@ -314,55 +344,13 @@ public:
         std::vector<torch::IValue> inputs;
         inputs.reserve(1);
         inputs.emplace_back(input);
-        try {
-            c10::InferenceMode inference_guard(true);
-            const auto forward_start = std::chrono::steady_clock::now();
-            output = torch_state_->module.forward(inputs);
-            const auto forward_end = std::chrono::steady_clock::now();
-            if (timing) {
-                timing->torch_forward_ms +=
-                    std::chrono::duration<double, std::milli>(forward_end - forward_start).count();
-            }
-        } catch (const c10::Error& err) {
-            if (config.verbose) {
-                std::cerr << "Torch backend: forward failed: " << err.what() << "\n";
-            }
-            return false;
-        } catch (const std::exception& err) {
-            if (config.verbose) {
-                std::cerr << "Torch backend: forward exception: " << err.what() << "\n";
-            }
-            return false;
-        } catch (...) {
-            if (config.verbose) {
-                std::cerr << "Torch backend: forward unknown exception\n";
-            }
+        if (!forward_torch_model(&torch_state_->module, inputs, config, timing, &output)) {
             return false;
         }
 
         torch::Tensor beat_tensor;
         torch::Tensor downbeat_tensor;
-        if (output.isTuple()) {
-            const auto tuple = output.toTuple();
-            const auto& elements = tuple->elements();
-            if (elements.size() >= 2 && elements[0].isTensor() && elements[1].isTensor()) {
-                beat_tensor = elements[0].toTensor();
-                downbeat_tensor = elements[1].toTensor();
-            }
-        } else if (output.isGenericDict()) {
-            auto dict = output.toGenericDict();
-            if (dict.contains("beat")) {
-                beat_tensor = dict.at("beat").toTensor();
-            }
-            if (dict.contains("downbeat")) {
-                downbeat_tensor = dict.at("downbeat").toTensor();
-            }
-        }
-
-        if (!beat_tensor.defined()) {
-            if (config.verbose) {
-                std::cerr << "Torch backend: unexpected output signature.\n";
-            }
+        if (!extract_torch_output_tensors(output, config, &beat_tensor, &downbeat_tensor)) {
             return false;
         }
 

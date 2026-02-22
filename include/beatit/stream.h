@@ -52,9 +52,10 @@ public:
     AnalysisResult finalize();
 
 private:
-    void reset_state();
+    void reset_state(bool reset_tempo_anchor = false);
     void process_coreml_windows();
     void process_torch_windows();
+    void accumulate_phase_energy(std::size_t begin_sample, std::size_t end_sample);
 
     double sample_rate_ = 0.0;
     CoreMLConfig coreml_config_;

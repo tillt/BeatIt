@@ -266,6 +266,13 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
 
     std::vector<ProbeResult> probes;
     probes.reserve(3);
+    const bool seed_right_first = []() {
+        const char* value = std::getenv("BEATIT_SPARSE_SEED_ORDER");
+        if (!value || value[0] == '\0') {
+            return false;
+        }
+        return value[0] == 'r' || value[0] == 'R';
+    }();
     auto push_unique_probe = [&](ProbeResult&& probe) {
         const double incoming_score = probe_quality_score(probe);
         for (auto& existing : probes) {
@@ -279,11 +286,17 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
         probes.push_back(std::move(probe));
     };
 
+    const bool has_distinct_right = max_allowed_start > min_allowed_start + 0.5;
+    if (seed_right_first && has_distinct_right) {
+        ProbeResult right_probe = seek_quality_probe(max_allowed_start, false);
+        push_unique_probe(std::move(right_probe));
+    }
+
     ProbeResult left_probe = seek_quality_probe(min_allowed_start, true);
     left_anchor_start = left_probe.start;
     push_unique_probe(std::move(left_probe));
 
-    if (max_allowed_start > min_allowed_start + 0.5) {
+    if (!seed_right_first && has_distinct_right) {
         ProbeResult right_probe = seek_quality_probe(max_allowed_start, false);
         push_unique_probe(std::move(right_probe));
     }
