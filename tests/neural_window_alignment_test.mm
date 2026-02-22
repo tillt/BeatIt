@@ -23,8 +23,10 @@ constexpr double kMaxExpectedBpm = 180.0;
 constexpr std::size_t kMinBeatCount = 100;
 constexpr std::size_t kMinDownbeatCount = 20;
 constexpr double kMaxOffsetSlopeMsPerBeat = 0.07;
+constexpr double kMaxUnwrappedSlopeMsPerBeat = 0.10;
 constexpr double kMaxStartEndDeltaMs = 90.0;
 constexpr double kMaxStartEndDeltaBeats = 0.16;
+constexpr double kMaxUnwrappedStartEndDeltaBeats = 0.16;
 constexpr double kMaxOddEvenMedianGapMs = 40.0;
 constexpr double kMaxIntroMedianAbsOffsetMs = 85.0;
 constexpr std::size_t kTempoEdgeIntervals = 64;
@@ -282,6 +284,77 @@ double robust_linear_slope(const std::vector<double>& values, double beat_period
         return 0.0;
     }
     return (n * sxy - sx * sy) / den;
+}
+
+std::vector<double> unwrap_periodic_offsets_ms(const std::vector<double>& wrapped,
+                                               double period_ms) {
+    if (wrapped.empty() || period_ms <= 1e-6) {
+        return wrapped;
+    }
+
+    auto fit_line = [](const std::vector<double>& values, double* intercept, double* slope) {
+        const double n = static_cast<double>(values.size());
+        if (values.size() < 2 || !intercept || !slope) {
+            if (intercept) {
+                *intercept = values.empty() ? 0.0 : values.front();
+            }
+            if (slope) {
+                *slope = 0.0;
+            }
+            return;
+        }
+
+        double sx = 0.0;
+        double sy = 0.0;
+        double sxx = 0.0;
+        double sxy = 0.0;
+        for (std::size_t i = 0; i < values.size(); ++i) {
+            const double x = static_cast<double>(i);
+            const double y = values[i];
+            sx += x;
+            sy += y;
+            sxx += x * x;
+            sxy += x * y;
+        }
+        const double den = n * sxx - sx * sx;
+        if (std::fabs(den) < 1e-12) {
+            *slope = 0.0;
+            *intercept = sy / n;
+            return;
+        }
+        *slope = (n * sxy - sx * sy) / den;
+        *intercept = (sy - (*slope) * sx) / n;
+    };
+
+    std::vector<double> unwrapped = wrapped;
+    double intercept = 0.0;
+    double slope = 0.0;
+    fit_line(unwrapped, &intercept, &slope);
+
+    for (int iter = 0; iter < 8; ++iter) {
+        for (std::size_t i = 0; i < wrapped.size(); ++i) {
+            const double trend = intercept + slope * static_cast<double>(i);
+            const double base = wrapped[i];
+            const long long k =
+                static_cast<long long>(std::llround((trend - base) / period_ms));
+            unwrapped[i] = base + static_cast<double>(k) * period_ms;
+        }
+
+        double new_intercept = 0.0;
+        double new_slope = 0.0;
+        fit_line(unwrapped, &new_intercept, &new_slope);
+
+        const bool converged =
+            std::fabs(new_intercept - intercept) < 1e-3 &&
+            std::fabs(new_slope - slope) < 1e-6;
+        intercept = new_intercept;
+        slope = new_slope;
+        if (converged) {
+            break;
+        }
+    }
+
+    return unwrapped;
 }
 
 bool is_bar_event(const beatit::BeatEvent& event) {
@@ -605,6 +678,13 @@ int main() {
 
     std::vector<double> first(offsets_ms.begin(),
                               offsets_ms.begin() + static_cast<long>(kEdgeWindowBeats));
+    const std::size_t middle_start =
+        (offsets_ms.size() - kEdgeWindowBeats) / 2;
+    const std::size_t between_start = middle_start / 2;
+    std::vector<double> between(offsets_ms.begin() + static_cast<long>(between_start),
+                                offsets_ms.begin() + static_cast<long>(between_start + kEdgeWindowBeats));
+    std::vector<double> middle(offsets_ms.begin() + static_cast<long>(middle_start),
+                               offsets_ms.begin() + static_cast<long>(middle_start + kEdgeWindowBeats));
     std::vector<double> last(offsets_ms.end() - static_cast<long>(kEdgeWindowBeats),
                              offsets_ms.end());
     const double start_median_ms = median(first);
@@ -613,6 +693,18 @@ int main() {
         v = std::fabs(v);
     }
     const double start_median_abs_ms = median(first_abs);
+    const double between_median_ms = median(between);
+    std::vector<double> between_abs = between;
+    for (double& v : between_abs) {
+        v = std::fabs(v);
+    }
+    const double between_median_abs_ms = median(between_abs);
+    const double middle_median_ms = median(middle);
+    std::vector<double> middle_abs = middle;
+    for (double& v : middle_abs) {
+        v = std::fabs(v);
+    }
+    const double middle_median_abs_ms = median(middle_abs);
     const double end_median_ms = median(last);
     const double start_end_delta_ms = end_median_ms - start_median_ms;
     const double ms_per_beat = result.estimated_bpm > 0.0
@@ -623,6 +715,10 @@ int main() {
     const double beat_period_ms =
         (result.estimated_bpm > 0.0f) ? (60000.0 / result.estimated_bpm) : 500.0;
     const double slope_ms_per_beat = robust_linear_slope(offsets_ms, beat_period_ms);
+    const std::vector<double> unwrapped_offsets_ms =
+        unwrap_periodic_offsets_ms(offsets_ms, beat_period_ms);
+    const double unwrapped_slope_ms_per_beat =
+        robust_linear_slope(unwrapped_offsets_ms, beat_period_ms);
 
     const std::size_t alt_n = std::min<std::size_t>(kAlternationWindowBeats, offsets_ms.size());
     std::vector<double> odd;
@@ -644,15 +740,33 @@ int main() {
     const double early_bpm = early_interval_s > 0.0 ? (60.0 / early_interval_s) : 0.0;
     const double late_bpm = late_interval_s > 0.0 ? (60.0 / late_interval_s) : 0.0;
     const double edge_bpm_delta = std::fabs(early_bpm - late_bpm);
+    std::vector<double> first_unwrapped(unwrapped_offsets_ms.begin(),
+                                        unwrapped_offsets_ms.begin() + static_cast<long>(kEdgeWindowBeats));
+    std::vector<double> last_unwrapped(unwrapped_offsets_ms.end() - static_cast<long>(kEdgeWindowBeats),
+                                       unwrapped_offsets_ms.end());
+    const double unwrapped_start_median_ms = median(first_unwrapped);
+    const double unwrapped_end_median_ms = median(last_unwrapped);
+    const double unwrapped_start_end_delta_ms =
+        unwrapped_end_median_ms - unwrapped_start_median_ms;
+    const double unwrapped_start_end_delta_beats =
+        ms_per_beat > 0.0 ? (std::fabs(unwrapped_start_end_delta_ms) / ms_per_beat) : 0.0;
 
     std::cout << "Neural drift probe: beats=" << result.coreml_beat_events.size()
               << " bpm=" << result.estimated_bpm
               << " start_med=" << start_median_ms << "ms"
+              << " between_med=" << between_median_ms << "ms"
+              << " middle_med=" << middle_median_ms << "ms"
               << " end_med=" << end_median_ms << "ms"
               << " delta=" << start_end_delta_ms << "ms"
               << " slope=" << slope_ms_per_beat << "ms/beat"
+              << " unwrapped_start_med=" << unwrapped_start_median_ms << "ms"
+              << " unwrapped_end_med=" << unwrapped_end_median_ms << "ms"
+              << " unwrapped_delta=" << unwrapped_start_end_delta_ms << "ms"
+              << " unwrapped_slope=" << unwrapped_slope_ms_per_beat << "ms/beat"
               << " probes=" << offsets_ms.size()
               << " first24_ms=" << format_double_slice(offsets_ms, kDriftProbeCount, false, 2)
+              << " between24_ms=" << format_double_slice(between, kDriftProbeCount, false, 2)
+              << " middle24_ms=" << format_double_slice(middle, kDriftProbeCount, false, 2)
               << " last24_ms=" << format_double_slice(offsets_ms, kDriftProbeCount, true, 2)
               << "\n";
 
@@ -681,10 +795,17 @@ int main() {
               << " projected_beats=" << result.coreml_beat_projected_sample_frames.size()
               << " start_median_ms=" << start_median_ms
               << " start_median_abs_ms=" << start_median_abs_ms
+              << " between_median_ms=" << between_median_ms
+              << " between_median_abs_ms=" << between_median_abs_ms
+              << " middle_median_ms=" << middle_median_ms
+              << " middle_median_abs_ms=" << middle_median_abs_ms
               << " end_median_ms=" << end_median_ms
               << " delta_ms=" << start_end_delta_ms
               << " delta_beats=" << start_end_delta_beats
               << " slope_ms_per_beat=" << slope_ms_per_beat
+              << " unwrapped_delta_ms=" << unwrapped_start_end_delta_ms
+              << " unwrapped_delta_beats=" << unwrapped_start_end_delta_beats
+              << " unwrapped_slope_ms_per_beat=" << unwrapped_slope_ms_per_beat
               << " odd_even_gap_ms=" << odd_even_gap_ms
               << " early_bpm=" << early_bpm
               << " late_bpm=" << late_bpm
@@ -707,6 +828,12 @@ int main() {
                   << "ms/beat > " << kMaxOffsetSlopeMsPerBeat << "\n";
         return 1;
     }
+    if (std::fabs(unwrapped_slope_ms_per_beat) > kMaxUnwrappedSlopeMsPerBeat) {
+        std::cerr << "Neural alignment test failed: unwrapped slope "
+                  << unwrapped_slope_ms_per_beat << "ms/beat > "
+                  << kMaxUnwrappedSlopeMsPerBeat << "\n";
+        return 1;
+    }
     if (std::fabs(start_end_delta_ms) > kMaxStartEndDeltaMs) {
         std::cerr << "Neural alignment test failed: start/end delta " << start_end_delta_ms
                   << "ms > " << kMaxStartEndDeltaMs << "ms\n";
@@ -716,6 +843,12 @@ int main() {
         std::cerr << "Neural alignment test failed: start/end delta "
                   << start_end_delta_beats << " beats > "
                   << kMaxStartEndDeltaBeats << " beats\n";
+        return 1;
+    }
+    if (unwrapped_start_end_delta_beats > kMaxUnwrappedStartEndDeltaBeats) {
+        std::cerr << "Neural alignment test failed: unwrapped start/end delta "
+                  << unwrapped_start_end_delta_beats << " beats > "
+                  << kMaxUnwrappedStartEndDeltaBeats << " beats\n";
         return 1;
     }
     if (odd_even_gap_ms > kMaxOddEvenMedianGapMs) {
