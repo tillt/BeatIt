@@ -13,6 +13,7 @@
 #include "beatit/postprocess_result_ops.h"
 #include "beatit/postprocess_tempo_fit.h"
 #include "beatit/postprocess_window.h"
+#include "beatit/logging.hpp"
 #include "beatit/dbn_beatit.h"
 #include "beatit/dbn_calmdad.h"
 
@@ -21,7 +22,6 @@
 #include <chrono>
 #include <cmath>
 #include <cstddef>
-#include <iostream>
 #include <limits>
 #include <numeric>
 #include <string>
@@ -127,13 +127,13 @@ bool run_dbn_postprocess(CoreMLResult& result,
                                             result.downbeat_activation.begin() + window_end);
             }
             if (config.verbose) {
-                std::cerr << "DBN window: start=" << window_start
-                          << " end=" << window_end
-                          << " frames=" << (window_end - window_start)
-                          << " (" << ((window_end - window_start) / fps) << "s)"
-                          << " selector=" << (window_energy ? "best-energy-phase" : "tempo")
-                          << " energy=" << (window_energy ? "phase" : "beat")
-                          << "\n";
+                BEATIT_LOG_DEBUG("DBN window: start=" << window_start
+                                 << " end=" << window_end
+                                 << " frames=" << (window_end - window_start)
+                                 << " (" << ((window_end - window_start) / fps) << "s)"
+                                 << " selector="
+                                 << (window_energy ? "best-energy-phase" : "tempo")
+                                 << " energy=" << (window_energy ? "phase" : "beat"));
             }
         }
         beat_slice = std::move(local_beat_slice);
@@ -205,12 +205,11 @@ bool run_dbn_postprocess(CoreMLResult& result,
                     quality_qkur = kurtosis;
                     quality_valid = true;
                     if (config.dbn_trace) {
-                        std::cerr << "DBN quality: qpar=" << quality_qpar
-                                  << " qmax=" << quality_qmax
-                                  << " qkur=" << quality_qkur
-                                  << " lags=[" << min_lag << "," << max_lag_clamped << "]"
-                                  << " frames=" << quality_src.size()
-                                  << "\n";
+                        BEATIT_LOG_DEBUG("DBN quality: qpar=" << quality_qpar
+                                         << " qmax=" << quality_qmax
+                                         << " qkur=" << quality_qkur
+                                         << " lags=[" << min_lag << "," << max_lag_clamped << "]"
+                                         << " frames=" << quality_src.size());
                     }
                 }
         }
@@ -249,13 +248,13 @@ bool run_dbn_postprocess(CoreMLResult& result,
                     max_bpm = static_cast<float>(prior_bpm * (1.0 + window_pct));
                     clamp_bpm_range(&min_bpm, &max_bpm);
                     if (config.verbose) {
-                        std::cerr << "DBN calmdad prior: bpm=" << prior_bpm
-                                  << " peaks=" << prior_peaks.size()
-                                  << " window_pct=" << window_pct
-                                  << " clamp=[" << min_bpm << "," << max_bpm << "]\n";
+                        BEATIT_LOG_DEBUG("DBN calmdad prior: bpm=" << prior_bpm
+                                         << " peaks=" << prior_peaks.size()
+                                         << " window_pct=" << window_pct
+                                         << " clamp=[" << min_bpm << "," << max_bpm << "]");
                     }
                 } else if (config.verbose) {
-                    std::cerr << "DBN calmdad prior: insufficient peaks for clamp\n";
+                    BEATIT_LOG_DEBUG("DBN calmdad prior: insufficient peaks for clamp");
                 }
             }
                 decoded = calmdad_decoder.decode({
@@ -325,8 +324,8 @@ bool run_dbn_postprocess(CoreMLResult& result,
         };
         const bool ok = run_dbn_decoded_postprocess(result, decoded, decoded_context);
         if (ok && config.profile) {
-            std::cerr << "Timing(postprocess): dbn=" << dbn_ms
-                      << "ms peaks=" << peaks_ms << "ms\n";
+            BEATIT_LOG_INFO("Timing(postprocess): dbn=" << dbn_ms
+                            << "ms peaks=" << peaks_ms << "ms");
         }
         return ok;
     }

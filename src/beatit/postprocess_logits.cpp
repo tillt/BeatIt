@@ -8,13 +8,13 @@
 
 #include "beatit/postprocess_logits.h"
 
+#include "beatit/logging.hpp"
 #include "beatit/postprocess_helpers.h"
 #include "beatit/postprocess_result_ops.h"
 #include "beatit/postprocess_window.h"
 
 #include <algorithm>
 #include <cmath>
-#include <iostream>
 #include <vector>
 
 namespace beatit::detail {
@@ -50,6 +50,13 @@ void run_logit_consensus_postprocess(CoreMLResult& result,
                                        analysis_latency_frames,
                                        analysis_latency_frames_f,
                                        kRefineWindow);
+    };
+
+    auto clear_projected_grid = [&] {
+        result.beat_projected_feature_frames.clear();
+        result.beat_projected_sample_frames.clear();
+        result.beat_projected_strengths.clear();
+        result.downbeat_projected_feature_frames.clear();
     };
 
         auto refine_peak_position = [&](std::size_t frame,
@@ -128,11 +135,11 @@ void run_logit_consensus_postprocess(CoreMLResult& result,
         double interval_frames =
             median_interval_frames_interpolated(result.beat_activation, beat_peaks);
         if (config.verbose) {
-            std::cerr << "Logit consensus: max_activation=" << max_activation
-                      << " peak_threshold=" << peak_threshold
-                      << " peaks=" << beat_peaks.size()
-                      << " interval_frames=" << interval_frames
-                      << " fps=" << fps << "\n";
+            BEATIT_LOG_DEBUG("Logit consensus: max_activation=" << max_activation
+                             << " peak_threshold=" << peak_threshold
+                             << " peaks=" << beat_peaks.size()
+                             << " interval_frames=" << interval_frames
+                             << " fps=" << fps);
         }
 
         double bpm = 0.0;
@@ -176,9 +183,9 @@ void run_logit_consensus_postprocess(CoreMLResult& result,
                 }
             }
             if (config.verbose) {
-                std::cerr << "Logit sweep: bpm=" << bpm
-                          << " phase=" << sweep_phase
-                          << " score=" << sweep_score << "\n";
+                BEATIT_LOG_DEBUG("Logit sweep: bpm=" << bpm
+                                 << " phase=" << sweep_phase
+                                 << " score=" << sweep_score);
             }
         }
 
@@ -196,13 +203,10 @@ void run_logit_consensus_postprocess(CoreMLResult& result,
                     result.downbeat_feature_frames.push_back(
                         static_cast<unsigned long long>(frame));
                 }
-                result.beat_projected_feature_frames.clear();
-                result.beat_projected_sample_frames.clear();
-                result.beat_projected_strengths.clear();
-                result.downbeat_projected_feature_frames.clear();
+                clear_projected_grid();
                 if (config.profile) {
-                    std::cerr << "Timing(postprocess): dbn=" << dbn_ms
-                              << "ms peaks=" << peaks_ms << "ms\n";
+                    BEATIT_LOG_INFO("Timing(postprocess): dbn=" << dbn_ms
+                                    << "ms peaks=" << peaks_ms << "ms");
                 }
                 return;
             }
@@ -225,11 +229,10 @@ void run_logit_consensus_postprocess(CoreMLResult& result,
 
         const double step_frames = (60.0 * fps) / std::max(1.0, bpm);
         if (config.verbose) {
-            std::cerr << "Logit consensus: bpm=" << bpm
-                      << " step_frames=" << step_frames
-                      << " used_frames=" << used_frames
-                      << " max_shift_s=" << config.logit_phase_max_shift_seconds
-                      << "\n";
+            BEATIT_LOG_DEBUG("Logit consensus: bpm=" << bpm
+                             << " step_frames=" << step_frames
+                             << " used_frames=" << used_frames
+                             << " max_shift_s=" << config.logit_phase_max_shift_seconds);
         }
         if (step_frames <= 0.0) {
             return;
@@ -334,8 +337,8 @@ void run_logit_consensus_postprocess(CoreMLResult& result,
         }
 
         if (config.verbose) {
-            std::cerr << "Logit consensus: global_phase=" << global_phase
-                      << " best_score=" << best_score << "\n";
+            BEATIT_LOG_DEBUG("Logit consensus: global_phase=" << global_phase
+                             << " best_score=" << best_score);
         }
 
         auto build_grid_frames = [&](double phase_seed) {
@@ -385,18 +388,19 @@ void run_logit_consensus_postprocess(CoreMLResult& result,
                 detail::dedupe_frames_tolerant(grid_frames, tolerance_frames);
             }
         if (config.verbose) {
-            std::cerr << "Logit consensus: grid_frames=" << grid_frames.size();
             if (!grid_frames.empty()) {
-                std::cerr << " first=" << grid_frames.front()
-                          << " last=" << grid_frames.back();
+                BEATIT_LOG_DEBUG("Logit consensus: grid_frames=" << grid_frames.size()
+                                 << " first=" << grid_frames.front()
+                                 << " last=" << grid_frames.back());
+            } else {
+                BEATIT_LOG_DEBUG("Logit consensus: grid_frames=0");
             }
-            std::cerr << "\n";
         }
 
         fill_beats_from_frames(grid_frames);
         if (config.verbose) {
-            std::cerr << "Logit consensus: beats_out=" << result.beat_feature_frames.size()
-                      << " samples_out=" << result.beat_sample_frames.size() << "\n";
+            BEATIT_LOG_DEBUG("Logit consensus: beats_out=" << result.beat_feature_frames.size()
+                             << " samples_out=" << result.beat_sample_frames.size());
         }
 
         const std::size_t bpb = std::max<std::size_t>(1, config.dbn_beats_per_bar);
@@ -427,14 +431,11 @@ void run_logit_consensus_postprocess(CoreMLResult& result,
             result.downbeat_feature_frames.push_back(result.beat_feature_frames.front());
         }
 
-        result.beat_projected_feature_frames.clear();
-        result.beat_projected_sample_frames.clear();
-        result.beat_projected_strengths.clear();
-        result.downbeat_projected_feature_frames.clear();
+        clear_projected_grid();
 
         if (config.profile) {
-            std::cerr << "Timing(postprocess): dbn=" << dbn_ms
-                      << "ms peaks=" << peaks_ms << "ms\n";
+            BEATIT_LOG_INFO("Timing(postprocess): dbn=" << dbn_ms
+                            << "ms peaks=" << peaks_ms << "ms");
         }
         return;
 }
