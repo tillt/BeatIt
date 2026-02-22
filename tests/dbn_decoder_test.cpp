@@ -1,3 +1,11 @@
+//
+//  dbn_decoder_test.cpp
+//  BeatIt
+//
+//  Created by Till Toenshoff on 2026-02-22.
+//  Copyright © 2026 Till Toenshoff. All rights reserved.
+//
+
 #include <cmath>
 #include <cstddef>
 #include <iostream>

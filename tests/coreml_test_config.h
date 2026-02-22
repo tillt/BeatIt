@@ -1,3 +1,11 @@
+//
+//  coreml_test_config.h
+//  BeatIt
+//
+//  Created by Till Toenshoff on 2026-02-22.
+//  Copyright © 2026 Till Toenshoff. All rights reserved.
+//
+
 #ifndef BEATIT_TESTS_COREML_TEST_CONFIG_H
 #define BEATIT_TESTS_COREML_TEST_CONFIG_H
 

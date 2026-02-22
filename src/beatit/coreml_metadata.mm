@@ -1,3 +1,11 @@
+//
+//  coreml_metadata.mm
+//  BeatIt
+//
+//  Created by Till Toenshoff on 2026-02-22.
+//  Copyright © 2026 Till Toenshoff. All rights reserved.
+//
+
 #import <CoreML/CoreML.h>
 #import <Foundation/Foundation.h>
 

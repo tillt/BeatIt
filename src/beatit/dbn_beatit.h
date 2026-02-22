@@ -1,3 +1,11 @@
+//
+//  dbn_beatit.h
+//  BeatIt
+//
+//  Created by Till Toenshoff on 2026-02-22.
+//  Copyright © 2026 Till Toenshoff. All rights reserved.
+//
+
 #ifndef BEATIT_DBN_BEATIT_H
 #define BEATIT_DBN_BEATIT_H
 

@@ -1,3 +1,11 @@
+//
+//  coreml_postprocess.cpp
+//  BeatIt
+//
+//  Created by Till Toenshoff on 2026-02-22.
+//  Copyright © 2026 Till Toenshoff. All rights reserved.
+//
+
 #include "beatit/coreml.h"
 #include "beatit/dbn_beatit.h"
 #include "beatit/dbn_calmdad.h"

@@ -1,3 +1,11 @@
+//
+//  window_alignment_test_utils.h
+//  BeatIt
+//
+//  Created by Till Toenshoff on 2026-02-22.
+//  Copyright © 2026 Till Toenshoff. All rights reserved.
+//
+
 #pragma once
 
 #import <AVFoundation/AVFoundation.h>

@@ -1,3 +1,11 @@
+//
+//  intelligence_window_alignment_test.mm
+//  BeatIt
+//
+//  Created by Till Toenshoff on 2026-02-22.
+//  Copyright © 2026 Till Toenshoff. All rights reserved.
+//
+
 #import <AVFoundation/AVFoundation.h>
 #import <CoreML/CoreML.h>
 
