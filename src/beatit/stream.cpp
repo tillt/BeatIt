@@ -7,6 +7,7 @@
 //
 
 #include "beatit/stream.h"
+#include "beatit/stream_activation_accumulator.h"
 #include "beatit/stream_inference_backend.h"
 #include "beatit/stream_sparse.h"
 
@@ -647,30 +648,16 @@ void BeatitStream::process_coreml_windows() {
         if (!ok) {
             return;
         }
-        if (beat_activation.size() > coreml_config_.fixed_frames) {
-            beat_activation.resize(coreml_config_.fixed_frames);
-        }
-        if (downbeat_activation.size() > coreml_config_.fixed_frames) {
-            downbeat_activation.resize(coreml_config_.fixed_frames);
-        }
+        detail::trim_activation_to_frames(&beat_activation, coreml_config_.fixed_frames);
+        detail::trim_activation_to_frames(&downbeat_activation, coreml_config_.fixed_frames);
 
-        const std::size_t needed = coreml_frame_offset_ + coreml_config_.fixed_frames;
-        if (coreml_beat_activation_.size() < needed) {
-            coreml_beat_activation_.resize(needed, 0.0f);
-            coreml_downbeat_activation_.resize(needed, 0.0f);
-        }
-
-        for (std::size_t i = 0; i < coreml_config_.fixed_frames; ++i) {
-            const std::size_t idx = coreml_frame_offset_ + i;
-            if (i < beat_activation.size()) {
-                coreml_beat_activation_[idx] = std::max(coreml_beat_activation_[idx],
-                                                        beat_activation[i]);
-            }
-            if (i < downbeat_activation.size()) {
-                coreml_downbeat_activation_[idx] = std::max(coreml_downbeat_activation_[idx],
-                                                            downbeat_activation[i]);
-            }
-        }
+        detail::merge_window_activations(&coreml_beat_activation_,
+                                         &coreml_downbeat_activation_,
+                                         coreml_frame_offset_,
+                                         coreml_config_.fixed_frames,
+                                         beat_activation,
+                                         downbeat_activation,
+                                         0);
 
         resampled_offset_ += hop_samples;
         coreml_frame_offset_ += coreml_config_.window_hop_frames;
@@ -738,35 +725,18 @@ void BeatitStream::process_torch_windows() {
             auto& beat_activation = beat_activations[w];
             auto& downbeat_activation = downbeat_activations[w];
 
-            if (beat_activation.size() > coreml_config_.fixed_frames) {
-                beat_activation.resize(coreml_config_.fixed_frames);
-            }
-            if (downbeat_activation.size() > coreml_config_.fixed_frames) {
-                downbeat_activation.resize(coreml_config_.fixed_frames);
-            }
+            detail::trim_activation_to_frames(&beat_activation, coreml_config_.fixed_frames);
+            detail::trim_activation_to_frames(&downbeat_activation, coreml_config_.fixed_frames);
 
             const std::size_t window_offset =
                 coreml_frame_offset_ + w * coreml_config_.window_hop_frames;
-            const std::size_t needed = window_offset + coreml_config_.fixed_frames;
-            if (coreml_beat_activation_.size() < needed) {
-                coreml_beat_activation_.resize(needed, 0.0f);
-                coreml_downbeat_activation_.resize(needed, 0.0f);
-            }
-
-            for (std::size_t i = 0; i < coreml_config_.fixed_frames; ++i) {
-                if (i < border || i >= coreml_config_.fixed_frames - border) {
-                    continue;
-                }
-                const std::size_t idx = window_offset + i;
-                if (i < beat_activation.size()) {
-                    coreml_beat_activation_[idx] =
-                        std::max(coreml_beat_activation_[idx], beat_activation[i]);
-                }
-                if (i < downbeat_activation.size()) {
-                    coreml_downbeat_activation_[idx] =
-                        std::max(coreml_downbeat_activation_[idx], downbeat_activation[i]);
-                }
-            }
+            detail::merge_window_activations(&coreml_beat_activation_,
+                                             &coreml_downbeat_activation_,
+                                             window_offset,
+                                             coreml_config_.fixed_frames,
+                                             beat_activation,
+                                             downbeat_activation,
+                                             border);
         }
 
         resampled_offset_ += hop_samples * batch_count;
@@ -927,30 +897,15 @@ AnalysisResult BeatitStream::finalize() {
             if (!ok) {
                 return result;
             }
-            if (beat_activation.size() > local_config.fixed_frames) {
-                beat_activation.resize(local_config.fixed_frames);
-            }
-            if (downbeat_activation.size() > local_config.fixed_frames) {
-                downbeat_activation.resize(local_config.fixed_frames);
-            }
-
-            const std::size_t needed = coreml_frame_offset_ + local_config.fixed_frames;
-            if (coreml_beat_activation_.size() < needed) {
-                coreml_beat_activation_.resize(needed, 0.0f);
-                coreml_downbeat_activation_.resize(needed, 0.0f);
-            }
-
-            for (std::size_t i = 0; i < local_config.fixed_frames; ++i) {
-                const std::size_t idx = coreml_frame_offset_ + i;
-                if (i < beat_activation.size()) {
-                    coreml_beat_activation_[idx] =
-                        std::max(coreml_beat_activation_[idx], beat_activation[i]);
-                }
-                if (i < downbeat_activation.size()) {
-                    coreml_downbeat_activation_[idx] =
-                        std::max(coreml_downbeat_activation_[idx], downbeat_activation[i]);
-                }
-            }
+            detail::trim_activation_to_frames(&beat_activation, local_config.fixed_frames);
+            detail::trim_activation_to_frames(&downbeat_activation, local_config.fixed_frames);
+            detail::merge_window_activations(&coreml_beat_activation_,
+                                             &coreml_downbeat_activation_,
+                                             coreml_frame_offset_,
+                                             local_config.fixed_frames,
+                                             beat_activation,
+                                             downbeat_activation,
+                                             0);
         }
     }
 
