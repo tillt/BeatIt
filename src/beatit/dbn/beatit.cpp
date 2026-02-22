@@ -1,11 +1,11 @@
 //
-//  dbn_beatit.cpp
+//  beatit.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
-#include "beatit/dbn_beatit.h"
+#include "beatit/dbn/beatit.h"
 
 #include <algorithm>
 #include <cmath>

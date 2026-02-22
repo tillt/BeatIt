@@ -1,5 +1,5 @@
 //
-//  dbn_beatit.h
+//  beatit.h
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
@@ -10,7 +10,7 @@
 #define BEATIT_DBN_BEATIT_H
 
 #include "beatit/coreml.h"
-#include "beatit/dbn_calmdad.h"
+#include "beatit/dbn/calmdad.h"
 
 #include <vector>
 

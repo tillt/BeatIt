@@ -10,7 +10,7 @@
 #define BEATIT_INTERNAL_POSTPROCESS_DBN_GRID_STAGES_H
 
 #include "beatit/coreml.h"
-#include "../dbn_beatit.h"
+#include "../dbn/beatit.h"
 
 #include <cstddef>
 #include <limits>

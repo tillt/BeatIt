@@ -14,8 +14,8 @@
 #include "beatit/pp_tempo_fit.h"
 #include "beatit/pp_window.h"
 #include "beatit/logging.hpp"
-#include "beatit/dbn_beatit.h"
-#include "beatit/dbn_calmdad.h"
+#include "beatit/dbn/beatit.h"
+#include "beatit/dbn/calmdad.h"
 
 #include <algorithm>
 #include <array>

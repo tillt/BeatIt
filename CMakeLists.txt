@@ -109,9 +109,9 @@ set(BEATIT_LIB_SOURCES
     src/beatit/post/tempo_fit.cpp
     src/beatit/post/window.cpp
     src/beatit/coreml_preset.cpp
-    src/beatit/dbn_calmdad.cpp
-    src/beatit/dbn_calmdad_sparse.cpp
-    src/beatit/dbn_beatit.cpp
+    src/beatit/dbn/calmdad.cpp
+    src/beatit/dbn/calmdad_sparse.cpp
+    src/beatit/dbn/beatit.cpp
     src/beatit/refiner/core.cpp
     src/beatit/refiner/constant.cpp
     src/beatit/refiner/constant_regions.cpp
@@ -232,9 +232,9 @@ if(APPLE)
         src/beatit/post/tempo_fit.cpp
         src/beatit/post/window.cpp
         src/beatit/coreml_preset.cpp
-        src/beatit/dbn_calmdad.cpp
-        src/beatit/dbn_calmdad_sparse.cpp
-        src/beatit/dbn_beatit.cpp
+        src/beatit/dbn/calmdad.cpp
+        src/beatit/dbn/calmdad_sparse.cpp
+        src/beatit/dbn/beatit.cpp
         src/beatit/refiner/core.cpp
         src/beatit/refiner/constant.cpp
         src/beatit/refiner/constant_regions.cpp

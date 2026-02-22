@@ -10,8 +10,8 @@
 #define BEATIT_PP_DBN_DECODE_H
 
 #include "beatit/coreml.h"
-#include "beatit/dbn_beatit.h"
-#include "beatit/dbn_calmdad.h"
+#include "beatit/dbn/beatit.h"
+#include "beatit/dbn/calmdad.h"
 
 #include <cstddef>
 #include <vector>

@@ -11,8 +11,8 @@
 
 #include "beatit/coreml.h"
 #include "beatit/pp_helpers.h"
-#include "beatit/dbn_calmdad.h"
-#include "../dbn_beatit.h"
+#include "beatit/dbn/calmdad.h"
+#include "../dbn/beatit.h"
 
 #include <cstddef>
 #include <string>

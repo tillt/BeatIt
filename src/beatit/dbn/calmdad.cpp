@@ -1,5 +1,5 @@
 //
-//  dbn_calmdad.cpp
+//  calmdad.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
@@ -8,7 +8,7 @@
 // CALMDAD Analyzes Latent Meter Dynamics And Downbeats.
 // DBN-based beat and downbeat decoder.
 //
-#include "beatit/dbn_calmdad.h"
+#include "beatit/dbn/calmdad.h"
 
 #include <algorithm>
 #include <cmath>

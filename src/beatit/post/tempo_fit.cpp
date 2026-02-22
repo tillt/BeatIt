@@ -8,7 +8,7 @@
 
 #include "beatit/pp_tempo_fit.h"
 
-#include "beatit/dbn_calmdad.h"
+#include "beatit/dbn/calmdad.h"
 
 #include <algorithm>
 #include <cmath>
