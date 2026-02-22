@@ -34,6 +34,7 @@ set(BEATIT_LIB_SOURCES
     src/beatit/coreml_preset.cpp
     src/beatit/refiner.cpp
     src/beatit/stream_inference_backend.cpp
+    src/beatit/stream_sparse.cpp
     src/beatit/stream.cpp
 )
 if(BEATIT_USE_TORCH)
@@ -107,6 +108,7 @@ if(APPLE)
         src/beatit/coreml_preset.cpp
         src/beatit/refiner.cpp
         src/beatit/stream_inference_backend.cpp
+        src/beatit/stream_sparse.cpp
         src/beatit/stream.cpp
         ${BEATIT_PUBLIC_HEADERS}
     )
