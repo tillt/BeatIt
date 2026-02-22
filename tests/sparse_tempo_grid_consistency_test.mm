@@ -25,6 +25,7 @@
 #include "beatit/analysis.h"
 #include "beatit/coreml_preset.h"
 #include "coreml_test_config.h"
+#include "synthetic_audio_test_utils.h"
 
 namespace {
 
@@ -214,171 +215,6 @@ bool decode_audio_mono_limited(const std::string& path,
     return true;
 }
 
-void write_pcm16_wav(const std::filesystem::path& path,
-                     const std::vector<float>& samples,
-                     int sample_rate) {
-    std::ofstream out(path, std::ios::binary);
-    if (!out) {
-        return;
-    }
-
-    const uint16_t channels = 1;
-    const uint16_t bits_per_sample = 16;
-    const uint32_t byte_rate = static_cast<uint32_t>(sample_rate) * channels * (bits_per_sample / 8);
-    const uint16_t block_align = channels * (bits_per_sample / 8);
-    const uint32_t data_size = static_cast<uint32_t>(samples.size() * sizeof(int16_t));
-    const uint32_t riff_size = 36 + data_size;
-
-    out.write("RIFF", 4);
-    out.write(reinterpret_cast<const char*>(&riff_size), sizeof(riff_size));
-    out.write("WAVE", 4);
-    out.write("fmt ", 4);
-    const uint32_t fmt_size = 16;
-    out.write(reinterpret_cast<const char*>(&fmt_size), sizeof(fmt_size));
-    const uint16_t audio_format = 1;
-    out.write(reinterpret_cast<const char*>(&audio_format), sizeof(audio_format));
-    out.write(reinterpret_cast<const char*>(&channels), sizeof(channels));
-    const uint32_t sr_u32 = static_cast<uint32_t>(sample_rate);
-    out.write(reinterpret_cast<const char*>(&sr_u32), sizeof(sr_u32));
-    out.write(reinterpret_cast<const char*>(&byte_rate), sizeof(byte_rate));
-    out.write(reinterpret_cast<const char*>(&block_align), sizeof(block_align));
-    out.write(reinterpret_cast<const char*>(&bits_per_sample), sizeof(bits_per_sample));
-    out.write("data", 4);
-    out.write(reinterpret_cast<const char*>(&data_size), sizeof(data_size));
-
-    for (float sample : samples) {
-        const float clamped = std::max(-1.0f, std::min(1.0f, sample));
-        const int16_t pcm = static_cast<int16_t>(std::lrint(clamped * 32767.0f));
-        out.write(reinterpret_cast<const char*>(&pcm), sizeof(pcm));
-    }
-}
-
-std::vector<float> make_click_track(double sample_rate,
-                                    double bpm,
-                                    double seconds,
-                                    double pulse_ms,
-                                    float amp,
-                                    double active_start_s,
-                                    double active_end_s) {
-    const std::size_t total_samples =
-        static_cast<std::size_t>(std::ceil(sample_rate * seconds));
-    const std::size_t beat_period =
-        std::max<std::size_t>(1, static_cast<std::size_t>(std::round(sample_rate * 60.0 / bpm)));
-    const std::size_t pulse_width =
-        std::max<std::size_t>(1, static_cast<std::size_t>(std::round(sample_rate * pulse_ms * 0.001)));
-    std::vector<float> samples(total_samples, 0.0f);
-
-    const std::size_t active_start =
-        static_cast<std::size_t>(std::max(0.0, active_start_s) * sample_rate);
-    const std::size_t active_end =
-        std::min<std::size_t>(total_samples,
-                              static_cast<std::size_t>(std::max(0.0, active_end_s) * sample_rate));
-
-    for (std::size_t i = active_start; i < active_end; ++i) {
-        const std::size_t phase = (i - active_start) % beat_period;
-        if (phase < pulse_width) {
-            const float taper = 1.0f - static_cast<float>(phase) /
-                                           static_cast<float>(pulse_width);
-            samples[i] = amp * taper;
-        }
-    }
-
-    return samples;
-}
-
-std::vector<float> make_tremolo_sine(double sample_rate,
-                                     double carrier_hz,
-                                     double bpm_mod,
-                                     double seconds,
-                                     float amp) {
-    const std::size_t total_samples =
-        static_cast<std::size_t>(std::ceil(sample_rate * seconds));
-    std::vector<float> samples(total_samples, 0.0f);
-    const double w_carrier = 2.0 * M_PI * carrier_hz;
-    const double w_mod = 2.0 * M_PI * (bpm_mod / 60.0);
-    for (std::size_t i = 0; i < total_samples; ++i) {
-        const double t = static_cast<double>(i) / sample_rate;
-        const double env = 0.5 * (1.0 + std::sin(w_mod * t));
-        samples[i] = amp * static_cast<float>(std::sin(w_carrier * t) * env);
-    }
-    return samples;
-}
-
-std::vector<float> make_nonrhythmic_ambient(double sample_rate,
-                                            double seconds,
-                                            uint64_t seed) {
-    const std::size_t total_samples =
-        static_cast<std::size_t>(std::ceil(sample_rate * seconds));
-    std::vector<float> samples(total_samples, 0.0f);
-    if (total_samples == 0 || sample_rate <= 0.0) {
-        return samples;
-    }
-
-    struct Oscillator {
-        double base_hz = 0.0;
-        double drift_hz = 0.0;
-        double drift_rate_hz = 0.0;
-        double phase = 0.0;
-        double drift_phase = 0.0;
-    };
-
-    std::mt19937_64 rng(seed);
-    std::uniform_real_distribution<double> phase_dist(0.0, 2.0 * M_PI);
-    std::normal_distribution<float> noise_dist(0.0f, 1.0f);
-
-    std::vector<Oscillator> oscillators;
-    oscillators.push_back({87.0, 7.0, 0.009, phase_dist(rng), phase_dist(rng)});
-    oscillators.push_back({131.0, 11.0, 0.013, phase_dist(rng), phase_dist(rng)});
-    oscillators.push_back({197.0, 17.0, 0.017, phase_dist(rng), phase_dist(rng)});
-
-    const double env_phase_a = phase_dist(rng);
-    const double env_phase_b = phase_dist(rng);
-    float brown_noise = 0.0f;
-    constexpr double kTwoPi = 2.0 * M_PI;
-
-    for (std::size_t i = 0; i < total_samples; ++i) {
-        const double t = static_cast<double>(i) / sample_rate;
-
-        // Slow envelope movement (well below beat-rate modulation).
-        const double env_a = 0.5 + 0.5 * std::sin(kTwoPi * 0.011 * t + env_phase_a);
-        const double env_b = 0.5 + 0.5 * std::sin(kTwoPi * 0.017 * t + env_phase_b);
-        const double envelope = 0.05 + 0.2 * env_a + 0.15 * env_b;
-
-        double tonal = 0.0;
-        for (auto& osc : oscillators) {
-            const double drift =
-                osc.drift_hz * std::sin(kTwoPi * osc.drift_rate_hz * t + osc.drift_phase);
-            const double inst_hz = std::max(20.0, osc.base_hz + drift);
-            osc.phase += kTwoPi * inst_hz / sample_rate;
-            if (osc.phase > kTwoPi) {
-                osc.phase -= kTwoPi;
-            }
-            tonal += std::sin(osc.phase);
-        }
-        tonal /= static_cast<double>(oscillators.size());
-
-        const float white = noise_dist(rng) * 0.01f;
-        brown_noise = 0.998f * brown_noise + 0.002f * white;
-        float sample = static_cast<float>(envelope * (0.2 * tonal)) + brown_noise;
-
-        // Gentle in/out fade to avoid edges acting as transients.
-        const std::size_t fade_len = static_cast<std::size_t>(std::round(sample_rate * 2.0));
-        if (i < fade_len) {
-            sample *= static_cast<float>(i) / static_cast<float>(std::max<std::size_t>(1, fade_len));
-        } else if (i + fade_len > total_samples) {
-            const std::size_t remain = total_samples - i;
-            sample *= static_cast<float>(remain) /
-                      static_cast<float>(std::max<std::size_t>(1, fade_len));
-        }
-        samples[i] = sample;
-    }
-
-    for (float& sample : samples) {
-        sample = std::max(-1.0f, std::min(1.0f, sample));
-    }
-    return samples;
-}
-
 struct Scenario {
     std::string name;
     std::string description;
@@ -455,26 +291,6 @@ double env_double_or(const char* name,
     return fallback;
 }
 
-void add_in_place(std::vector<float>* dst, const std::vector<float>& src, float gain) {
-    if (!dst) {
-        return;
-    }
-    if (dst->size() < src.size()) {
-        dst->resize(src.size(), 0.0f);
-    }
-    for (std::size_t i = 0; i < src.size(); ++i) {
-        (*dst)[i] += src[i] * gain;
-    }
-}
-
-void clamp_audio(std::vector<float>* samples) {
-    if (!samples) {
-        return;
-    }
-    for (float& sample : *samples) {
-        sample = std::max(-1.0f, std::min(1.0f, sample));
-    }
-}
 
 Scenario make_random_scenario(std::size_t index,
                               std::mt19937_64* rng,
@@ -510,36 +326,36 @@ Scenario make_random_scenario(std::size_t index,
     std::vector<float> samples(static_cast<std::size_t>(std::ceil(sample_rate * duration_seconds)), 0.0f);
 
     if (kind == 0) {
-        samples = make_click_track(sample_rate, bpm, duration_seconds, pulse_ms, amp, 0.0, duration_seconds);
+        samples = beatit::tests::synthetic_audio::make_click_track(sample_rate, bpm, duration_seconds, pulse_ms, amp, 0.0, duration_seconds);
         scenario.description = "steady_click bpm=" + std::to_string(bpm) +
                                " pulse_ms=" + std::to_string(pulse_ms) +
                                " amp=" + std::to_string(amp);
     } else if (kind == 1) {
-        samples = make_click_track(sample_rate, bpm, duration_seconds, pulse_ms, amp, 0.0, intro_end);
+        samples = beatit::tests::synthetic_audio::make_click_track(sample_rate, bpm, duration_seconds, pulse_ms, amp, 0.0, intro_end);
         scenario.description = "intro_click bpm=" + std::to_string(bpm) +
                                " active=[0," + std::to_string(intro_end) + "]";
     } else if (kind == 2) {
-        samples = make_click_track(sample_rate, bpm, duration_seconds, pulse_ms, amp, outro_start, duration_seconds);
+        samples = beatit::tests::synthetic_audio::make_click_track(sample_rate, bpm, duration_seconds, pulse_ms, amp, outro_start, duration_seconds);
         scenario.description = "outro_click bpm=" + std::to_string(bpm) +
                                " active=[" + std::to_string(outro_start) + "," +
                                std::to_string(duration_seconds) + "]";
     } else if (kind == 3) {
         const double ratio = (frac_dist(*rng) < 0.5) ? 0.5 : 2.0;
         const double secondary_bpm = std::max(40.0, bpm * ratio);
-        samples = make_click_track(sample_rate, bpm, duration_seconds, pulse_ms, amp, 0.0, duration_seconds);
+        samples = beatit::tests::synthetic_audio::make_click_track(sample_rate, bpm, duration_seconds, pulse_ms, amp, 0.0, duration_seconds);
         const std::vector<float> secondary =
-            make_click_track(sample_rate, secondary_bpm, duration_seconds, pulse_ms * 0.75, amp * 0.35f, 0.0, duration_seconds);
-        add_in_place(&samples, secondary, 1.0f);
+            beatit::tests::synthetic_audio::make_click_track(sample_rate, secondary_bpm, duration_seconds, pulse_ms * 0.75, amp * 0.35f, 0.0, duration_seconds);
+        beatit::tests::synthetic_audio::add_in_place(&samples, secondary, 1.0f);
         scenario.description = "dual_click bpm_a=" + std::to_string(bpm) +
                                " bpm_b=" + std::to_string(secondary_bpm);
     } else if (kind == 4) {
-        samples = make_tremolo_sine(sample_rate, hz_dist(*rng), bpm, duration_seconds, amp * 0.5f);
+        samples = beatit::tests::synthetic_audio::make_tremolo_sine(sample_rate, hz_dist(*rng), bpm, duration_seconds, amp * 0.5f);
         const std::vector<float> clicks =
-            make_click_track(sample_rate, bpm, duration_seconds, pulse_ms, amp * 0.15f, 0.0, duration_seconds);
-        add_in_place(&samples, clicks, 1.0f);
+            beatit::tests::synthetic_audio::make_click_track(sample_rate, bpm, duration_seconds, pulse_ms, amp * 0.15f, 0.0, duration_seconds);
+        beatit::tests::synthetic_audio::add_in_place(&samples, clicks, 1.0f);
         scenario.description = "tremolo_plus_click bpm=" + std::to_string(bpm);
     } else {
-        samples = make_click_track(sample_rate, bpm, duration_seconds, pulse_ms, amp * 0.2f, 0.0, duration_seconds);
+        samples = beatit::tests::synthetic_audio::make_click_track(sample_rate, bpm, duration_seconds, pulse_ms, amp * 0.2f, 0.0, duration_seconds);
         std::normal_distribution<float> noise_dist(0.0f, amp * 0.03f);
         for (float& sample : samples) {
             sample += noise_dist(*rng);
@@ -548,7 +364,7 @@ Scenario make_random_scenario(std::size_t index,
                                " amp=" + std::to_string(amp * 0.2f);
     }
 
-    clamp_audio(&samples);
+    beatit::tests::synthetic_audio::clamp_audio(&samples);
     scenario.samples = std::move(samples);
     return scenario;
 }
@@ -605,19 +421,19 @@ int main() {
     std::vector<Scenario> scenarios;
     scenarios.push_back({"steady_click_110",
                          "steady_click_110",
-                         make_click_track(kSampleRate, 110.0, duration_seconds, 8.0, 0.9f, 0.0, duration_seconds)});
+                         beatit::tests::synthetic_audio::make_click_track(kSampleRate, 110.0, duration_seconds, 8.0, 0.9f, 0.0, duration_seconds)});
     scenarios.push_back({"intro_only_click_110",
                          "intro_only_click_110",
-                         make_click_track(kSampleRate, 110.0, duration_seconds, 8.0, 0.9f, 0.0, 12.0)});
+                         beatit::tests::synthetic_audio::make_click_track(kSampleRate, 110.0, duration_seconds, 8.0, 0.9f, 0.0, 12.0)});
     scenarios.push_back({"outro_only_click_110",
                          "outro_only_click_110",
-                         make_click_track(kSampleRate, 110.0, duration_seconds, 8.0, 0.9f, 33.0, duration_seconds)});
+                         beatit::tests::synthetic_audio::make_click_track(kSampleRate, 110.0, duration_seconds, 8.0, 0.9f, 33.0, duration_seconds)});
     scenarios.push_back({"weak_click_110",
                          "weak_click_110",
-                         make_click_track(kSampleRate, 110.0, duration_seconds, 5.0, 0.05f, 0.0, duration_seconds)});
+                         beatit::tests::synthetic_audio::make_click_track(kSampleRate, 110.0, duration_seconds, 5.0, 0.05f, 0.0, duration_seconds)});
     scenarios.push_back({"tremolo_sine_110",
                          "tremolo_sine_110",
-                         make_tremolo_sine(kSampleRate, 80.0, 110.0, duration_seconds, 0.2f)});
+                         beatit::tests::synthetic_audio::make_tremolo_sine(kSampleRate, 80.0, 110.0, duration_seconds, 0.2f)});
 
     if (sweep_cases > 0) {
         for (std::size_t i = 0; i < sweep_cases; ++i) {
@@ -666,8 +482,8 @@ int main() {
     const std::filesystem::path nonrhythmic_wav =
         synth_dir / "synthetic_nonrhythmic.wav";
     const std::vector<float> nonrhythmic_source =
-        make_nonrhythmic_ambient(kSampleRate, duration_seconds, nonrhythmic_seed);
-    write_pcm16_wav(nonrhythmic_wav,
+        beatit::tests::synthetic_audio::make_nonrhythmic_ambient(kSampleRate, duration_seconds, nonrhythmic_seed);
+    beatit::tests::synthetic_audio::write_pcm16_wav(nonrhythmic_wav,
                     nonrhythmic_source,
                     static_cast<int>(kSampleRate));
     {
@@ -796,7 +612,7 @@ int main() {
         std::filesystem::create_directories(dump_dir, ec);
         const std::filesystem::path wav_path = dump_dir / (failing_name + ".wav");
         const std::filesystem::path meta_path = dump_dir / (failing_name + ".txt");
-        write_pcm16_wav(wav_path,
+        beatit::tests::synthetic_audio::write_pcm16_wav(wav_path,
                         failing_samples,
                         static_cast<int>(kSampleRate));
         {
