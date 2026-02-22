@@ -134,17 +134,25 @@ bool run_dbn_postprocess(CoreMLResult& result,
         return detail::infer_bpb_phase(beats, downbeats, candidates, config);
     };
 
+    std::size_t window_start = 0;
+    std::size_t window_end = used_frames;
+    bool use_window = false;
+    bool window_energy = false;
+    std::vector<float> beat_slice;
+    std::vector<float> downbeat_slice;
+
+    auto process_window_selection = [&] {
         const float window_peak_threshold =
             std::max(config.activation_threshold, config.dbn_activation_floor);
         std::pair<std::size_t, std::size_t> window{0, used_frames};
-        bool window_energy = false;
+        bool selected_by_energy = false;
         const bool phase_energy_ok =
             phase_energy && !phase_energy->empty() && phase_energy->size() >= used_frames;
         if (phase_energy_ok) {
             window = select_dbn_window_energy(*phase_energy,
                                               config.dbn_window_seconds,
                                               false);
-            window_energy = true;
+            selected_by_energy = true;
         } else {
             window = select_dbn_window(result.beat_activation,
                                        config.dbn_window_seconds,
@@ -153,17 +161,18 @@ bool run_dbn_postprocess(CoreMLResult& result,
                                        max_bpm,
                                        window_peak_threshold);
         }
-        const std::size_t window_start = window.first;
-        const std::size_t window_end = window.second;
-        const bool use_window = (window_start > 0 || window_end < used_frames);
-        std::vector<float> beat_slice;
-        std::vector<float> downbeat_slice;
+        window_energy = selected_by_energy;
+        window_start = window.first;
+        window_end = window.second;
+        use_window = (window_start > 0 || window_end < used_frames);
+        std::vector<float> local_beat_slice;
+        std::vector<float> local_downbeat_slice;
         if (use_window) {
-            beat_slice.assign(result.beat_activation.begin() + window_start,
-                              result.beat_activation.begin() + window_end);
+            local_beat_slice.assign(result.beat_activation.begin() + window_start,
+                                    result.beat_activation.begin() + window_end);
             if (!result.downbeat_activation.empty()) {
-                downbeat_slice.assign(result.downbeat_activation.begin() + window_start,
-                                      result.downbeat_activation.begin() + window_end);
+                local_downbeat_slice.assign(result.downbeat_activation.begin() + window_start,
+                                            result.downbeat_activation.begin() + window_end);
             }
             if (config.verbose) {
                 std::cerr << "DBN window: start=" << window_start
@@ -175,14 +184,18 @@ bool run_dbn_postprocess(CoreMLResult& result,
                           << "\n";
             }
         }
-        double quality_qpar = 0.0;
-        double quality_qmax = 0.0;
-        double quality_qkur = 0.0;
-        bool quality_valid = false;
-        if (fps > 0.0) {
-            const std::vector<float>& quality_src =
-                use_window ? beat_slice : result.beat_activation;
-            if (quality_src.size() >= 16) {
+        beat_slice = std::move(local_beat_slice);
+        downbeat_slice = std::move(local_downbeat_slice);
+    };
+
+    double quality_qpar = 0.0;
+    double quality_qmax = 0.0;
+    double quality_qkur = 0.0;
+    bool quality_valid = false;
+    auto process_quality_gate = [&] {
+        const std::vector<float>& quality_src =
+            use_window ? beat_slice : result.beat_activation;
+        if (quality_src.size() >= 16) {
                 const double min_bpm_q = std::max(1.0, static_cast<double>(config.min_bpm));
                 const double max_bpm_q = std::max(min_bpm_q + 1.0,
                                                   static_cast<double>(config.max_bpm));
@@ -248,11 +261,12 @@ bool run_dbn_postprocess(CoreMLResult& result,
                                   << "\n";
                     }
                 }
-            }
         }
-        const auto dbn_start = std::chrono::steady_clock::now();
-        DBNDecodeResult decoded;
-        const CalmdadDecoder calmdad_decoder(config);
+    };
+
+    DBNDecodeResult decoded;
+    const CalmdadDecoder calmdad_decoder(config);
+    auto process_decode = [&] {
         if (config.dbn_mode == CoreMLConfig::DBNMode::Calmdad) {
             if (config.dbn_tempo_prior_weight > 0.0f) {
                 const double tolerance =
@@ -309,48 +323,67 @@ bool run_dbn_postprocess(CoreMLResult& result,
                                               config,
                                               reference_bpm);
         }
-        const auto dbn_end = std::chrono::steady_clock::now();
-        dbn_ms += std::chrono::duration<double, std::milli>(dbn_end - dbn_start).count();
-        if (!decoded.beat_frames.empty()) {
-            double projected_bpm = 0.0;
-            if (use_window) {
-                for (std::size_t& frame : decoded.beat_frames) {
-                    frame += window_start;
-                }
-                for (std::size_t& frame : decoded.downbeat_frames) {
-                    frame += window_start;
-                }
+    };
+
+    process_window_selection();
+
+    if (fps > 0.0) {
+        process_quality_gate();
+    }
+
+    const auto dbn_start = std::chrono::steady_clock::now();
+    process_decode();
+    const auto dbn_end = std::chrono::steady_clock::now();
+    dbn_ms += std::chrono::duration<double, std::milli>(dbn_end - dbn_start).count();
+
+    auto process_decoded_beats = [&]() -> bool {
+        double projected_bpm = 0.0;
+
+        auto apply_window_offset = [&] {
+            if (!use_window) {
+                return;
             }
-            if (config.dbn_project_grid) {
-                std::vector<std::size_t> refined_beats;
-                refined_beats.reserve(decoded.beat_frames.size());
-                for (std::size_t frame : decoded.beat_frames) {
-                    refined_beats.push_back(refine_frame_to_peak(frame, result.beat_activation));
-                }
-                decoded.beat_frames = std::move(refined_beats);
-                dedupe_frames(decoded.beat_frames);
+            for (std::size_t& frame : decoded.beat_frames) {
+                frame += window_start;
+            }
+            for (std::size_t& frame : decoded.downbeat_frames) {
+                frame += window_start;
+            }
+        };
 
-                if (!decoded.downbeat_frames.empty()) {
-                    const std::vector<float>& downbeat_source =
-                        result.downbeat_activation.empty() ? result.beat_activation
-                                                           : result.downbeat_activation;
-                    std::vector<std::size_t> refined_downbeats;
-                    refined_downbeats.reserve(decoded.downbeat_frames.size());
-                    for (std::size_t frame : decoded.downbeat_frames) {
-                        refined_downbeats.push_back(refine_frame_to_peak(frame, downbeat_source));
-                    }
-                    decoded.downbeat_frames = std::move(refined_downbeats);
-                    dedupe_frames(decoded.downbeat_frames);
-                }
+        auto process_grid_projection = [&] {
+            if (!config.dbn_project_grid) {
+                return;
+            }
+            std::vector<std::size_t> refined_beats;
+            refined_beats.reserve(decoded.beat_frames.size());
+            for (std::size_t frame : decoded.beat_frames) {
+                refined_beats.push_back(refine_frame_to_peak(frame, result.beat_activation));
+            }
+            decoded.beat_frames = std::move(refined_beats);
+            dedupe_frames(decoded.beat_frames);
 
-                const double min_interval_frames =
-                    (max_bpm > 1.0f && fps > 0.0) ? (60.0 * fps) / max_bpm : 0.0;
-                const double short_interval_threshold =
-                    (min_interval_frames > 0.0) ? std::max(1.0, min_interval_frames * 0.5) : 0.0;
-                const std::vector<std::size_t> filtered_beats =
-                    filter_short_intervals(decoded.beat_frames, short_interval_threshold);
-                const std::vector<std::size_t> aligned_downbeats =
-                    align_downbeats_to_beats(filtered_beats, decoded.downbeat_frames);
+            if (!decoded.downbeat_frames.empty()) {
+                const std::vector<float>& downbeat_source =
+                    result.downbeat_activation.empty() ? result.beat_activation
+                                                       : result.downbeat_activation;
+                std::vector<std::size_t> refined_downbeats;
+                refined_downbeats.reserve(decoded.downbeat_frames.size());
+                for (std::size_t frame : decoded.downbeat_frames) {
+                    refined_downbeats.push_back(refine_frame_to_peak(frame, downbeat_source));
+                }
+                decoded.downbeat_frames = std::move(refined_downbeats);
+                dedupe_frames(decoded.downbeat_frames);
+            }
+
+            const double min_interval_frames =
+                (max_bpm > 1.0f && fps > 0.0) ? (60.0 * fps) / max_bpm : 0.0;
+            const double short_interval_threshold =
+                (min_interval_frames > 0.0) ? std::max(1.0, min_interval_frames * 0.5) : 0.0;
+            const std::vector<std::size_t> filtered_beats =
+                filter_short_intervals(decoded.beat_frames, short_interval_threshold);
+            const std::vector<std::size_t> aligned_downbeats =
+                align_downbeats_to_beats(filtered_beats, decoded.downbeat_frames);
 
                 std::vector<std::size_t> bpb_candidates;
                 if (config.dbn_mode == CoreMLConfig::DBNMode::Calmdad) {
@@ -1520,11 +1553,9 @@ bool run_dbn_postprocess(CoreMLResult& result,
                                   << "\n";
                     }
                 }
-            }
+        };
 
-            // Use the refined peak interpolation path for decoded DBN beats as well,
-            // so sample-frame timing is not quantized to integer feature frames.
-            fill_beats_from_frames(decoded.beat_frames);
+        auto emit_projected_grid_outputs = [&] {
             if (config.dbn_project_grid && decoded.beat_frames.size() >= 2 && projected_bpm > 0.0) {
                 fill_beats_from_bpm_grid_into(decoded.beat_frames.front(),
                                               projected_bpm,
@@ -1567,6 +1598,9 @@ bool run_dbn_postprocess(CoreMLResult& result,
                 result.beat_projected_strengths.clear();
                 result.downbeat_projected_feature_frames.clear();
             }
+        };
+
+        auto emit_downbeat_outputs = [&] {
             result.downbeat_feature_frames.clear();
             const std::vector<std::size_t> adjusted_downbeats =
                 apply_latency_to_frames(decoded.downbeat_frames);
@@ -1574,12 +1608,26 @@ bool run_dbn_postprocess(CoreMLResult& result,
             for (std::size_t frame : adjusted_downbeats) {
                 result.downbeat_feature_frames.push_back(static_cast<unsigned long long>(frame));
             }
-            if (config.profile) {
-                std::cerr << "Timing(postprocess): dbn=" << dbn_ms
-                          << "ms peaks=" << peaks_ms << "ms\n";
-            }
-            return true;
+        };
+
+        apply_window_offset();
+        process_grid_projection();
+
+        // Use the refined peak interpolation path for decoded DBN beats as well,
+        // so sample-frame timing is not quantized to integer feature frames.
+        fill_beats_from_frames(decoded.beat_frames);
+        emit_projected_grid_outputs();
+        emit_downbeat_outputs();
+        if (config.profile) {
+            std::cerr << "Timing(postprocess): dbn=" << dbn_ms
+                      << "ms peaks=" << peaks_ms << "ms\n";
         }
+        return true;
+    };
+
+    if (!decoded.beat_frames.empty()) {
+        return process_decoded_beats();
+    }
 
     return false;
 }
