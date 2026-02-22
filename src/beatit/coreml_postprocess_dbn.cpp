@@ -289,28 +289,41 @@ bool run_dbn_postprocess(CoreMLResult& result,
     dbn_ms += std::chrono::duration<double, std::milli>(dbn_end - dbn_start).count();
 
     if (!decoded.beat_frames.empty()) {
-        const bool ok = run_dbn_decoded_postprocess(result,
-                                                    decoded,
-                                                    config,
-                                                    calmdad_decoder,
-                                                    sample_rate,
-                                                    reference_bpm,
-                                                    grid_total_frames,
-                                                    min_bpm,
-                                                    max_bpm,
-                                                    fps,
-                                                    hop_scale,
-                                                    analysis_latency_frames,
-                                                    analysis_latency_frames_f,
-                                                    kRefineWindow,
-                                                    used_frames,
-                                                    use_window,
-                                                    window_start,
-                                                    beat_slice,
-                                                    downbeat_slice,
-                                                    quality_valid,
-                                                    quality_qpar,
-                                                    quality_qkur);
+        const DBNProcessingContext processing_ctx{
+            config,
+            calmdad_decoder,
+            sample_rate,
+            fps,
+            hop_scale,
+            analysis_latency_frames,
+            analysis_latency_frames_f,
+            kRefineWindow,
+        };
+        const DBNWindowContext window_ctx{
+            used_frames,
+            use_window,
+            window_start,
+            beat_slice,
+            downbeat_slice,
+        };
+        const DBNBpmContext bpm_ctx{
+            reference_bpm,
+            grid_total_frames,
+            min_bpm,
+            max_bpm,
+        };
+        const DBNQualityContext quality_ctx{
+            quality_valid,
+            quality_qpar,
+            quality_qkur,
+        };
+        const DBNDecodedPostprocessContext decoded_context{
+            processing_ctx,
+            window_ctx,
+            bpm_ctx,
+            quality_ctx,
+        };
+        const bool ok = run_dbn_decoded_postprocess(result, decoded, decoded_context);
         if (ok && config.profile) {
             std::cerr << "Timing(postprocess): dbn=" << dbn_ms
                       << "ms peaks=" << peaks_ms << "ms\n";

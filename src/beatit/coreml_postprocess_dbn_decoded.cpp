@@ -701,28 +701,516 @@ void synthesize_uniform_grid(GridProjectionState& state,
     }
 }
 
+struct GridTempoDecision {
+    std::size_t bpb = 1;
+    std::size_t phase = 0;
+    double base_interval = 0.0;
+    double bpm_for_grid = 0.0;
+    double step_frames = 0.0;
+    bool quality_low = false;
+    bool downbeat_override_ok = false;
+};
+
+GridTempoDecision compute_grid_tempo_decision(const DBNDecodeResult& decoded,
+                                              const CoreMLResult& result,
+                                              const CoreMLConfig& config,
+                                              const CalmdadDecoder& calmdad_decoder,
+                                              bool use_window,
+                                              const std::vector<float>& beat_slice,
+                                              const std::vector<float>& downbeat_slice,
+                                              bool quality_valid,
+                                              double quality_qpar,
+                                              double quality_qkur,
+                                              std::size_t used_frames,
+                                              float min_bpm,
+                                              float max_bpm,
+                                              float reference_bpm,
+                                              double fps) {
+    GridTempoDecision decision;
+    if (decoded.beat_frames.empty()) {
+        return decision;
+    }
+
+    const double min_interval_frames =
+        (max_bpm > 1.0f && fps > 0.0) ? (60.0 * fps) / max_bpm : 0.0;
+    const double short_interval_threshold =
+        (min_interval_frames > 0.0) ? std::max(1.0, min_interval_frames * 0.5) : 0.0;
+    const std::vector<std::size_t> filtered_beats =
+        filter_short_intervals(decoded.beat_frames, short_interval_threshold);
+    const std::vector<std::size_t> aligned_downbeats =
+        align_downbeats_to_beats(filtered_beats, decoded.downbeat_frames);
+
+    std::vector<std::size_t> bpb_candidates;
+    if (config.dbn_mode == CoreMLConfig::DBNMode::Calmdad) {
+        bpb_candidates = {3, 4};
+    } else {
+        bpb_candidates = {config.dbn_beats_per_bar};
+    }
+    const auto inferred_bpb_phase =
+        infer_bpb_phase(filtered_beats, aligned_downbeats, bpb_candidates, config);
+    decision.bpb = inferred_bpb_phase.first;
+    decision.phase = inferred_bpb_phase.second;
+    decision.base_interval = median_interval_frames(filtered_beats);
+
+    const std::vector<float>& tempo_activation = use_window ? beat_slice : result.beat_activation;
+    const float tempo_threshold =
+        std::max(config.dbn_activation_floor, config.activation_threshold * 0.5f);
+    const std::size_t tempo_min_interval =
+        static_cast<std::size_t>(
+            std::max(1.0, std::floor((60.0 * fps) / std::max(1.0f, max_bpm))));
+    const std::size_t tempo_max_interval = static_cast<std::size_t>(
+        std::max<double>(tempo_min_interval, std::ceil((60.0 * fps) / std::max(1.0f, min_bpm))));
+    const std::vector<std::size_t> tempo_peaks =
+        pick_peaks(tempo_activation, tempo_threshold, tempo_min_interval, tempo_max_interval);
+    const std::vector<std::size_t> tempo_peaks_full =
+        use_window ? pick_peaks(result.beat_activation,
+                                tempo_threshold,
+                                tempo_min_interval,
+                                tempo_max_interval)
+                   : tempo_peaks;
+    double bpm_from_peaks = 0.0;
+    double bpm_from_peaks_median = 0.0;
+    double bpm_from_peaks_reg = 0.0;
+    double bpm_from_peaks_median_full = 0.0;
+    double bpm_from_peaks_reg_full = 0.0;
+    if (tempo_peaks.size() >= 2) {
+        const double interval_median =
+            median_interval_frames_interpolated(tempo_activation, tempo_peaks);
+        const double interval_reg =
+            regression_interval_frames_interpolated(tempo_activation, tempo_peaks);
+        if (interval_median > 0.0) {
+            bpm_from_peaks_median = (60.0 * fps) / interval_median;
+            bpm_from_peaks = bpm_from_peaks_median;
+        }
+        if (interval_reg > 0.0) {
+            bpm_from_peaks_reg = (60.0 * fps) / interval_reg;
+            if (bpm_from_peaks_median > 0.0) {
+                const double ratio =
+                    std::abs(bpm_from_peaks_reg - bpm_from_peaks_median) / bpm_from_peaks_median;
+                if (ratio <= 0.02) {
+                    bpm_from_peaks = bpm_from_peaks_reg;
+                }
+            } else {
+                bpm_from_peaks = bpm_from_peaks_reg;
+            }
+        }
+    }
+    if (tempo_peaks_full.size() >= 2) {
+        const double interval_median =
+            median_interval_frames_interpolated(result.beat_activation, tempo_peaks_full);
+        const double interval_reg =
+            regression_interval_frames_interpolated(result.beat_activation, tempo_peaks_full);
+        if (interval_median > 0.0) {
+            bpm_from_peaks_median_full = (60.0 * fps) / interval_median;
+        }
+        if (interval_reg > 0.0) {
+            bpm_from_peaks_reg_full = (60.0 * fps) / interval_reg;
+        }
+    }
+    double bpm_from_downbeats = 0.0;
+    double bpm_from_downbeats_median = 0.0;
+    double bpm_from_downbeats_reg = 0.0;
+    std::vector<std::size_t> downbeat_peaks;
+    IntervalStats downbeat_stats;
+    if (!result.downbeat_activation.empty() && decision.bpb > 0) {
+        const std::vector<float>& downbeat_activation =
+            use_window ? downbeat_slice : result.downbeat_activation;
+        const float downbeat_min_bpm =
+            std::max(1.0f, min_bpm / static_cast<float>(decision.bpb));
+        const float downbeat_max_bpm =
+            std::max(downbeat_min_bpm + 1.0f, max_bpm / static_cast<float>(decision.bpb));
+        const std::size_t downbeat_min_interval = static_cast<std::size_t>(
+            std::max(1.0, std::floor((60.0 * fps) / downbeat_max_bpm)));
+        const std::size_t downbeat_max_interval = static_cast<std::size_t>(
+            std::max<double>(downbeat_min_interval, std::ceil((60.0 * fps) / downbeat_min_bpm)));
+        downbeat_peaks = pick_peaks(downbeat_activation,
+                                    tempo_threshold,
+                                    downbeat_min_interval,
+                                    downbeat_max_interval);
+        if (downbeat_peaks.size() >= 2) {
+            const double interval_median =
+                median_interval_frames_interpolated(downbeat_activation, downbeat_peaks);
+            const double interval_reg =
+                regression_interval_frames_interpolated(downbeat_activation, downbeat_peaks);
+            if (interval_median > 0.0) {
+                const double downbeat_bpm = (60.0 * fps) / interval_median;
+                bpm_from_downbeats_median = downbeat_bpm * static_cast<double>(decision.bpb);
+                bpm_from_downbeats = bpm_from_downbeats_median;
+            }
+            if (interval_reg > 0.0) {
+                const double downbeat_bpm = (60.0 * fps) / interval_reg;
+                bpm_from_downbeats_reg = downbeat_bpm * static_cast<double>(decision.bpb);
+                if (bpm_from_downbeats_median > 0.0) {
+                    const double ratio = std::abs(bpm_from_downbeats_reg - bpm_from_downbeats_median) /
+                        bpm_from_downbeats_median;
+                    if (ratio <= 0.02) {
+                        bpm_from_downbeats = bpm_from_downbeats_reg;
+                    }
+                } else {
+                    bpm_from_downbeats = bpm_from_downbeats_reg;
+                }
+            }
+        }
+    }
+    if (!downbeat_peaks.empty()) {
+        downbeat_stats = interval_stats_interpolated(use_window ? downbeat_slice
+                                                                : result.downbeat_activation,
+                                                     downbeat_peaks,
+                                                     fps,
+                                                     0.2);
+    }
+    if (config.dbn_trace) {
+        const IntervalStats tempo_stats =
+            interval_stats_interpolated(tempo_activation, tempo_peaks, fps, 0.2);
+        const IntervalStats decoded_stats = interval_stats_frames(decoded.beat_frames, fps, 0.2);
+        const IntervalStats decoded_filtered_stats = interval_stats_frames(filtered_beats, fps, 0.2);
+        auto print_stats = [&](const char* label, const IntervalStats& stats) {
+            if (stats.count == 0 || stats.median_interval <= 0.0) {
+                std::cerr << "DBN stats: " << label << " empty\n";
+                return;
+            }
+            const double bpm_median = (60.0 * fps) / stats.median_interval;
+            const double bpm_mean = (60.0 * fps) / stats.mean_interval;
+            const double interval_cv =
+                stats.mean_interval > 0.0 ? (stats.stdev_interval / stats.mean_interval) : 0.0;
+            std::cerr << "DBN stats: " << label
+                      << " count=" << stats.count
+                      << " bpm_median=" << bpm_median
+                      << " bpm_mean=" << bpm_mean
+                      << " interval_cv=" << interval_cv
+                      << " interval_range=[" << stats.min_interval
+                      << "," << stats.max_interval << "]";
+            if (!stats.top_bpm_bins.empty()) {
+                std::cerr << " bpm_bins:";
+                for (const auto& bin : stats.top_bpm_bins) {
+                    std::cerr << " " << bin.first << "(" << bin.second << ")";
+                }
+            }
+            std::cerr << "\n";
+        };
+        print_stats("tempo_peaks", tempo_stats);
+        if (!downbeat_peaks.empty()) {
+            print_stats("downbeat_peaks", downbeat_stats);
+        }
+        print_stats("decoded_beats", decoded_stats);
+        print_stats("decoded_beats_filtered", decoded_filtered_stats);
+        if (short_interval_threshold > 0.0) {
+            std::cerr << "DBN stats: filter_threshold=" << short_interval_threshold
+                      << " min_interval=" << min_interval_frames << "\n";
+        }
+    }
+
+    const double bpm_from_fit = bpm_from_linear_fit(filtered_beats, fps);
+    const double bpm_from_global_fit = detail::bpm_from_global_fit(result,
+                                                                   config,
+                                                                   calmdad_decoder,
+                                                                   fps,
+                                                                   min_bpm,
+                                                                   max_bpm,
+                                                                   used_frames);
+    decision.quality_low = quality_valid && (quality_qkur < 3.6);
+    const bool drop_fit = decision.quality_low && bpm_from_fit > 0.0;
+    const std::size_t downbeat_count = downbeat_stats.count;
+    const double downbeat_cv = (downbeat_count > 0 && downbeat_stats.mean_interval > 0.0)
+        ? (downbeat_stats.stdev_interval / downbeat_stats.mean_interval)
+        : 0.0;
+    decision.downbeat_override_ok = !decision.quality_low && downbeat_count >= 6 && downbeat_cv <= 0.25;
+    const double ref_downbeat_ratio =
+        (decision.downbeat_override_ok && bpm_from_downbeats > 0.0)
+            ? (std::abs(reference_bpm - bpm_from_downbeats) / bpm_from_downbeats)
+            : 0.0;
+    const bool ref_mismatch =
+        decision.downbeat_override_ok && bpm_from_downbeats > 0.0 && ref_downbeat_ratio > 0.005;
+    const bool drop_ref = (decision.quality_low || ref_mismatch) && reference_bpm > 0.0f;
+    const bool allow_reference_grid_bpm =
+        reference_bpm > 0.0f &&
+        ((static_cast<double>(max_bpm) - static_cast<double>(min_bpm)) <=
+         std::max(2.0, static_cast<double>(reference_bpm) * 0.05));
+    bool global_fit_plausible = false;
+    if (bpm_from_global_fit > 0.0 && bpm_from_fit > 0.0) {
+        const double diff = std::abs(bpm_from_global_fit - bpm_from_fit);
+        const double rel_diff = diff / bpm_from_fit;
+        global_fit_plausible = rel_diff <= 0.08;
+        if (!global_fit_plausible && config.verbose) {
+            std::cerr << "DBN grid: rejecting global_fit bpm=" << bpm_from_global_fit
+                      << " fit_bpm=" << bpm_from_fit
+                      << " rel_diff=" << rel_diff << "\n";
+        }
+    }
+    std::string bpm_source = "none";
+    if (global_fit_plausible) {
+        decision.bpm_for_grid = bpm_from_global_fit;
+        bpm_source = "global_fit";
+    } else if (allow_reference_grid_bpm && !decision.quality_low && !ref_mismatch) {
+        decision.bpm_for_grid = reference_bpm;
+        bpm_source = "reference";
+    } else if (decision.downbeat_override_ok && bpm_from_downbeats > 0.0) {
+        if (bpm_from_fit > 0.0) {
+            decision.bpm_for_grid = bpm_from_fit;
+            bpm_source = "fit_primary";
+        } else {
+            decision.bpm_for_grid = bpm_from_downbeats;
+            bpm_source = "downbeats_primary";
+        }
+    } else if (!decision.quality_low && bpm_from_peaks_reg_full > 0.0) {
+        decision.bpm_for_grid = bpm_from_peaks_reg_full;
+        bpm_source = "peaks_reg_full";
+    } else if (!decision.quality_low && bpm_from_fit > 0.0) {
+        decision.bpm_for_grid = bpm_from_fit;
+        bpm_source = "fit";
+    } else if (bpm_from_peaks_median > 0.0) {
+        decision.bpm_for_grid = bpm_from_peaks_median;
+        bpm_source = "peaks_median";
+    } else if (bpm_from_peaks > 0.0) {
+        decision.bpm_for_grid = bpm_from_peaks;
+        bpm_source = "peaks";
+    }
+    if (decision.bpm_for_grid <= 0.0 && allow_reference_grid_bpm) {
+        decision.bpm_for_grid = reference_bpm;
+        bpm_source = "reference_fallback";
+    }
+    const double bpm_before_downbeat = decision.bpm_for_grid;
+    const std::string bpm_source_before_downbeat = bpm_source;
+    if (decision.downbeat_override_ok && bpm_from_downbeats > 0.0 && decision.bpm_for_grid > 0.0 &&
+        bpm_source != "peaks_reg_full" && bpm_source != "downbeats_primary" &&
+        bpm_source != "fit_primary") {
+        const double ratio = std::abs(bpm_from_downbeats - decision.bpm_for_grid) / decision.bpm_for_grid;
+        if (ratio <= 0.005) {
+            decision.bpm_for_grid = bpm_from_downbeats;
+            bpm_source = "downbeats_override";
+        }
+    }
+    if (decision.bpm_for_grid <= 0.0 && decoded.bpm > 0.0) {
+        decision.bpm_for_grid = decoded.bpm;
+        bpm_source = "decoded";
+    }
+    if (decision.bpm_for_grid <= 0.0 && decision.base_interval > 0.0) {
+        decision.bpm_for_grid = (60.0 * fps) / decision.base_interval;
+        bpm_source = "base_interval";
+    }
+    decision.step_frames = (decision.bpm_for_grid > 0.0)
+        ? (60.0 * fps) / decision.bpm_for_grid
+        : decision.base_interval;
+
+    if (config.verbose) {
+        std::cerr << "DBN grid: bpm=" << decoded.bpm
+                  << " bpm_from_fit=" << bpm_from_fit
+                  << " bpm_from_global_fit=" << bpm_from_global_fit
+                  << " bpm_from_peaks=" << bpm_from_peaks
+                  << " bpm_from_peaks_median=" << bpm_from_peaks_median
+                  << " bpm_from_peaks_reg=" << bpm_from_peaks_reg
+                  << " bpm_from_peaks_median_full=" << bpm_from_peaks_median_full
+                  << " bpm_from_peaks_reg_full=" << bpm_from_peaks_reg_full
+                  << " bpm_from_downbeats=" << bpm_from_downbeats
+                  << " bpm_from_downbeats_median=" << bpm_from_downbeats_median
+                  << " bpm_from_downbeats_reg=" << bpm_from_downbeats_reg
+                  << " base_interval=" << decision.base_interval
+                  << " bpm_reference=" << reference_bpm
+                  << " quality_qpar=" << quality_qpar
+                  << " quality_qkur=" << quality_qkur
+                  << " quality_low=" << (decision.quality_low ? 1 : 0)
+                  << " bpm_for_grid=" << decision.bpm_for_grid
+                  << " step_frames=" << decision.step_frames
+                  << " start_frame=" << decoded.beat_frames.front()
+                  << "\n";
+    }
+    if (config.dbn_trace) {
+        std::cerr << "DBN quality gate: low=" << (decision.quality_low ? 1 : 0)
+                  << " drop_ref=" << (drop_ref ? 1 : 0)
+                  << " drop_fit=" << (drop_fit ? 1 : 0)
+                  << " downbeat_ok=" << (decision.downbeat_override_ok ? 1 : 0)
+                  << " downbeat_cv=" << downbeat_cv
+                  << " downbeat_count=" << downbeat_count
+                  << " used=" << bpm_source
+                  << " pre_override=" << bpm_source_before_downbeat
+                  << " pre_bpm=" << bpm_before_downbeat
+                  << "\n";
+    }
+
+    return decision;
+}
+
+struct GridAnchorSeed {
+    std::size_t earliest_peak = 0;
+    std::size_t earliest_downbeat_peak = 0;
+    std::size_t strongest_peak = 0;
+    float strongest_peak_value = -1.0f;
+    float activation_floor = 0.0f;
+};
+
+GridAnchorSeed seed_grid_anchor(DBNDecodeResult& decoded,
+                                const CoreMLResult& result,
+                                const CoreMLConfig& config,
+                                bool use_window,
+                                std::size_t window_start,
+                                std::size_t used_frames,
+                                double base_interval) {
+    GridAnchorSeed anchor;
+    if (decoded.beat_frames.empty()) {
+        return anchor;
+    }
+    anchor.earliest_peak = decoded.beat_frames.front();
+    anchor.earliest_downbeat_peak = decoded.beat_frames.front();
+    anchor.strongest_peak = decoded.beat_frames.front();
+    anchor.activation_floor = std::max(0.01f, config.activation_threshold * 0.1f);
+    float earliest_downbeat_value = 0.0f;
+    if (base_interval <= 1.0 || decoded.beat_frames.empty()) {
+        return anchor;
+    }
+    const std::size_t peak_search_start = use_window ? window_start : 0;
+    const std::size_t peak_search_end = use_window
+        ? std::min<std::size_t>(used_frames - 1,
+                                window_start + static_cast<std::size_t>(std::llround(base_interval)))
+        : std::min<std::size_t>(used_frames - 1,
+                                static_cast<std::size_t>(std::llround(base_interval)));
+    if (!result.beat_activation.empty()) {
+        if (peak_search_start + 1 <= peak_search_end) {
+            for (std::size_t i = peak_search_start + 1; i + 1 <= peak_search_end; ++i) {
+                const float prev = result.beat_activation[i - 1];
+                const float curr = result.beat_activation[i];
+                const float next = result.beat_activation[i + 1];
+                if (curr >= anchor.activation_floor && curr >= prev && curr >= next) {
+                    anchor.earliest_peak = i;
+                    break;
+                }
+            }
+        }
+        if (peak_search_start + 1 <= peak_search_end) {
+            for (std::size_t i = peak_search_start + 1; i + 1 <= peak_search_end; ++i) {
+                const float prev = result.beat_activation[i - 1];
+                const float curr = result.beat_activation[i];
+                const float next = result.beat_activation[i + 1];
+                if (curr >= anchor.activation_floor && curr >= prev && curr >= next) {
+                    if (curr > anchor.strongest_peak_value) {
+                        anchor.strongest_peak_value = curr;
+                        anchor.strongest_peak = i;
+                    }
+                }
+            }
+        }
+        if (anchor.strongest_peak_value < 0.0f && anchor.earliest_peak < result.beat_activation.size()) {
+            anchor.strongest_peak = anchor.earliest_peak;
+            anchor.strongest_peak_value = result.beat_activation[anchor.earliest_peak];
+        }
+    }
+    if (!result.downbeat_activation.empty()) {
+        float max_downbeat = 0.0f;
+        for (std::size_t i = peak_search_start; i <= peak_search_end; ++i) {
+            max_downbeat = std::max(max_downbeat, result.downbeat_activation[i]);
+        }
+        const float onset_threshold =
+            std::max(anchor.activation_floor, max_downbeat * config.dbn_downbeat_phase_peak_ratio);
+        for (std::size_t i = peak_search_start; i <= peak_search_end; ++i) {
+            const float curr = result.downbeat_activation[i];
+            if (curr >= onset_threshold) {
+                anchor.earliest_downbeat_peak = i;
+                earliest_downbeat_value = curr;
+                break;
+            }
+        }
+    }
+    if (config.verbose) {
+        std::cerr << "DBN grid: earliest_peak=" << anchor.earliest_peak
+                  << " earliest_downbeat_peak=" << anchor.earliest_downbeat_peak
+                  << " earliest_downbeat_value=" << earliest_downbeat_value
+                  << " strongest_peak=" << anchor.strongest_peak
+                  << " strongest_peak_value=" << anchor.strongest_peak_value
+                  << " activation_floor=" << anchor.activation_floor
+                  << "\n";
+    }
+    std::size_t start_peak = decoded.beat_frames.front();
+    if (!result.beat_activation.empty()) {
+        std::size_t earliest = start_peak;
+        if (peak_search_start + 1 <= peak_search_end) {
+            for (std::size_t i = peak_search_start + 1; i + 1 <= peak_search_end; ++i) {
+                const float prev = result.beat_activation[i - 1];
+                const float curr = result.beat_activation[i];
+                const float next = result.beat_activation[i + 1];
+                if (curr >= anchor.activation_floor && curr >= prev && curr >= next) {
+                    earliest = i;
+                    break;
+                }
+            }
+        }
+        if (earliest < start_peak) {
+            start_peak = earliest;
+        }
+        if (config.dbn_grid_start_strong_peak && anchor.strongest_peak_value >= anchor.activation_floor) {
+            start_peak = anchor.strongest_peak;
+        }
+    }
+    std::vector<std::size_t> forward = fill_peaks_with_grid(result.beat_activation,
+                                                            start_peak,
+                                                            used_frames - 1,
+                                                            base_interval,
+                                                            anchor.activation_floor);
+    std::vector<std::size_t> backward;
+    double cursor = static_cast<double>(start_peak) - base_interval;
+    const std::size_t window =
+        static_cast<std::size_t>(std::max(1.0, std::round(base_interval * 0.25)));
+    while (cursor >= 0.0) {
+        const std::size_t center = static_cast<std::size_t>(std::llround(cursor));
+        const std::size_t start = center > window ? center - window : 0;
+        const std::size_t end = std::min(used_frames - 1, center + window);
+        float best_value = -1.0f;
+        std::size_t best_index = center;
+        for (std::size_t k = start; k <= end; ++k) {
+            const float value = result.beat_activation[k];
+            if (value > best_value) {
+                best_value = value;
+                best_index = k;
+            }
+        }
+        std::size_t chosen = best_index;
+        if (best_value < anchor.activation_floor) {
+            chosen = center;
+        }
+        backward.push_back(chosen);
+        if (cursor < base_interval) {
+            break;
+        }
+        cursor -= base_interval;
+    }
+    std::sort(backward.begin(), backward.end());
+    std::vector<std::size_t> combined;
+    combined.reserve(backward.size() + forward.size());
+    combined.insert(combined.end(), backward.begin(), backward.end());
+    if (!forward.empty() && (combined.empty() || combined.back() != forward.front())) {
+        combined.insert(combined.end(), forward.begin(), forward.end());
+    } else if (forward.size() > 1) {
+        combined.insert(combined.end(), forward.begin() + 1, forward.end());
+    }
+    decoded.beat_frames = std::move(combined);
+    return anchor;
+}
+
 bool run_dbn_decoded_postprocess(CoreMLResult& result,
                                  DBNDecodeResult& decoded,
-                                 const CoreMLConfig& config,
-                                 const CalmdadDecoder& calmdad_decoder,
-                                 double sample_rate,
-                                 float reference_bpm,
-                                 std::size_t grid_total_frames,
-                                 float min_bpm,
-                                 float max_bpm,
-                                 double fps,
-                                 double hop_scale,
-                                 std::size_t analysis_latency_frames,
-                                 double analysis_latency_frames_f,
-                                 std::size_t refine_window,
-                                 std::size_t used_frames,
-                                 bool use_window,
-                                 std::size_t window_start,
-                                 const std::vector<float>& beat_slice,
-                                 const std::vector<float>& downbeat_slice,
-                                 bool quality_valid,
-                                 double quality_qpar,
-                                 double quality_qkur) {
+                                 const DBNDecodedPostprocessContext& context) {
+    const CoreMLConfig& config = context.processing.config;
+    const CalmdadDecoder& calmdad_decoder = context.processing.calmdad_decoder;
+    const double sample_rate = context.processing.sample_rate;
+    const double fps = context.processing.fps;
+    const double hop_scale = context.processing.hop_scale;
+    const std::size_t analysis_latency_frames = context.processing.analysis_latency_frames;
+    const double analysis_latency_frames_f = context.processing.analysis_latency_frames_f;
+    const std::size_t refine_window = context.processing.refine_window;
+
+    const std::size_t used_frames = context.window.used_frames;
+    const bool use_window = context.window.use_window;
+    const std::size_t window_start = context.window.window_start;
+    const std::vector<float>& beat_slice = context.window.beat_slice;
+    const std::vector<float>& downbeat_slice = context.window.downbeat_slice;
+
+    const float reference_bpm = context.bpm.reference_bpm;
+    const std::size_t grid_total_frames = context.bpm.grid_total_frames;
+    const float min_bpm = context.bpm.min_bpm;
+    const float max_bpm = context.bpm.max_bpm;
+
+    const bool quality_valid = context.quality.valid;
+    const double quality_qpar = context.quality.qpar;
+    const double quality_qkur = context.quality.qkur;
+
     auto fill_beats_from_frames = [&](const std::vector<std::size_t>& frames) {
         detail::fill_beats_from_frames(result,
                                        frames,
@@ -810,487 +1298,55 @@ bool run_dbn_decoded_postprocess(CoreMLResult& result,
             dedupe_frames(decoded.downbeat_frames);
         }
 
-        const double min_interval_frames =
-            (max_bpm > 1.0f && fps > 0.0) ? (60.0 * fps) / max_bpm : 0.0;
-        const double short_interval_threshold =
-            (min_interval_frames > 0.0) ? std::max(1.0, min_interval_frames * 0.5) : 0.0;
-        const std::vector<std::size_t> filtered_beats =
-            filter_short_intervals(decoded.beat_frames, short_interval_threshold);
-        const std::vector<std::size_t> aligned_downbeats =
-            align_downbeats_to_beats(filtered_beats, decoded.downbeat_frames);
+        const GridTempoDecision tempo_decision = compute_grid_tempo_decision(decoded,
+                                                                             result,
+                                                                             config,
+                                                                             calmdad_decoder,
+                                                                             use_window,
+                                                                             beat_slice,
+                                                                             downbeat_slice,
+                                                                             quality_valid,
+                                                                             quality_qpar,
+                                                                             quality_qkur,
+                                                                             used_frames,
+                                                                             min_bpm,
+                                                                             max_bpm,
+                                                                             reference_bpm,
+                                                                             fps);
+        projected_bpm = tempo_decision.bpm_for_grid;
 
-            std::vector<std::size_t> bpb_candidates;
-            if (config.dbn_mode == CoreMLConfig::DBNMode::Calmdad) {
-                bpb_candidates = {3, 4};
-            } else {
-                bpb_candidates = {config.dbn_beats_per_bar};
-            }
-            const auto inferred_bpb_phase =
-                infer_bpb_phase(filtered_beats, aligned_downbeats, bpb_candidates);
-            const std::size_t bpb = inferred_bpb_phase.first;
-            const std::size_t phase = inferred_bpb_phase.second;
-            const double base_interval = median_interval_frames(filtered_beats);
-            const std::vector<float>& tempo_activation =
-                use_window ? beat_slice : result.beat_activation;
-            const float tempo_threshold =
-                std::max(config.dbn_activation_floor, config.activation_threshold * 0.5f);
-            const std::size_t tempo_min_interval =
-                static_cast<std::size_t>(std::max(1.0,
-                                                  std::floor((60.0 * fps) /
-                                                             std::max(1.0f, max_bpm))));
-            const std::size_t tempo_max_interval =
-                static_cast<std::size_t>(std::max<double>(tempo_min_interval,
-                                                          std::ceil((60.0 * fps) /
-                                                                    std::max(1.0f, min_bpm))));
-            const std::vector<std::size_t> tempo_peaks =
-                pick_peaks(tempo_activation,
-                           tempo_threshold,
-                           tempo_min_interval,
-                           tempo_max_interval);
-            const std::vector<std::size_t> tempo_peaks_full =
-                use_window
-                    ? pick_peaks(result.beat_activation,
-                                 tempo_threshold,
-                                 tempo_min_interval,
-                                 tempo_max_interval)
-                    : tempo_peaks;
-            double bpm_from_peaks = 0.0;
-            double bpm_from_peaks_median = 0.0;
-            double bpm_from_peaks_reg = 0.0;
-            double bpm_from_peaks_median_full = 0.0;
-            double bpm_from_peaks_reg_full = 0.0;
-            if (tempo_peaks.size() >= 2) {
-                const double interval_median =
-                    median_interval_frames_interpolated(tempo_activation, tempo_peaks);
-                const double interval_reg =
-                    regression_interval_frames_interpolated(tempo_activation, tempo_peaks);
-                if (interval_median > 0.0) {
-                    bpm_from_peaks_median = (60.0 * fps) / interval_median;
-                    bpm_from_peaks = bpm_from_peaks_median;
-                }
-                if (interval_reg > 0.0) {
-                    bpm_from_peaks_reg = (60.0 * fps) / interval_reg;
-                    if (bpm_from_peaks_median > 0.0) {
-                        const double ratio =
-                            std::abs(bpm_from_peaks_reg - bpm_from_peaks_median) /
-                            bpm_from_peaks_median;
-                        if (ratio <= 0.02) {
-                            bpm_from_peaks = bpm_from_peaks_reg;
-                        }
-                    } else {
-                        bpm_from_peaks = bpm_from_peaks_reg;
-                    }
-                }
-            }
-            if (tempo_peaks_full.size() >= 2) {
-                const double interval_median =
-                    median_interval_frames_interpolated(result.beat_activation, tempo_peaks_full);
-                const double interval_reg =
-                    regression_interval_frames_interpolated(result.beat_activation, tempo_peaks_full);
-                if (interval_median > 0.0) {
-                    bpm_from_peaks_median_full = (60.0 * fps) / interval_median;
-                }
-                if (interval_reg > 0.0) {
-                    bpm_from_peaks_reg_full = (60.0 * fps) / interval_reg;
-                }
-            }
-            double bpm_from_downbeats = 0.0;
-            double bpm_from_downbeats_median = 0.0;
-            double bpm_from_downbeats_reg = 0.0;
-            std::vector<std::size_t> downbeat_peaks;
-            IntervalStats downbeat_stats;
-            if (!result.downbeat_activation.empty() && bpb > 0) {
-                const std::vector<float>& downbeat_activation =
-                    use_window ? downbeat_slice : result.downbeat_activation;
-                const float downbeat_min_bpm =
-                    std::max(1.0f, min_bpm / static_cast<float>(bpb));
-                const float downbeat_max_bpm =
-                    std::max(downbeat_min_bpm + 1.0f, max_bpm / static_cast<float>(bpb));
-                const std::size_t downbeat_min_interval =
-                    static_cast<std::size_t>(std::max(1.0,
-                                                      std::floor((60.0 * fps) /
-                                                                 downbeat_max_bpm)));
-                const std::size_t downbeat_max_interval =
-                    static_cast<std::size_t>(std::max<double>(downbeat_min_interval,
-                                                              std::ceil((60.0 * fps) /
-                                                                        downbeat_min_bpm)));
-                downbeat_peaks = pick_peaks(downbeat_activation,
-                                            tempo_threshold,
-                                            downbeat_min_interval,
-                                            downbeat_max_interval);
-                if (downbeat_peaks.size() >= 2) {
-                    const double interval_median =
-                        median_interval_frames_interpolated(downbeat_activation, downbeat_peaks);
-                    const double interval_reg =
-                        regression_interval_frames_interpolated(downbeat_activation, downbeat_peaks);
-                    if (interval_median > 0.0) {
-                        const double downbeat_bpm = (60.0 * fps) / interval_median;
-                        bpm_from_downbeats_median = downbeat_bpm * static_cast<double>(bpb);
-                        bpm_from_downbeats = bpm_from_downbeats_median;
-                    }
-                    if (interval_reg > 0.0) {
-                        const double downbeat_bpm = (60.0 * fps) / interval_reg;
-                        bpm_from_downbeats_reg = downbeat_bpm * static_cast<double>(bpb);
-                        if (bpm_from_downbeats_median > 0.0) {
-                            const double ratio =
-                                std::abs(bpm_from_downbeats_reg - bpm_from_downbeats_median) /
-                                bpm_from_downbeats_median;
-                            if (ratio <= 0.02) {
-                                bpm_from_downbeats = bpm_from_downbeats_reg;
-                            }
-                        } else {
-                            bpm_from_downbeats = bpm_from_downbeats_reg;
-                        }
-                    }
-                }
-            }
-            if (!downbeat_peaks.empty()) {
-                downbeat_stats = interval_stats_interpolated(
-                    use_window ? downbeat_slice : result.downbeat_activation,
-                    downbeat_peaks,
-                    fps,
-                    0.2);
-            }
-            if (config.dbn_trace) {
-                const IntervalStats tempo_stats =
-                    interval_stats_interpolated(tempo_activation, tempo_peaks, fps, 0.2);
-                const IntervalStats decoded_stats =
-                    interval_stats_frames(decoded.beat_frames, fps, 0.2);
-                const IntervalStats decoded_filtered_stats =
-                    interval_stats_frames(filtered_beats, fps, 0.2);
-                auto print_stats = [&](const char* label, const IntervalStats& stats) {
-                    if (stats.count == 0 || stats.median_interval <= 0.0) {
-                        std::cerr << "DBN stats: " << label << " empty\n";
-                        return;
-                    }
-                    const double bpm_median = (60.0 * fps) / stats.median_interval;
-                    const double bpm_mean = (60.0 * fps) / stats.mean_interval;
-                    const double interval_cv = stats.mean_interval > 0.0
-                        ? (stats.stdev_interval / stats.mean_interval)
-                        : 0.0;
-                    std::cerr << "DBN stats: " << label
-                              << " count=" << stats.count
-                              << " bpm_median=" << bpm_median
-                              << " bpm_mean=" << bpm_mean
-                              << " interval_cv=" << interval_cv
-                              << " interval_range=[" << stats.min_interval
-                              << "," << stats.max_interval << "]";
-                    if (!stats.top_bpm_bins.empty()) {
-                        std::cerr << " bpm_bins:";
-                        for (const auto& bin : stats.top_bpm_bins) {
-                            std::cerr << " " << bin.first << "(" << bin.second << ")";
-                        }
-                    }
-                    std::cerr << "\n";
-                };
-                print_stats("tempo_peaks", tempo_stats);
-                if (!downbeat_peaks.empty()) {
-                    print_stats("downbeat_peaks", downbeat_stats);
-                }
-                print_stats("decoded_beats", decoded_stats);
-                print_stats("decoded_beats_filtered", decoded_filtered_stats);
-                if (short_interval_threshold > 0.0) {
-                    std::cerr << "DBN stats: filter_threshold=" << short_interval_threshold
-                              << " min_interval=" << min_interval_frames << "\n";
-                }
-            }
-            const double bpm_from_fit =
-                detail::bpm_from_linear_fit(filtered_beats, fps);
-            const double bpm_from_global_fit =
-                detail::bpm_from_global_fit(result,
-                                            config,
-                                            calmdad_decoder,
-                                            fps,
-                                            min_bpm,
-                                            max_bpm,
-                                            used_frames);
-            const bool quality_low =
-                quality_valid && (quality_qkur < 3.6);
-            const bool drop_fit = quality_low && bpm_from_fit > 0.0;
-            const std::size_t downbeat_count = downbeat_stats.count;
-            const double downbeat_cv = (downbeat_count > 0 && downbeat_stats.mean_interval > 0.0)
-                ? (downbeat_stats.stdev_interval / downbeat_stats.mean_interval)
-                : 0.0;
-            const bool downbeat_override_ok =
-                !quality_low && downbeat_count >= 6 && downbeat_cv <= 0.25;
-            const double ref_downbeat_ratio =
-                (downbeat_override_ok && bpm_from_downbeats > 0.0)
-                    ? (std::abs(reference_bpm - bpm_from_downbeats) / bpm_from_downbeats)
-                    : 0.0;
-            const bool ref_mismatch =
-                downbeat_override_ok && bpm_from_downbeats > 0.0 && ref_downbeat_ratio > 0.005;
-            const bool drop_ref = (quality_low || ref_mismatch) && reference_bpm > 0.0f;
-            const bool allow_reference_grid_bpm =
-                reference_bpm > 0.0f &&
-                ((static_cast<double>(max_bpm) - static_cast<double>(min_bpm)) <=
-                 std::max(2.0, static_cast<double>(reference_bpm) * 0.05));
-            bool global_fit_plausible = false;
-            if (bpm_from_global_fit > 0.0 && bpm_from_fit > 0.0) {
-                const double diff = std::abs(bpm_from_global_fit - bpm_from_fit);
-                const double rel_diff = diff / bpm_from_fit;
-                global_fit_plausible = rel_diff <= 0.08;
-                if (!global_fit_plausible && config.verbose) {
-                    std::cerr << "DBN grid: rejecting global_fit bpm=" << bpm_from_global_fit
-                              << " fit_bpm=" << bpm_from_fit
-                              << " rel_diff=" << rel_diff << "\n";
-                }
-            }
-            double bpm_for_grid = 0.0;
-            std::string bpm_source = "none";
-            if (global_fit_plausible) {
-                bpm_for_grid = bpm_from_global_fit;
-                bpm_source = "global_fit";
-            } else if (allow_reference_grid_bpm && !quality_low && !ref_mismatch) {
-                bpm_for_grid = reference_bpm;
-                bpm_source = "reference";
-            } else if (downbeat_override_ok && bpm_from_downbeats > 0.0) {
-                if (bpm_from_fit > 0.0) {
-                    bpm_for_grid = bpm_from_fit;
-                    bpm_source = "fit_primary";
-                } else {
-                    bpm_for_grid = bpm_from_downbeats;
-                    bpm_source = "downbeats_primary";
-                }
-            } else if (!quality_low && bpm_from_peaks_reg_full > 0.0) {
-                bpm_for_grid = bpm_from_peaks_reg_full;
-                bpm_source = "peaks_reg_full";
-            } else if (!quality_low && bpm_from_fit > 0.0) {
-                bpm_for_grid = bpm_from_fit;
-                bpm_source = "fit";
-            } else if (bpm_from_peaks_median > 0.0) {
-                bpm_for_grid = bpm_from_peaks_median;
-                bpm_source = "peaks_median";
-            } else if (bpm_from_peaks > 0.0) {
-                bpm_for_grid = bpm_from_peaks;
-                bpm_source = "peaks";
-            }
-            if (bpm_for_grid <= 0.0 && allow_reference_grid_bpm) {
-                bpm_for_grid = reference_bpm;
-                bpm_source = "reference_fallback";
-            }
-            const double bpm_before_downbeat = bpm_for_grid;
-            const std::string bpm_source_before_downbeat = bpm_source;
-            if (downbeat_override_ok && bpm_from_downbeats > 0.0 && bpm_for_grid > 0.0 &&
-                bpm_source != "peaks_reg_full" &&
-                bpm_source != "downbeats_primary" &&
-                bpm_source != "fit_primary") {
-                const double ratio =
-                    std::abs(bpm_from_downbeats - bpm_for_grid) / bpm_for_grid;
-                if (ratio <= 0.005) {
-                    bpm_for_grid = bpm_from_downbeats;
-                    bpm_source = "downbeats_override";
-                }
-            }
-            if (bpm_for_grid <= 0.0 && decoded.bpm > 0.0) {
-                bpm_for_grid = decoded.bpm;
-                bpm_source = "decoded";
-            }
-            if (bpm_for_grid <= 0.0 && base_interval > 0.0) {
-                bpm_for_grid = (60.0 * fps) / base_interval;
-                bpm_source = "base_interval";
-            }
-            projected_bpm = bpm_for_grid;
-            double step_frames =
-                (bpm_for_grid > 0.0) ? (60.0 * fps) / bpm_for_grid : base_interval;
-            if (config.verbose) {
-                std::cerr << "DBN grid: bpm=" << decoded.bpm
-                          << " bpm_from_fit=" << bpm_from_fit
-                          << " bpm_from_global_fit=" << bpm_from_global_fit
-                          << " bpm_from_peaks=" << bpm_from_peaks
-                          << " bpm_from_peaks_median=" << bpm_from_peaks_median
-                          << " bpm_from_peaks_reg=" << bpm_from_peaks_reg
-                          << " bpm_from_peaks_median_full=" << bpm_from_peaks_median_full
-                          << " bpm_from_peaks_reg_full=" << bpm_from_peaks_reg_full
-                          << " bpm_from_downbeats=" << bpm_from_downbeats
-                          << " bpm_from_downbeats_median=" << bpm_from_downbeats_median
-                          << " bpm_from_downbeats_reg=" << bpm_from_downbeats_reg
-                          << " base_interval=" << base_interval
-                          << " bpm_reference=" << reference_bpm
-                          << " quality_qpar=" << quality_qpar
-                          << " quality_qkur=" << quality_qkur
-                          << " quality_low=" << (quality_low ? 1 : 0)
-                          << " bpm_for_grid=" << bpm_for_grid
-                          << " step_frames=" << step_frames
-                          << " start_frame=" << decoded.beat_frames.front()
-                          << "\n";
-            }
-            if (config.dbn_trace) {
-                std::cerr << "DBN quality gate: low=" << (quality_low ? 1 : 0)
-                          << " drop_ref=" << (drop_ref ? 1 : 0)
-                          << " drop_fit=" << (drop_fit ? 1 : 0)
-                          << " downbeat_ok=" << (downbeat_override_ok ? 1 : 0)
-                          << " downbeat_cv=" << downbeat_cv
-                          << " downbeat_count=" << downbeat_count
-                          << " used=" << bpm_source
-                          << " pre_override=" << bpm_source_before_downbeat
-                          << " pre_bpm=" << bpm_before_downbeat
-                          << "\n";
-            }
-            std::size_t earliest_peak = decoded.beat_frames.front();
-            std::size_t earliest_downbeat_peak = decoded.beat_frames.front();
-            float earliest_downbeat_value = 0.0f;
-            std::size_t strongest_peak = decoded.beat_frames.front();
-            float strongest_peak_value = -1.0f;
-            const float activation_floor =
-                std::max(0.01f, config.activation_threshold * 0.1f);
-            if (base_interval > 1.0 && !decoded.beat_frames.empty()) {
-                const std::size_t peak_search_start = use_window ? window_start : 0;
-                const std::size_t peak_search_end = use_window
-                    ? std::min<std::size_t>(
-                          used_frames - 1,
-                          window_start + static_cast<std::size_t>(
-                              std::llround(base_interval)))
-                    : std::min<std::size_t>(
-                          used_frames - 1,
-                          static_cast<std::size_t>(std::llround(base_interval)));
-                if (!result.beat_activation.empty()) {
-                    if (peak_search_start + 1 <= peak_search_end) {
-                        for (std::size_t i = peak_search_start + 1; i + 1 <= peak_search_end; ++i) {
-                            const float prev = result.beat_activation[i - 1];
-                            const float curr = result.beat_activation[i];
-                            const float next = result.beat_activation[i + 1];
-                            if (curr >= activation_floor && curr >= prev && curr >= next) {
-                                earliest_peak = i;
-                                break;
-                            }
-                        }
-                    }
-                    if (peak_search_start + 1 <= peak_search_end) {
-                        for (std::size_t i = peak_search_start + 1; i + 1 <= peak_search_end; ++i) {
-                            const float prev = result.beat_activation[i - 1];
-                            const float curr = result.beat_activation[i];
-                            const float next = result.beat_activation[i + 1];
-                            if (curr >= activation_floor && curr >= prev && curr >= next) {
-                                if (curr > strongest_peak_value) {
-                                    strongest_peak_value = curr;
-                                    strongest_peak = i;
-                                }
-                            }
-                        }
-                    }
-                    if (strongest_peak_value < 0.0f &&
-                        earliest_peak < result.beat_activation.size()) {
-                        strongest_peak = earliest_peak;
-                        strongest_peak_value = result.beat_activation[earliest_peak];
-                    }
-                }
-                if (!result.downbeat_activation.empty()) {
-                    float max_downbeat = 0.0f;
-                    for (std::size_t i = peak_search_start; i <= peak_search_end; ++i) {
-                        max_downbeat = std::max(max_downbeat, result.downbeat_activation[i]);
-                    }
-                    const float onset_threshold =
-                        std::max(activation_floor,
-                                 max_downbeat * config.dbn_downbeat_phase_peak_ratio);
-                    for (std::size_t i = peak_search_start; i <= peak_search_end; ++i) {
-                        const float curr = result.downbeat_activation[i];
-                        if (curr >= onset_threshold) {
-                            earliest_downbeat_peak = i;
-                            earliest_downbeat_value = curr;
-                            break;
-                        }
-                    }
-                }
-                if (config.verbose) {
-                    std::cerr << "DBN grid: earliest_peak=" << earliest_peak
-                              << " earliest_downbeat_peak=" << earliest_downbeat_peak
-                              << " earliest_downbeat_value=" << earliest_downbeat_value
-                              << " strongest_peak=" << strongest_peak
-                              << " strongest_peak_value=" << strongest_peak_value
-                              << " activation_floor=" << activation_floor
-                              << "\n";
-                }
-                std::size_t start_peak = decoded.beat_frames.front();
-                if (!result.beat_activation.empty()) {
-                    std::size_t earliest = start_peak;
-                    if (peak_search_start + 1 <= peak_search_end) {
-                        for (std::size_t i = peak_search_start + 1; i + 1 <= peak_search_end; ++i) {
-                            const float prev = result.beat_activation[i - 1];
-                            const float curr = result.beat_activation[i];
-                            const float next = result.beat_activation[i + 1];
-                            if (curr >= activation_floor && curr >= prev && curr >= next) {
-                                earliest = i;
-                                break;
-                            }
-                        }
-                    }
-                    if (earliest < start_peak) {
-                        start_peak = earliest;
-                    }
-                    if (config.dbn_grid_start_strong_peak &&
-                        strongest_peak_value >= activation_floor) {
-                        start_peak = strongest_peak;
-                    }
-                }
-                std::vector<std::size_t> forward =
-                    fill_peaks_with_grid(result.beat_activation,
-                                         start_peak,
-                                         used_frames - 1,
-                                         base_interval,
-                                         activation_floor);
-                std::vector<std::size_t> backward;
-                double cursor = static_cast<double>(start_peak) - base_interval;
-                const std::size_t window = static_cast<std::size_t>(
-                    std::max(1.0, std::round(base_interval * 0.25)));
-                while (cursor >= 0.0) {
-                    const std::size_t center = static_cast<std::size_t>(std::llround(cursor));
-                    const std::size_t start = center > window ? center - window : 0;
-                    const std::size_t end = std::min(used_frames - 1, center + window);
-                    float best_value = -1.0f;
-                    std::size_t best_index = center;
-                    for (std::size_t k = start; k <= end; ++k) {
-                        const float value = result.beat_activation[k];
-                        if (value > best_value) {
-                            best_value = value;
-                            best_index = k;
-                        }
-                    }
-                    std::size_t chosen = best_index;
-                    if (best_value < activation_floor) {
-                        chosen = center;
-                    }
-                    backward.push_back(chosen);
-                    if (cursor < base_interval) {
-                        break;
-                    }
-                    cursor -= base_interval;
-                }
-                std::sort(backward.begin(), backward.end());
-                std::vector<std::size_t> combined;
-                combined.reserve(backward.size() + forward.size());
-                combined.insert(combined.end(), backward.begin(), backward.end());
-                if (!forward.empty() && (combined.empty() || combined.back() != forward.front())) {
-                    combined.insert(combined.end(), forward.begin(), forward.end());
-                } else if (forward.size() > 1) {
-                    combined.insert(combined.end(), forward.begin() + 1, forward.end());
-                }
-                decoded.beat_frames = std::move(combined);
-            }
+        const GridAnchorSeed anchor_seed = seed_grid_anchor(decoded,
+                                                            result,
+                                                            config,
+                                                            use_window,
+                                                            window_start,
+                                                            used_frames,
+                                                            tempo_decision.base_interval);
 
-            GridProjectionState grid_state;
-            grid_state.bpb = bpb;
-            grid_state.phase = phase;
-            grid_state.best_phase = phase;
-            grid_state.best_score = -std::numeric_limits<double>::infinity();
-            grid_state.base_interval = base_interval;
-            grid_state.step_frames = step_frames;
-            grid_state.earliest_peak = earliest_peak;
-            grid_state.earliest_downbeat_peak = earliest_downbeat_peak;
-            grid_state.strongest_peak = strongest_peak;
-            grid_state.strongest_peak_value = strongest_peak_value;
-            grid_state.activation_floor = activation_floor;
+        GridProjectionState grid_state;
+        grid_state.bpb = tempo_decision.bpb;
+        grid_state.phase = tempo_decision.phase;
+        grid_state.best_phase = tempo_decision.phase;
+        grid_state.best_score = -std::numeric_limits<double>::infinity();
+        grid_state.base_interval = tempo_decision.base_interval;
+        grid_state.step_frames = tempo_decision.step_frames;
+        grid_state.earliest_peak = anchor_seed.earliest_peak;
+        grid_state.earliest_downbeat_peak = anchor_seed.earliest_downbeat_peak;
+        grid_state.strongest_peak = anchor_seed.strongest_peak;
+        grid_state.strongest_peak_value = anchor_seed.strongest_peak_value;
+        grid_state.activation_floor = anchor_seed.activation_floor;
 
-            select_downbeat_phase(grid_state,
-                                  decoded,
-                                  result,
-                                  config,
-                                  quality_low,
-                                  downbeat_override_ok,
-                                  use_window,
-                                  window_start,
-                                  used_frames,
-                                  fps);
-            synthesize_uniform_grid(grid_state, decoded, result, config, used_frames, fps);
+        select_downbeat_phase(grid_state,
+                              decoded,
+                              result,
+                              config,
+                              tempo_decision.quality_low,
+                              tempo_decision.downbeat_override_ok,
+                              use_window,
+                              window_start,
+                              used_frames,
+                              fps);
+        synthesize_uniform_grid(grid_state, decoded, result, config, used_frames, fps);
     };
 
     auto emit_projected_grid_outputs = [&] {
