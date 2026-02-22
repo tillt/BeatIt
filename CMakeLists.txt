@@ -203,9 +203,14 @@ if(APPLE)
 endif()
 
 if(APPLE)
-    file(GLOB BEATIT_PUBLIC_HEADERS
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/beatit/*.h"
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/beatit/*.hpp")
+    set(BEATIT_PUBLIC_HEADERS
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/beatit/analysis.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/beatit/coreml.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/beatit/coreml_preset.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/beatit/logging.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/beatit/refiner.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/beatit/stream.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/beatit/version.h")
 
     set(BEATIT_FRAMEWORK_SOURCES
         src/beatit/analysis/core.cpp
@@ -334,19 +339,16 @@ if(APPLE)
         )
     endif()
 
+    set(BEATIT_FRAMEWORK_HEADER_ROOT "$<TARGET_FILE_DIR:beatit_framework>/Headers")
     add_custom_command(TARGET beatit_framework POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E rm -rf
+            "${BEATIT_FRAMEWORK_HEADER_ROOT}"
         COMMAND ${CMAKE_COMMAND} -E make_directory
-            "$<TARGET_FILE_DIR:beatit_framework>/Headers/beatit"
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${CMAKE_CURRENT_SOURCE_DIR}/include/beatit"
-            "$<TARGET_FILE_DIR:beatit_framework>/Headers/beatit"
-        COMMAND ${CMAKE_COMMAND} -E rm -f
-            "$<TARGET_FILE_DIR:beatit_framework>/Headers/analysis.h"
-            "$<TARGET_FILE_DIR:beatit_framework>/Headers/coreml.h"
-            "$<TARGET_FILE_DIR:beatit_framework>/Headers/coreml_preset.h"
-            "$<TARGET_FILE_DIR:beatit_framework>/Headers/refiner.h"
-            "$<TARGET_FILE_DIR:beatit_framework>/Headers/stream.h"
-        COMMENT "Copying BeatIt headers into framework subfolder"
+            "${BEATIT_FRAMEWORK_HEADER_ROOT}/beatit"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${BEATIT_PUBLIC_HEADERS}
+            "${BEATIT_FRAMEWORK_HEADER_ROOT}/beatit"
+        COMMENT "Staging public BeatIt headers into Headers/beatit only"
     )
 
     target_compile_options(beatit_framework PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
