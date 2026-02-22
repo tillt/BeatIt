@@ -570,39 +570,20 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
     const auto clamp_start = [&](double s) {
         return std::min(std::max(0.0, s), max_start);
     };
-
-    const double intro_bound_s =
-        (total < 420.0) ? std::max(0.0, total * 0.25)
-                        : std::max(0.0, original_config.dbn_tempo_anchor_intro_seconds);
-    const double left_anchor_start = clamp_start(
-        std::min(std::max(0.0, original_config.dbn_tempo_anchor_intro_seconds), intro_bound_s));
-    const double right_anchor_start = clamp_start(
-        total - std::max(0.0, original_config.dbn_tempo_anchor_outro_offset_seconds) - probe_duration);
-    const double inward_step = std::clamp(probe_duration * 0.5, 15.0, 45.0);
-
-    std::vector<double> probe_starts;
-    auto push_unique_start = [&](double start_s) {
-        const double clamped = clamp_start(start_s);
-        for (double existing : probe_starts) {
-            if (std::abs(existing - clamped) < 1.0) {
-                return;
-            }
-        }
-        probe_starts.push_back(clamped);
-    };
-    push_unique_start(left_anchor_start);
-    push_unique_start(left_anchor_start + inward_step);
-    push_unique_start(right_anchor_start);
-    push_unique_start(right_anchor_start - inward_step);
-    if (probe_starts.size() >= 2 && std::abs(probe_starts[1] - probe_starts[0]) < 1.0) {
-        probe_starts[1] = clamp_start(total * 0.5 - probe_duration * 0.5);
-    }
+    constexpr double kSparseEdgeExclusionSeconds = 10.0;
+    const double min_allowed_start = clamp_start(kSparseEdgeExclusionSeconds);
+    const double max_allowed_start = clamp_start(
+        std::max(0.0, total - kSparseEdgeExclusionSeconds - probe_duration));
+    const double quality_shift_step = std::clamp(probe_duration * 0.25, 5.0, 20.0);
+    const std::size_t max_quality_shifts = 8;
+    double left_anchor_start = min_allowed_start;
 
     struct ProbeResult {
         double start = 0.0;
         AnalysisResult analysis;
         double bpm = 0.0;
         double conf = 0.0;
+        double phase_abs_ms = std::numeric_limits<double>::infinity();
     };
     auto estimate_probe_confidence = [&](const AnalysisResult& r) -> double {
         const auto& beats = !r.coreml_beat_projected_sample_frames.empty()
@@ -677,15 +658,160 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
         return mean > 0.0 ? (std::abs(a - b) / mean) : 1.0;
     };
 
-    std::vector<ProbeResult> probes;
-    probes.reserve(probe_starts.size() + 1);
-    for (double s : probe_starts) {
+    auto probe_beat_count = [](const AnalysisResult& r) -> std::size_t {
+        const auto& beats = !r.coreml_beat_projected_sample_frames.empty()
+            ? r.coreml_beat_projected_sample_frames
+            : r.coreml_beat_sample_frames;
+        return beats.size();
+    };
+    auto estimate_intro_phase_abs_ms =
+        [&](const AnalysisResult& r, double bpm_hint) -> double {
+        if (sample_rate_ <= 0.0 || bpm_hint <= 0.0 || !provider) {
+            return std::numeric_limits<double>::infinity();
+        }
+        const auto& beats = !r.coreml_beat_projected_sample_frames.empty()
+            ? r.coreml_beat_projected_sample_frames
+            : r.coreml_beat_sample_frames;
+        if (beats.size() < 12) {
+            return std::numeric_limits<double>::infinity();
+        }
+
+        const std::size_t probe_beats = std::min<std::size_t>(24, beats.size());
+        const double beat_period_s = 60.0 / bpm_hint;
+        const double intro_s = std::max(20.0, beat_period_s * static_cast<double>(probe_beats + 4));
+
+        std::vector<float> intro_samples;
+        const std::size_t received = provider(0.0, intro_s, &intro_samples);
+        if (received == 0 || intro_samples.empty()) {
+            return std::numeric_limits<double>::infinity();
+        }
+        if (intro_samples.size() > received) {
+            intro_samples.resize(received);
+        }
+        const std::size_t radius = static_cast<std::size_t>(
+            std::llround(sample_rate_ * beat_period_s * 0.6));
+        if (radius == 0) {
+            return std::numeric_limits<double>::infinity();
+        }
+
+        std::vector<double> abs_offsets_ms;
+        abs_offsets_ms.reserve(probe_beats);
+        for (std::size_t i = 0; i < probe_beats; ++i) {
+            const std::size_t beat_frame = static_cast<std::size_t>(
+                std::min<unsigned long long>(beats[i], intro_samples.size() - 1));
+            const std::size_t start = beat_frame > radius ? beat_frame - radius : 0;
+            const std::size_t end = std::min(intro_samples.size() - 1, beat_frame + radius);
+            if (end <= start + 2) {
+                continue;
+            }
+
+            std::size_t best_peak = beat_frame;
+            float best_value = 0.0f;
+            for (std::size_t p = start; p <= end; ++p) {
+                const float value = std::fabs(intro_samples[p]);
+                if (value > best_value) {
+                    best_value = value;
+                    best_peak = p;
+                }
+            }
+            if (best_value <= 0.0f) {
+                continue;
+            }
+
+            const double delta_frames = static_cast<double>(
+                static_cast<long long>(best_peak) - static_cast<long long>(beat_frame));
+            abs_offsets_ms.push_back(std::fabs((delta_frames * 1000.0) / sample_rate_));
+        }
+        if (abs_offsets_ms.size() < 8) {
+            return std::numeric_limits<double>::infinity();
+        }
+        auto mid = abs_offsets_ms.begin() + static_cast<long>(abs_offsets_ms.size() / 2);
+        std::nth_element(abs_offsets_ms.begin(), mid, abs_offsets_ms.end());
+        return *mid;
+    };
+    auto run_probe_result = [&](double start_s) {
         ProbeResult p;
-        p.start = s;
-        p.analysis = run_probe(s, probe_duration);
+        p.start = clamp_start(start_s);
+        p.analysis = run_probe(p.start, probe_duration);
         p.bpm = p.analysis.estimated_bpm;
         p.conf = estimate_probe_confidence(p.analysis);
-        probes.push_back(std::move(p));
+        p.phase_abs_ms = estimate_intro_phase_abs_ms(p.analysis, p.bpm);
+        return p;
+    };
+    auto probe_quality_score = [&](const ProbeResult& p) {
+        const std::size_t beat_count = probe_beat_count(p.analysis);
+        if (!(p.bpm > 0.0) || beat_count < 4) {
+            return 0.0;
+        }
+        const double beat_factor =
+            std::min(1.0, static_cast<double>(beat_count) / 24.0);
+        const double phase_factor = std::isfinite(p.phase_abs_ms)
+            ? (1.0 / (1.0 + (p.phase_abs_ms / 120.0)))
+            : 0.15;
+        return p.conf * beat_factor * phase_factor;
+    };
+    auto probe_is_usable = [&](const ProbeResult& p) {
+        const std::size_t beat_count = probe_beat_count(p.analysis);
+        return (p.bpm > 0.0) &&
+               (beat_count >= 16) &&
+               (p.conf >= 0.55) &&
+               (!std::isfinite(p.phase_abs_ms) || p.phase_abs_ms <= 120.0);
+    };
+    auto seek_quality_probe = [&](double seed_start, bool shift_right) {
+        double start_s = std::clamp(seed_start, min_allowed_start, max_allowed_start);
+        ProbeResult best = run_probe_result(start_s);
+        double best_score = probe_quality_score(best);
+        if (probe_is_usable(best)) {
+            return best;
+        }
+        for (std::size_t round = 0; round < max_quality_shifts; ++round) {
+            double next_start = shift_right
+                ? (start_s + quality_shift_step)
+                : (start_s - quality_shift_step);
+            next_start = std::clamp(next_start, min_allowed_start, max_allowed_start);
+            if (std::abs(next_start - start_s) < 0.5) {
+                break;
+            }
+            start_s = next_start;
+            ProbeResult candidate = run_probe_result(start_s);
+            const double score = probe_quality_score(candidate);
+            if (score > best_score) {
+                best = candidate;
+                best_score = score;
+            }
+            if (probe_is_usable(candidate)) {
+                return candidate;
+            }
+        }
+        return best;
+    };
+
+    std::vector<ProbeResult> probes;
+    probes.reserve(3);
+    auto push_unique_probe = [&](ProbeResult&& probe) {
+        const double incoming_score = probe_quality_score(probe);
+        for (auto& existing : probes) {
+            if (std::abs(existing.start - probe.start) < 1.0) {
+                if (incoming_score > probe_quality_score(existing)) {
+                    existing = std::move(probe);
+                }
+                return;
+            }
+        }
+        probes.push_back(std::move(probe));
+    };
+
+    ProbeResult left_probe = seek_quality_probe(min_allowed_start, true);
+    left_anchor_start = left_probe.start;
+    push_unique_probe(std::move(left_probe));
+
+    if (max_allowed_start > min_allowed_start + 0.5) {
+        ProbeResult right_probe = seek_quality_probe(max_allowed_start, false);
+        push_unique_probe(std::move(right_probe));
+    }
+
+    if (probes.size() < 2 && (max_allowed_start - min_allowed_start) > 1.0) {
+        push_unique_probe(run_probe_result(clamp_start(total * 0.5 - probe_duration * 0.5)));
     }
 
     auto consensus_from_probes = [&](const std::vector<ProbeResult>& values) {
@@ -890,12 +1016,7 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
         probe_mode_errors[i] = mode_error;
     }
 
-    const double anchor_start = clamp_start(
-        std::max(0.0, original_config.dbn_window_start_seconds));
-    const bool short_track_dynamic_left =
-        (total < 420.0) &&
-        (left_anchor_start + 1.0 <
-         std::max(0.0, original_config.dbn_tempo_anchor_intro_seconds));
+    const double anchor_start = left_anchor_start;
     std::vector<IntroPhaseMetrics> probe_intro_metrics(probes.size());
     for (std::size_t i = 0; i < probes.size(); ++i) {
         probe_intro_metrics[i] = measure_intro_phase(
@@ -960,15 +1081,12 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
                 std::isfinite(intro.median_abs_ms) ? (intro.median_abs_ms / 120.0) : 2.0;
             const double stability_term =
                 std::isfinite(intro.odd_even_gap_ms) ? (intro.odd_even_gap_ms / 220.0) : 1.0;
-            const double start_prior = std::abs(probes[i].start - anchor_start) /
-                std::max(1.0, probe_duration);
             const double confidence_term = 1.0 - std::min(1.0, std::max(0.0, probes[i].conf));
             const double score =
                 (2.4 * tempo_term) +
                 (1.2 * phase_term) +
                 (0.9 * stability_term) +
-                (0.5 * confidence_term) +
-                (0.15 * start_prior);
+                (0.5 * confidence_term);
             if (score < out.selected_score) {
                 second_best = out.selected_score;
                 out.selected_score = score;
@@ -1011,7 +1129,7 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
         const double repair_bpm = have_consensus
             ? consensus_bpm
             : (probes[selected_index].bpm > 0.0 ? probes[selected_index].bpm : 0.0);
-        double repair_start = short_track_dynamic_left ? left_anchor_start : anchor_start;
+        double repair_start = anchor_start;
         if (have_consensus && !probes.empty()) {
             std::size_t best_mode_index = 0;
             double best_mode_error = probe_mode_errors[0];
@@ -1226,7 +1344,11 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
             projected[i] = static_cast<unsigned long long>(std::max<long long>(0, adjusted));
         }
     };
-    if (low_confidence) {
+    const bool needs_bounded_refit =
+        low_confidence ||
+        (std::isfinite(selected_intro_metrics.median_abs_ms) &&
+         selected_intro_metrics.median_abs_ms > 60.0);
+    if (needs_bounded_refit) {
         apply_bounded_grid_refit(&result);
     }
     auto apply_sparse_anchor_state_refit = [&](AnalysisResult* r) {
@@ -1399,9 +1521,7 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
                       << "\n";
         }
     };
-    if (!short_track_dynamic_left) {
-        apply_sparse_anchor_state_refit(&result);
-    }
+    apply_sparse_anchor_state_refit(&result);
     auto apply_waveform_edge_refit = [&](AnalysisResult* r) {
         if (!r || sample_rate_ <= 0.0 || !provider) {
             return;
@@ -1576,7 +1696,7 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
                 std::vector<unsigned long long> candidate = *projected;
                 const double pass2_ratio = compute_ratio(candidate, post_intro, post_outro);
                 const double pass2_applied =
-                    apply_scale(&candidate, pass2_ratio, 0.9998, 1.0002, 1e-6);
+                    apply_scale(&candidate, pass2_ratio, 0.9997, 1.0003, 1e-6);
                 if (pass2_applied != 1.0) {
                     auto candidate_measured =
                         measure_window_pair(candidate, first_window_start, last_window_start);
@@ -1596,6 +1716,57 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
                     }
                 }
             }
+        }
+
+        auto try_uniform_shift_on_windows =
+            [&](const EdgeOffsetMetrics& base_intro,
+                const EdgeOffsetMetrics& base_outro,
+                double max_beat_fraction) {
+            if (base_intro.count < 8 || base_outro.count < 8 ||
+                !std::isfinite(base_intro.median_ms) || !std::isfinite(base_outro.median_ms)) {
+                return false;
+            }
+            if ((base_intro.median_ms * base_outro.median_ms) <= 0.0) {
+                return false;
+            }
+            const double mean_ms = 0.5 * (base_intro.median_ms + base_outro.median_ms);
+            const double beat_ms = 60000.0 / std::max(1e-6, bpm_hint);
+            const double max_shift_ms = std::max(25.0, beat_ms * max_beat_fraction);
+            const double clamped_shift_ms = std::clamp(mean_ms, -max_shift_ms, max_shift_ms);
+            const long long shift_frames = static_cast<long long>(
+                std::llround((clamped_shift_ms * sample_rate_) / 1000.0));
+            if (shift_frames == 0) {
+                return false;
+            }
+
+            std::vector<unsigned long long> candidate = *projected;
+            for (std::size_t i = 0; i < candidate.size(); ++i) {
+                const long long shifted = static_cast<long long>(candidate[i]) + shift_frames;
+                candidate[i] = static_cast<unsigned long long>(std::max<long long>(0, shifted));
+            }
+            const auto measured =
+                measure_window_pair(candidate, first_window_start, last_window_start);
+            const EdgeOffsetMetrics cand_intro = measured.first;
+            const EdgeOffsetMetrics cand_outro = measured.second;
+            if (cand_intro.count < 8 || cand_outro.count < 8 ||
+                !std::isfinite(cand_intro.median_ms) || !std::isfinite(cand_outro.median_ms)) {
+                return false;
+            }
+
+            const double base_worst =
+                std::max(std::abs(base_intro.median_ms), std::abs(base_outro.median_ms));
+            const double cand_worst =
+                std::max(std::abs(cand_intro.median_ms), std::abs(cand_outro.median_ms));
+            if (cand_worst + 5.0 < base_worst) {
+                *projected = std::move(candidate);
+                return true;
+            }
+            return false;
+        };
+        if (try_uniform_shift_on_windows(post_intro, post_outro, 0.30)) {
+            auto measured = measure_window_pair(*projected, first_window_start, last_window_start);
+            post_intro = measured.first;
+            post_outro = measured.second;
         }
 
         // Final safety pass: minimize whole-file edge drift while preserving intro alignment.
@@ -1634,6 +1805,40 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
             }
         }
         if (global_intro.count >= 8 && global_outro.count >= 8 &&
+            std::isfinite(global_intro.median_ms) && std::isfinite(global_outro.median_ms)) {
+            const double global_delta = std::abs(global_outro.median_ms - global_intro.median_ms);
+            if (global_delta > 60.0 && global_delta <= 120.0) {
+                std::vector<unsigned long long> candidate = *projected;
+                const double guard_ratio =
+                    compute_ratio(candidate, global_intro, global_outro);
+                const double guard_applied =
+                    apply_scale(&candidate, guard_ratio, 0.9996, 1.0004, 1e-6);
+                if (guard_applied != 1.0) {
+                    const EdgeOffsetMetrics cand_intro =
+                        measure_edge_offsets(candidate, bpm_hint, false);
+                    const EdgeOffsetMetrics cand_outro =
+                        measure_edge_offsets(candidate, bpm_hint, true);
+                    if (cand_intro.count >= 8 && cand_outro.count >= 8 &&
+                        std::isfinite(cand_intro.median_ms) && std::isfinite(cand_outro.median_ms)) {
+                        const double cand_delta =
+                            std::abs(cand_outro.median_ms - cand_intro.median_ms);
+                        const double base_worst =
+                            std::max(std::abs(global_intro.median_ms), std::abs(global_outro.median_ms));
+                        const double cand_worst =
+                            std::max(std::abs(cand_intro.median_ms), std::abs(cand_outro.median_ms));
+                        const bool improves_delta = cand_delta + 2.0 < global_delta;
+                        const bool keeps_worst_reasonable = cand_worst <= (base_worst + 10.0);
+                        if (improves_delta && keeps_worst_reasonable) {
+                            *projected = std::move(candidate);
+                            global_intro = cand_intro;
+                            global_outro = cand_outro;
+                            global_guard_ratio = guard_applied;
+                        }
+                    }
+                }
+            }
+        }
+        if (global_intro.count >= 8 && global_outro.count >= 8 &&
             std::isfinite(global_intro.median_ms) && std::isfinite(global_outro.median_ms) &&
             (global_intro.median_ms * global_outro.median_ms) > 0.0) {
             const double mean_ms = 0.5 * (global_intro.median_ms + global_outro.median_ms);
@@ -1656,11 +1861,11 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
                     measure_edge_offsets(candidate, bpm_hint, true);
                 if (cand_intro.count >= 8 && cand_outro.count >= 8 &&
                     std::isfinite(cand_intro.median_ms) && std::isfinite(cand_outro.median_ms)) {
-                    const bool improves_intro =
-                        std::abs(cand_intro.median_ms) + 5.0 < std::abs(global_intro.median_ms);
-                    const bool improves_outro =
-                        std::abs(cand_outro.median_ms) + 5.0 < std::abs(global_outro.median_ms);
-                    if (improves_intro && improves_outro) {
+                    const double base_worst =
+                        std::max(std::abs(global_intro.median_ms), std::abs(global_outro.median_ms));
+                    const double cand_worst =
+                        std::max(std::abs(cand_intro.median_ms), std::abs(cand_outro.median_ms));
+                    if (cand_worst + 5.0 < base_worst) {
                         *projected = std::move(candidate);
                         global_intro = cand_intro;
                         global_outro = cand_outro;
@@ -1694,6 +1899,136 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
         }
     };
     apply_waveform_edge_refit(&result);
+    auto trim_projected_edge_outliers = [&](AnalysisResult* r) {
+        if (!r || sample_rate_ <= 0.0 || !provider) {
+            return;
+        }
+
+        std::vector<unsigned long long>* beat_samples =
+            !r->coreml_beat_projected_sample_frames.empty()
+                ? &r->coreml_beat_projected_sample_frames
+                : &r->coreml_beat_sample_frames;
+        std::vector<unsigned long long>* beat_features =
+            !r->coreml_beat_projected_feature_frames.empty()
+                ? &r->coreml_beat_projected_feature_frames
+                : &r->coreml_beat_feature_frames;
+        if (!beat_samples || beat_samples->size() < 64 || beat_features == nullptr) {
+            return;
+        }
+
+        const double bpm_hint = r->estimated_bpm > 0.0f
+            ? static_cast<double>(r->estimated_bpm)
+            : estimate_bpm_from_beats_local(*beat_samples, sample_rate_);
+        if (!(bpm_hint > 0.0)) {
+            return;
+        }
+
+        const std::size_t radius = static_cast<std::size_t>(
+            std::llround(sample_rate_ * (60.0 / bpm_hint) * 0.6));
+        if (radius == 0) {
+            return;
+        }
+
+        auto offset_for_beat_ms = [&](unsigned long long beat_frame_ull) -> double {
+            const std::size_t beat_frame = static_cast<std::size_t>(beat_frame_ull);
+            const std::size_t margin = radius + static_cast<std::size_t>(std::llround(sample_rate_ * 1.5));
+            const std::size_t segment_start = beat_frame > margin ? beat_frame - margin : 0;
+            const std::size_t segment_end = beat_frame + margin;
+            const double segment_start_s = static_cast<double>(segment_start) / sample_rate_;
+            const double segment_duration_s =
+                static_cast<double>(std::max<std::size_t>(1, segment_end - segment_start)) / sample_rate_;
+
+            std::vector<float> samples;
+            const std::size_t received = provider(segment_start_s, segment_duration_s, &samples);
+            if (received == 0 || samples.empty()) {
+                return std::numeric_limits<double>::infinity();
+            }
+            if (samples.size() > received) {
+                samples.resize(received);
+            }
+
+            const std::size_t local_center =
+                std::min<std::size_t>(samples.size() - 1, beat_frame - segment_start);
+            const std::size_t start = local_center > radius ? local_center - radius : 0;
+            const std::size_t end = std::min(samples.size() - 1, local_center + radius);
+            if (end <= start + 2) {
+                return std::numeric_limits<double>::infinity();
+            }
+
+            float window_max = 0.0f;
+            for (std::size_t i = start; i <= end; ++i) {
+                window_max = std::max(window_max, std::fabs(samples[i]));
+            }
+            const float threshold = window_max * 0.6f;
+
+            std::size_t best_peak = local_center;
+            float best_value = 0.0f;
+            for (std::size_t i = start + 1; i < end; ++i) {
+                const float left = std::fabs(samples[i - 1]);
+                const float value = std::fabs(samples[i]);
+                const float right = std::fabs(samples[i + 1]);
+                if (value < threshold) {
+                    continue;
+                }
+                if (value >= left && value > right && value > best_value) {
+                    best_value = value;
+                    best_peak = i;
+                }
+            }
+            if (best_value <= 0.0f) {
+                float max_value = 0.0f;
+                for (std::size_t i = start; i <= end; ++i) {
+                    const float value = std::fabs(samples[i]);
+                    if (value > max_value) {
+                        max_value = value;
+                        best_peak = i;
+                    }
+                }
+            }
+
+            const double delta_frames = static_cast<double>(
+                static_cast<long long>(best_peak) - static_cast<long long>(local_center));
+            return (delta_frames * 1000.0) / sample_rate_;
+        };
+        const double beat_ms = 60000.0 / std::max(1e-6, bpm_hint);
+        const double outlier_ms = std::max(80.0, beat_ms * 0.25);
+        auto apply_sample_shift_ms = [&](std::size_t idx, double offset_ms) {
+            if (idx >= beat_samples->size()) {
+                return;
+            }
+            const long long delta_frames = static_cast<long long>(
+                std::llround((offset_ms * sample_rate_) / 1000.0));
+            long long shifted =
+                static_cast<long long>((*beat_samples)[idx]) + delta_frames;
+            if (idx > 0) {
+                shifted = std::max<long long>(
+                    shifted,
+                    static_cast<long long>((*beat_samples)[idx - 1]) + 1);
+            }
+            if (idx + 1 < beat_samples->size()) {
+                shifted = std::min<long long>(
+                    shifted,
+                    static_cast<long long>((*beat_samples)[idx + 1]) - 1);
+            }
+            (*beat_samples)[idx] =
+                static_cast<unsigned long long>(std::max<long long>(0, shifted));
+        };
+
+        // Snap clearly-off beats to the nearest strong local peak.
+        // This cleans sparse edge outliers without changing beat count.
+        if (beat_samples->size() > 16) {
+            for (std::size_t pass = 0; pass < 2; ++pass) {
+                for (std::size_t idx = 0; idx < beat_samples->size(); ++idx) {
+                    const double offset = offset_for_beat_ms((*beat_samples)[idx]);
+                    if (!std::isfinite(offset) || std::fabs(offset) <= outlier_ms) {
+                        continue;
+                    }
+                    apply_sample_shift_ms(idx, offset);
+                }
+            }
+        }
+    };
+    trim_projected_edge_outliers(&result);
 
     {
         // Keep reported BPM consistent with the returned beat grid.
