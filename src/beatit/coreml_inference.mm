@@ -10,13 +10,15 @@
 #import <Foundation/Foundation.h>
 
 #include "beatit/coreml.h"
+#include "beatit/logging.hpp"
 
+#include "audio_dsp.h"
 #include "coreml_model_utils.h"
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
-#include <iostream>
+#include <sstream>
 #include <vector>
 
 namespace beatit {
@@ -39,20 +41,6 @@ static void apply_logits_to_probs(std::vector<float>& values, float temperature)
     for (float& v : values) {
         v = sigmoidf_stable(v / temp);
     }
-}
-
-float hz_to_mel(float hz, CoreMLConfig::MelScale scale) {
-    if (scale == CoreMLConfig::MelScale::Slaney) {
-        return 1127.01048f * std::log(1.0f + hz / 700.0f);
-    }
-    return 2595.0f * std::log10(1.0f + hz / 700.0f);
-}
-
-float mel_to_hz(float mel, CoreMLConfig::MelScale scale) {
-    if (scale == CoreMLConfig::MelScale::Slaney) {
-        return 700.0f * (std::exp(mel / 1127.01048f) - 1.0f);
-    }
-    return 700.0f * (std::pow(10.0f, mel / 2595.0f) - 1.0f);
 }
 
 } // namespace
@@ -82,16 +70,16 @@ CoreMLResult analyze_with_coreml(const std::vector<float>& samples,
 
     std::vector<float> phase_energy(frames, 0.0f);
     if (config.mel_bins > 0 && config.sample_rate > 0.0) {
-        const float mel_min = hz_to_mel(std::max(0.0f, config.f_min), config.mel_scale);
-        const float mel_max = hz_to_mel(std::max(config.f_min + 1.0f, config.f_max),
-                                        config.mel_scale);
+        const float mel_min = detail::hz_to_mel(std::max(0.0f, config.f_min), config.mel_scale);
+        const float mel_max = detail::hz_to_mel(std::max(config.f_min + 1.0f, config.f_max),
+                                                config.mel_scale);
         std::vector<std::size_t> low_bins;
         low_bins.reserve(config.mel_bins);
         for (std::size_t m = 0; m < config.mel_bins; ++m) {
             const float t =
                 (static_cast<float>(m) + 0.5f) / static_cast<float>(config.mel_bins);
             const float mel = mel_min + t * (mel_max - mel_min);
-            const float hz = mel_to_hz(mel, config.mel_scale);
+            const float hz = detail::mel_to_hz(mel, config.mel_scale);
             if (hz <= 150.0f) {
                 low_bins.push_back(m);
             }
@@ -127,7 +115,7 @@ CoreMLResult analyze_with_coreml(const std::vector<float>& samples,
     NSString* model_path = detail::resolve_model_path(config);
     if (!model_path) {
         if (config.verbose) {
-            std::cerr << "CoreML model not found on disk or in bundle.\n";
+            BEATIT_LOG_WARN("CoreML model not found on disk or in bundle.");
         }
         return result;
     }
@@ -135,7 +123,7 @@ CoreMLResult analyze_with_coreml(const std::vector<float>& samples,
     NSURL* model_url = [NSURL fileURLWithPath:model_path];
     NSURL* compiled_url = detail::compile_model_if_needed(model_url, &error);
     if (error && config.verbose) {
-        std::cerr << "CoreML compile error: " << error.localizedDescription.UTF8String << "\n";
+        BEATIT_LOG_WARN("CoreML compile error: " << error.localizedDescription.UTF8String);
     }
     if (compiled_url) {
         model_url = compiled_url;
@@ -161,7 +149,7 @@ CoreMLResult analyze_with_coreml(const std::vector<float>& samples,
     MLModel* model = detail::load_cached_model(model_url, model_config, &error);
     if (!model) {
         if (config.verbose && error) {
-            std::cerr << "CoreML load error: " << error.localizedDescription.UTF8String << "\n";
+            BEATIT_LOG_WARN("CoreML load error: " << error.localizedDescription.UTF8String);
         }
         return result;
     }
@@ -194,7 +182,7 @@ CoreMLResult analyze_with_coreml(const std::vector<float>& samples,
                                                        config.mel_bins,
                                                        layout)) {
                 if (config.verbose) {
-                    std::cerr << "CoreML input shape mismatch or allocation failure.\n";
+                    BEATIT_LOG_DEBUG("CoreML input shape mismatch or allocation failure.");
                 }
                 return false;
             }
@@ -206,8 +194,8 @@ CoreMLResult analyze_with_coreml(const std::vector<float>& samples,
                                                               error:&error];
             if (!input) {
                 if (config.verbose && error) {
-                    std::cerr << "CoreML input provider error: "
-                              << error.localizedDescription.UTF8String << "\n";
+                    BEATIT_LOG_WARN("CoreML input provider error: "
+                                    << error.localizedDescription.UTF8String);
                 }
                 return false;
             }
@@ -215,9 +203,8 @@ CoreMLResult analyze_with_coreml(const std::vector<float>& samples,
             id<MLFeatureProvider> output = [model predictionFromFeatures:input error:&error];
             if (!output) {
                 if (config.verbose && error) {
-                    std::cerr << "CoreML inference error: "
-                              << error.localizedDescription.UTF8String
-                              << "\n";
+                    BEATIT_LOG_WARN("CoreML inference error: "
+                                    << error.localizedDescription.UTF8String);
                 }
                 return false;
             }
@@ -229,16 +216,16 @@ CoreMLResult analyze_with_coreml(const std::vector<float>& samples,
 
             if (config.verbose && (!beat_value || !downbeat_value)) {
                 auto* outputs = model.modelDescription.outputDescriptionsByName;
-                std::cerr << "CoreML output names: ";
+                std::ostringstream names;
                 bool first = true;
                 for (NSString* key in outputs) {
                     if (!first) {
-                        std::cerr << ", ";
+                        names << ", ";
                     }
-                    std::cerr << key.UTF8String;
+                    names << key.UTF8String;
                     first = false;
                 }
-                std::cerr << "\n";
+                BEATIT_LOG_DEBUG("CoreML output names: " << names.str());
             }
 
             if (beat_out) {
@@ -268,7 +255,7 @@ CoreMLResult analyze_with_coreml(const std::vector<float>& samples,
                 : CoreMLConfig::InputLayout::FramesByMels;
         if (fallback_layout != inferred_input_layout) {
             if (config.verbose) {
-                std::cerr << "CoreML retrying inference with alternate input layout.\n";
+                BEATIT_LOG_DEBUG("CoreML retrying inference with alternate input layout.");
             }
             return try_layout(fallback_layout);
         }
@@ -367,13 +354,13 @@ CoreMLResult analyze_with_coreml(const std::vector<float>& samples,
             std::chrono::duration<double, std::milli>(post_end - post_start).count();
         const double total_ms =
             std::chrono::duration<double, std::milli>(total_end - total_start).count();
-        std::cerr << "Timing(coreml): resample=" << resample_ms
-                  << "ms mel=" << mel_ms
-                  << "ms model=" << model_ms
-                  << "ms infer=" << infer_ms
-                  << "ms post=" << post_ms
-                  << "ms total=" << total_ms
-                  << "ms\n";
+        BEATIT_LOG_INFO("Timing(coreml): resample=" << resample_ms
+                        << "ms mel=" << mel_ms
+                        << "ms model=" << model_ms
+                        << "ms infer=" << infer_ms
+                        << "ms post=" << post_ms
+                        << "ms total=" << total_ms
+                        << "ms");
     }
 
     return result;

@@ -7,6 +7,7 @@
 //
 
 #include "analysis_internal.h"
+#include "audio_dsp.h"
 #include "beatit/logging.hpp"
 
 #include <algorithm>
@@ -210,37 +211,6 @@ bool run_beatthis_external(const std::vector<float>& samples,
     return parse_beatthis_output(output, beats, downbeats, error);
 }
 
-std::vector<float> resample_linear(const std::vector<float>& input,
-                                   double input_rate,
-                                   std::size_t target_rate) {
-    if (input_rate <= 0.0 || target_rate == 0 || input.empty()) {
-        return {};
-    }
-    if (static_cast<std::size_t>(std::lround(input_rate)) == target_rate) {
-        return input;
-    }
-
-    const double ratio = static_cast<double>(target_rate) / input_rate;
-    const std::size_t output_size =
-        static_cast<std::size_t>(std::lround(input.size() * ratio));
-    std::vector<float> output(output_size, 0.0f);
-
-    for (std::size_t i = 0; i < output_size; ++i) {
-        const double position = static_cast<double>(i) / ratio;
-        const std::size_t index = static_cast<std::size_t>(position);
-        const double frac = position - static_cast<double>(index);
-        if (index + 1 < input.size()) {
-            const float a = input[index];
-            const float b = input[index + 1];
-            output[i] = static_cast<float>((1.0 - frac) * a + frac * b);
-        } else if (index < input.size()) {
-            output[i] = input[index];
-        }
-    }
-
-    return output;
-}
-
 } // namespace
 
 std::vector<float> compute_phase_energy(const std::vector<float>& samples,
@@ -250,7 +220,8 @@ std::vector<float> compute_phase_energy(const std::vector<float>& samples,
         return {};
     }
 
-    std::vector<float> resampled = resample_linear(samples, sample_rate, config.sample_rate);
+    std::vector<float> resampled =
+        detail::resample_linear_mono(samples, sample_rate, config.sample_rate);
     if (resampled.empty()) {
         return {};
     }
