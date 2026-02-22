@@ -1,12 +1,12 @@
 //
-//  audio_dsp.cpp
+//  dsp.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "audio_dsp.h"
+#include "dsp.h"
 
 #include <algorithm>
 #include <cmath>

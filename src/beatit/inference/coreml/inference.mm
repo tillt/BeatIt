@@ -12,7 +12,7 @@
 #include "beatit/coreml.h"
 #include "beatit/logging.hpp"
 
-#include "beatit/audio_dsp.h"
+#include "beatit/audio/dsp.h"
 #include "model_utils.h"
 
 #include <algorithm>

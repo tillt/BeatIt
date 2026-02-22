@@ -7,7 +7,7 @@
 //
 
 #include "internal.h"
-#include "beatit/audio_dsp.h"
+#include "beatit/audio/dsp.h"
 #include "beatit/logging.hpp"
 
 #include <algorithm>

@@ -89,8 +89,8 @@ set(BEATIT_LIB_SOURCES
     src/beatit/analysis/bpm_beats.cpp
     src/beatit/analysis/bpm_activation.cpp
     src/beatit/analysis/backend.cpp
-    src/beatit/audio_dsp.cpp
-    src/beatit/audio_features.cpp
+    src/beatit/audio/dsp.cpp
+    src/beatit/audio/features.cpp
     src/beatit/logging.cpp
     src/beatit/version.cpp
     src/beatit/inference/coreml/inference.mm
@@ -212,8 +212,8 @@ if(APPLE)
         src/beatit/analysis/bpm_beats.cpp
         src/beatit/analysis/bpm_activation.cpp
         src/beatit/analysis/backend.cpp
-        src/beatit/audio_dsp.cpp
-        src/beatit/audio_features.cpp
+        src/beatit/audio/dsp.cpp
+        src/beatit/audio/features.cpp
         src/beatit/logging.cpp
         src/beatit/version.cpp
         src/beatit/inference/coreml/inference.mm

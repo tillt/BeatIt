@@ -1,5 +1,5 @@
 //
-//  audio_features.cpp
+//  features.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-01-17.
@@ -7,7 +7,7 @@
 //
 
 #include "beatit/coreml.h"
-#include "audio_dsp.h"
+#include "dsp.h"
 
 #include <Accelerate/Accelerate.h>
 #include <algorithm>
