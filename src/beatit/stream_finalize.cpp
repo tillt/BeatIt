@@ -6,6 +6,7 @@
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
+#include "analysis_internal.h"
 #include "beatit/stream.h"
 #include "beatit/activation_merge.h"
 #include "beatit/inference_backend.h"
@@ -122,38 +123,6 @@ AnalysisResult BeatitStream::finalize() {
     const float autocorr_bpm = normalize_bpm_to_range(autocorr_bpm_raw, bpm_min, bpm_max);
     const float comb_bpm = normalize_bpm_to_range(comb_bpm_raw, bpm_min, bpm_max);
     const float beats_bpm = normalize_bpm_to_range(beats_bpm_raw, bpm_min, bpm_max);
-    const auto choose_candidate_bpm = [&](float peaks,
-                                          float autocorr,
-                                          float comb,
-                                          float beats) {
-        const float tol = 0.02f;
-        auto near = [&](float a, float b) {
-            if (a <= 0.0f || b <= 0.0f) {
-                return false;
-            }
-            return (std::abs(a - b) / std::max(a, 1e-6f)) <= tol;
-        };
-        if (near(peaks, comb)) {
-            return 0.5f * (peaks + comb);
-        }
-        if (near(peaks, autocorr)) {
-            return 0.5f * (peaks + autocorr);
-        }
-        if (near(comb, autocorr)) {
-            return 0.5f * (comb + autocorr);
-        }
-        if (peaks > 0.0f) {
-            return peaks;
-        }
-        if (comb > 0.0f) {
-            return comb;
-        }
-        if (autocorr > 0.0f) {
-            return autocorr;
-        }
-        return beats;
-    };
-
     const float candidate_bpm = choose_candidate_bpm(peaks_bpm, autocorr_bpm, comb_bpm, beats_bpm);
     const double prior_bpm = tempo_reference_valid_ ? tempo_reference_bpm_ : 0.0;
     float reference_bpm = candidate_bpm;
