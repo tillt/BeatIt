@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iostream>
 #include <limits>
 #include <numeric>
 #include <unordered_map>
@@ -329,6 +330,85 @@ IntervalStats interval_stats_frames(const std::vector<std::size_t>& frames,
     }
 
     return stats;
+}
+
+void trace_grid_peak_alignment(const std::vector<std::size_t>& beat_grid,
+                               const std::vector<std::size_t>& downbeat_grid,
+                               const std::vector<float>& beat_activation,
+                               const std::vector<float>& downbeat_activation,
+                               float activation_floor,
+                               double fps) {
+    if (fps <= 0.0) {
+        return;
+    }
+    auto collect_peaks = [](const std::vector<float>& activation,
+                            float floor,
+                            std::vector<std::size_t>& peaks_out) {
+        peaks_out.clear();
+        if (activation.size() < 3) {
+            return;
+        }
+        const std::size_t end = activation.size() - 1;
+        for (std::size_t i = 1; i < end; ++i) {
+            const float prev = activation[i - 1];
+            const float curr = activation[i];
+            const float next = activation[i + 1];
+            if (curr >= floor && curr >= prev && curr >= next) {
+                peaks_out.push_back(i);
+            }
+        }
+    };
+
+    auto compute_offsets = [&](const std::vector<std::size_t>& grid,
+                               const std::vector<std::size_t>& peaks,
+                               const char* label) {
+        if (grid.empty() || peaks.empty()) {
+            std::cerr << "DBN align: " << label
+                      << "_peak_offset_s mean=nan std=nan count=0\n";
+            return;
+        }
+        double sum = 0.0;
+        double sum_sq = 0.0;
+        std::size_t count = 0;
+        for (const auto frame : grid) {
+            auto it = std::lower_bound(peaks.begin(), peaks.end(), frame);
+            std::size_t best = *peaks.begin();
+            if (it == peaks.end()) {
+                best = peaks.back();
+            } else {
+                best = *it;
+                if (it != peaks.begin()) {
+                    const std::size_t prev = *(it - 1);
+                    if (frame - prev < best - frame) {
+                        best = prev;
+                    }
+                }
+            }
+            const double delta = (static_cast<double>(best) -
+                                  static_cast<double>(frame)) / fps;
+            sum += delta;
+            sum_sq += delta * delta;
+            count += 1;
+            if (count >= 64) {
+                break;
+            }
+        }
+        const double mean = sum / static_cast<double>(count);
+        const double var = (sum_sq / static_cast<double>(count)) - mean * mean;
+        const double stddev = var > 0.0 ? std::sqrt(var) : 0.0;
+        std::cerr << "DBN align: " << label
+                  << "_peak_offset_s mean=" << mean
+                  << " std=" << stddev
+                  << " count=" << count
+                  << "\n";
+    };
+
+    std::vector<std::size_t> beat_peaks;
+    std::vector<std::size_t> downbeat_peaks;
+    collect_peaks(beat_activation, activation_floor, beat_peaks);
+    collect_peaks(downbeat_activation, activation_floor, downbeat_peaks);
+    compute_offsets(beat_grid, beat_peaks, "beat");
+    compute_offsets(downbeat_grid, downbeat_peaks, "downbeat");
 }
 
 

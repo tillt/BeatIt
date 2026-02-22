@@ -43,6 +43,7 @@ using detail::median_interval_frames_interpolated;
 using detail::pick_peaks;
 using detail::regression_interval_frames_interpolated;
 using detail::score_peaks;
+using detail::trace_grid_peak_alignment;
 using detail::WindowSummary;
 using detail::align_downbeats_to_beats;
 using detail::compute_minimal_peaks;
@@ -2289,74 +2290,12 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                     decoded.downbeat_frames =
                         project_downbeats_from_beats(decoded.beat_frames, bpb, best_phase);
                     if (config.dbn_trace && fps > 0.0) {
-                        auto collect_peaks = [](const std::vector<float>& activation,
-                                                float floor,
-                                                std::vector<std::size_t>& peaks_out) {
-                            peaks_out.clear();
-                            if (activation.size() < 3) {
-                                return;
-                            }
-                            const std::size_t end = activation.size() - 1;
-                            for (std::size_t i = 1; i < end; ++i) {
-                                const float prev = activation[i - 1];
-                                const float curr = activation[i];
-                                const float next = activation[i + 1];
-                                if (curr >= floor && curr >= prev && curr >= next) {
-                                    peaks_out.push_back(i);
-                                }
-                            }
-                        };
-                        auto compute_offsets = [&](const std::vector<std::size_t>& grid,
-                                                   const std::vector<std::size_t>& peaks,
-                                                   const char* label) {
-                            if (grid.empty() || peaks.empty()) {
-                                std::cerr << "DBN align: " << label
-                                          << "_peak_offset_s mean=nan std=nan count=0\n";
-                                return;
-                            }
-                            double sum = 0.0;
-                            double sum_sq = 0.0;
-                            std::size_t count = 0;
-                            for (const auto frame : grid) {
-                                auto it = std::lower_bound(peaks.begin(), peaks.end(), frame);
-                                std::size_t best = *peaks.begin();
-                                if (it == peaks.end()) {
-                                    best = peaks.back();
-                                } else {
-                                    best = *it;
-                                    if (it != peaks.begin()) {
-                                        const std::size_t prev = *(it - 1);
-                                        if (frame - prev < best - frame) {
-                                            best = prev;
-                                        }
-                                    }
-                                }
-                                const double delta = (static_cast<double>(best) -
-                                                      static_cast<double>(frame)) / fps;
-                                sum += delta;
-                                sum_sq += delta * delta;
-                                count += 1;
-                                if (count >= 64) {
-                                    break;
-                                }
-                            }
-                            const double mean = sum / static_cast<double>(count);
-                            const double var = (sum_sq / static_cast<double>(count)) - mean * mean;
-                            const double stddev = var > 0.0 ? std::sqrt(var) : 0.0;
-                            std::cerr << "DBN align: " << label
-                                      << "_peak_offset_s mean=" << mean
-                                      << " std=" << stddev
-                                      << " count=" << count
-                                      << "\n";
-                        };
-                        std::vector<std::size_t> beat_peaks;
-                        std::vector<std::size_t> downbeat_peaks;
-                        const float beat_floor = activation_floor;
-                        const float downbeat_floor = activation_floor;
-                        collect_peaks(result.beat_activation, beat_floor, beat_peaks);
-                        collect_peaks(result.downbeat_activation, downbeat_floor, downbeat_peaks);
-                        compute_offsets(decoded.beat_frames, beat_peaks, "beat");
-                        compute_offsets(decoded.downbeat_frames, downbeat_peaks, "downbeat");
+                        trace_grid_peak_alignment(decoded.beat_frames,
+                                                  decoded.downbeat_frames,
+                                                  result.beat_activation,
+                                                  result.downbeat_activation,
+                                                  activation_floor,
+                                                  fps);
                     }
                     if (config.verbose) {
                         std::cerr << "DBN grid: start=" << start

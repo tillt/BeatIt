@@ -68,4 +68,11 @@ std::vector<std::size_t> fill_peaks_with_gaps(const std::vector<float>& activati
                                               float offbeat_tolerance,
                                               std::size_t window_beats);
 
+void trace_grid_peak_alignment(const std::vector<std::size_t>& beat_grid,
+                               const std::vector<std::size_t>& downbeat_grid,
+                               const std::vector<float>& beat_activation,
+                               const std::vector<float>& downbeat_activation,
+                               float activation_floor,
+                               double fps);
+
 } // namespace beatit::detail
