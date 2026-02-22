@@ -1,5 +1,5 @@
 //
-//  analysis_bpm_activation.cpp
+//  bpm_activation.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.

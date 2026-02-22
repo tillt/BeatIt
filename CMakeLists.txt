@@ -85,10 +85,10 @@ if(BEATIT_USE_TORCH AND BEATIT_TORCH_ROOT STREQUAL "")
 endif()
 
 set(BEATIT_LIB_SOURCES
-    src/beatit/analysis.cpp
-    src/beatit/analysis_bpm_beats.cpp
-    src/beatit/analysis_bpm_activation.cpp
-    src/beatit/analysis_backend.cpp
+    src/beatit/analysis/core.cpp
+    src/beatit/analysis/bpm_beats.cpp
+    src/beatit/analysis/bpm_activation.cpp
+    src/beatit/analysis/backend.cpp
     src/beatit/audio_dsp.cpp
     src/beatit/audio_features.cpp
     src/beatit/logging.cpp
@@ -132,13 +132,13 @@ set(BEATIT_LIB_SOURCES
 )
 if(BEATIT_USE_TORCH)
     list(APPEND BEATIT_LIB_SOURCES
-        src/beatit/analysis_torch.cpp
+        src/beatit/analysis/torch.cpp
         src/beatit/inference_backend_torch.cpp
         src/beatit/torch_mel.cpp
     )
 else()
     list(APPEND BEATIT_LIB_SOURCES
-        src/beatit/analysis_torch_stub.cpp
+        src/beatit/analysis/torch_stub.cpp
         src/beatit/inference_backend_torch_stub.cpp
     )
 endif()
@@ -208,10 +208,10 @@ if(APPLE)
         "${CMAKE_CURRENT_SOURCE_DIR}/include/beatit/*.hpp")
 
     set(BEATIT_FRAMEWORK_SOURCES
-        src/beatit/analysis.cpp
-        src/beatit/analysis_bpm_beats.cpp
-        src/beatit/analysis_bpm_activation.cpp
-        src/beatit/analysis_backend.cpp
+        src/beatit/analysis/core.cpp
+        src/beatit/analysis/bpm_beats.cpp
+        src/beatit/analysis/bpm_activation.cpp
+        src/beatit/analysis/backend.cpp
         src/beatit/audio_dsp.cpp
         src/beatit/audio_features.cpp
         src/beatit/logging.cpp
@@ -256,13 +256,13 @@ if(APPLE)
     )
     if(BEATIT_USE_TORCH)
         list(APPEND BEATIT_FRAMEWORK_SOURCES
-            src/beatit/analysis_torch.cpp
+            src/beatit/analysis/torch.cpp
             src/beatit/inference_backend_torch.cpp
             src/beatit/torch_mel.cpp
         )
     else()
         list(APPEND BEATIT_FRAMEWORK_SOURCES
-            src/beatit/analysis_torch_stub.cpp
+            src/beatit/analysis/torch_stub.cpp
             src/beatit/inference_backend_torch_stub.cpp
         )
     endif()

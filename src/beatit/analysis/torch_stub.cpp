@@ -1,12 +1,12 @@
 //
-//  analysis_torch_stub.cpp
+//  torch_stub.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "beatit/analysis_torch_backend.h"
+#include "beatit/analysis/torch_backend.h"
 #include "beatit/logging.hpp"
 
 namespace beatit {

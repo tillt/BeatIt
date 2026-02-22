@@ -1,5 +1,5 @@
 //
-//  analysis_internal.h
+//  internal.h
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.

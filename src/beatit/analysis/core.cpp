@@ -1,5 +1,5 @@
 //
-//  analysis.cpp
+//  core.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
@@ -7,12 +7,12 @@
 //
 
 #include "beatit/analysis.h"
-#include "beatit/analysis_torch_backend.h"
+#include "beatit/analysis/torch_backend.h"
 #include "beatit/coreml.h"
 #include "beatit/logging.hpp"
 #include "beatit/stream.h"
 
-#include "analysis_internal.h"
+#include "internal.h"
 
 #include <algorithm>
 #include <cmath>

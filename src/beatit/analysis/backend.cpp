@@ -1,13 +1,13 @@
 //
-//  analysis_backend.cpp
+//  backend.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "analysis_internal.h"
-#include "audio_dsp.h"
+#include "internal.h"
+#include "beatit/audio_dsp.h"
 #include "beatit/logging.hpp"
 
 #include <algorithm>
