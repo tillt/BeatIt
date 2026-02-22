@@ -5,6 +5,62 @@ project(beatit
     DESCRIPTION "A Minimal BPM/beat tracker using CoreML. Lightweight, permissive."
     LANGUAGES CXX OBJCXX)
 
+set(BEATIT_VERSION_STRING "dev")
+set(BEATIT_VERSION_DEV TRUE)
+set(BEATIT_GIT_HASH "unknown")
+find_program(GIT_EXE git)
+if(GIT_EXE)
+    execute_process(
+        COMMAND ${GIT_EXE} describe --tags --dirty --abbrev=7
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        RESULT_VARIABLE GIT_DESC_RES
+        OUTPUT_VARIABLE GIT_DESC_OUT
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    if(GIT_DESC_RES EQUAL 0 AND NOT GIT_DESC_OUT STREQUAL "")
+        set(BEATIT_VERSION_STRING "${GIT_DESC_OUT}")
+        if(GIT_DESC_OUT MATCHES "-")
+            set(BEATIT_VERSION_DEV TRUE)
+        else()
+            set(BEATIT_VERSION_DEV FALSE)
+        endif()
+    endif()
+
+    execute_process(
+        COMMAND ${GIT_EXE} rev-parse --short HEAD
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        RESULT_VARIABLE GIT_HASH_RES
+        OUTPUT_VARIABLE GIT_HASH_OUT
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    if(GIT_HASH_RES EQUAL 0 AND NOT GIT_HASH_OUT STREQUAL "")
+        set(BEATIT_GIT_HASH "${GIT_HASH_OUT}")
+    endif()
+endif()
+
+if(BEATIT_VERSION_DEV)
+    set(BEATIT_VERSION_DISPLAY "${BEATIT_VERSION_STRING}+${BEATIT_GIT_HASH}")
+else()
+    set(BEATIT_VERSION_DISPLAY "${BEATIT_VERSION_STRING}")
+endif()
+
+file(GENERATE
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/generated/beatit_version.hpp
+    CONTENT "//
+//  beatit_version.hpp
+//
+
+#pragma once
+
+#define BEATIT_VERSION \"${BEATIT_VERSION_STRING}\"
+#define BEATIT_VERSION_DISPLAY \"${BEATIT_VERSION_DISPLAY}\"
+#define BEATIT_VERSION_IS_DEV ${BEATIT_VERSION_DEV}
+#define BEATIT_GIT_HASH \"${BEATIT_GIT_HASH}\"
+"
+)
+
 if(APPLE AND NOT DEFINED CMAKE_OSX_ARCHITECTURES)
     if(CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_CONFIGURATION_TYPES)
         set(CMAKE_OSX_ARCHITECTURES "x86_64;arm64")
@@ -35,6 +91,7 @@ set(BEATIT_LIB_SOURCES
     src/beatit/analysis_backend.cpp
     src/beatit/audio_features.cpp
     src/beatit/logging.cpp
+    src/beatit/version.cpp
     src/beatit/coreml_inference.mm
     src/beatit/coreml_model_utils.mm
     src/beatit/coreml_metadata.mm
@@ -92,6 +149,7 @@ target_include_directories(beatit_lib
         ${CMAKE_CURRENT_SOURCE_DIR}/include
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_BINARY_DIR}/generated
 )
 
 function(beatit_link_torch target)
@@ -155,6 +213,7 @@ if(APPLE)
         src/beatit/analysis_backend.cpp
         src/beatit/audio_features.cpp
         src/beatit/logging.cpp
+        src/beatit/version.cpp
         src/beatit/coreml_inference.mm
         src/beatit/coreml_model_utils.mm
         src/beatit/coreml_metadata.mm
@@ -213,6 +272,7 @@ if(APPLE)
             ${CMAKE_CURRENT_SOURCE_DIR}/include
         PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/src
+            ${CMAKE_CURRENT_BINARY_DIR}/generated
     )
 
     beatit_link_torch(beatit_framework)

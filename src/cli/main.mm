@@ -13,6 +13,7 @@
 #include "beatit/coreml.h"
 #include "beatit/coreml_preset.h"
 #include "beatit/refiner.h"
+#include "beatit/version.h"
 
 #include <algorithm>
 #include <chrono>
@@ -117,6 +118,7 @@ void print_usage(const char* exe) {
         << "  --ml-cpu-only             Force CoreML CPU-only execution\n"
         << "  --ml-info                 Print CoreML model metadata\n"
         << "  --info                    Print decoded audio stats\n"
+        << "  -v, --version             Show BeatIt version\n"
         << "  -h, --help                Show this help\n";
 }
 
@@ -510,6 +512,14 @@ bool load_audio_file(const std::string& path,
 } // namespace
 
 int main(int argc, char** argv) {
+    if (argc == 2) {
+        const std::string arg = argv[1];
+        if (arg == "--version" || arg == "-v") {
+            std::cout << "BeatIt " << beatit::version_string() << "\n";
+            return 0;
+        }
+    }
+
     CliOptions options;
     if (!parse_args(argc, argv, &options)) {
         return options.show_help ? 0 : 1;
