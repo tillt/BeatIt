@@ -1202,6 +1202,15 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
                 measure_edge_offsets(first_window_beats, bpm_hint, false),
                 measure_edge_offsets(last_window_beats, bpm_hint, true)};
         };
+        auto measure_window_phase_pair = [&](const std::vector<unsigned long long>& beats,
+                                             double first_window_start_s,
+                                             double last_window_start_s) {
+            AnalysisResult tmp;
+            tmp.coreml_beat_projected_sample_frames = beats;
+            return std::pair<WindowPhaseMetrics, WindowPhaseMetrics>{
+                measure_window_phase(tmp, bpm_hint, first_window_start_s),
+                measure_window_phase(tmp, bpm_hint, last_window_start_s)};
+        };
         auto window_usable = [](const EdgeOffsetMetrics& m) {
             return m.count >= 10 &&
                    std::isfinite(m.median_ms) &&
@@ -1489,6 +1498,8 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
             double outro_abs_ms = std::numeric_limits<double>::infinity();
             double between_abs_ms = std::numeric_limits<double>::infinity();
             double middle_abs_ms = std::numeric_limits<double>::infinity();
+            double phase_consensus_penalty_ms = std::numeric_limits<double>::infinity();
+            double periodicity_penalty_ms = std::numeric_limits<double>::infinity();
         };
         auto score_phase_candidate = [&](const std::vector<unsigned long long>& beats)
             -> PhaseScoreSummary {
@@ -1499,13 +1510,20 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
             const EdgeOffsetMetrics intro_m = measure_edge_offsets(beats, bpm_hint, false);
             const EdgeOffsetMetrics outro_m = measure_edge_offsets(beats, bpm_hint, true);
             const auto middle_pair = measure_middle_windows(beats);
+            const auto edge_phase_pair =
+                measure_window_phase_pair(beats, first_window_start, last_window_start);
             if (intro_m.count < 8 || outro_m.count < 8 ||
-                middle_pair.first.count < 8 || middle_pair.second.count < 8) {
+                middle_pair.first.count < 8 || middle_pair.second.count < 8 ||
+                edge_phase_pair.first.count < 8 || edge_phase_pair.second.count < 8) {
                 return out;
             }
             if (!std::isfinite(intro_m.median_ms) || !std::isfinite(outro_m.median_ms) ||
                 !std::isfinite(middle_pair.first.median_abs_ms) ||
-                !std::isfinite(middle_pair.second.median_abs_ms)) {
+                !std::isfinite(middle_pair.second.median_abs_ms) ||
+                !std::isfinite(middle_pair.first.median_ms) ||
+                !std::isfinite(middle_pair.second.median_ms) ||
+                !std::isfinite(edge_phase_pair.first.median_ms) ||
+                !std::isfinite(edge_phase_pair.second.median_ms)) {
                 return out;
             }
 
@@ -1515,11 +1533,49 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
             out.global_delta_ms = std::abs(outro_m.median_ms - intro_m.median_ms);
             out.between_abs_ms = middle_pair.first.median_abs_ms;
             out.middle_abs_ms = middle_pair.second.median_abs_ms;
-            // Emphasize interior consistency while keeping edge lock and phase alignment.
+
+            const double edge_consensus_ms =
+                0.5 * (edge_phase_pair.first.median_ms + edge_phase_pair.second.median_ms);
+            out.phase_consensus_penalty_ms =
+                std::abs(middle_pair.first.median_ms - edge_consensus_ms) +
+                std::abs(middle_pair.second.median_ms - edge_consensus_ms);
+
+            const auto mismatch_excess = [](double interior, double edge, double slack) {
+                if (!std::isfinite(interior) || !std::isfinite(edge)) {
+                    return 0.0;
+                }
+                return std::max(0.0, interior - edge - slack);
+            };
+            const double edge_abs_ratio =
+                0.5 * (edge_phase_pair.first.abs_limit_exceed_ratio +
+                       edge_phase_pair.second.abs_limit_exceed_ratio);
+            const double edge_signed_ratio =
+                0.5 * (edge_phase_pair.first.signed_limit_exceed_ratio +
+                       edge_phase_pair.second.signed_limit_exceed_ratio);
+            const double interior_abs_ratio = std::max(middle_pair.first.abs_limit_exceed_ratio,
+                                                       middle_pair.second.abs_limit_exceed_ratio);
+            const double interior_signed_ratio = std::max(
+                middle_pair.first.signed_limit_exceed_ratio,
+                middle_pair.second.signed_limit_exceed_ratio);
+            const double edge_odd_even_ms =
+                0.5 * (edge_phase_pair.first.odd_even_gap_ms +
+                       edge_phase_pair.second.odd_even_gap_ms);
+            const double interior_odd_even_ms =
+                std::max(middle_pair.first.odd_even_gap_ms, middle_pair.second.odd_even_gap_ms);
+            const double ratio_penalty =
+                (220.0 * mismatch_excess(interior_abs_ratio, edge_abs_ratio, 0.10)) +
+                (180.0 * mismatch_excess(interior_signed_ratio, edge_signed_ratio, 0.10));
+            const double odd_even_penalty =
+                0.75 * mismatch_excess(interior_odd_even_ms, edge_odd_even_ms, 15.0);
+            out.periodicity_penalty_ms = ratio_penalty + odd_even_penalty;
+
+            // Prefer edge-consistent interior phase and penalize unstable interior periodicity.
             out.score = (0.60 * out.global_delta_ms) +
                         (0.35 * (out.intro_abs_ms + out.outro_abs_ms)) +
                         out.between_abs_ms +
-                        out.middle_abs_ms;
+                        out.middle_abs_ms +
+                        (0.55 * out.phase_consensus_penalty_ms) +
+                        out.periodicity_penalty_ms;
             return out;
         };
 
