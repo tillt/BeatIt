@@ -54,6 +54,8 @@ set(BEATIT_LIB_SOURCES
     src/beatit/dbn_calmdad_sparse.cpp
     src/beatit/dbn_beatit.cpp
     src/beatit/refiner.cpp
+    src/beatit/refiner_constant.cpp
+    src/beatit/refiner_constant_regions.cpp
     src/beatit/activation_merge.cpp
     src/beatit/stream_finalize.cpp
     src/beatit/inference_backend_coreml.cpp
@@ -165,6 +167,8 @@ if(APPLE)
         src/beatit/dbn_calmdad_sparse.cpp
         src/beatit/dbn_beatit.cpp
         src/beatit/refiner.cpp
+        src/beatit/refiner_constant.cpp
+        src/beatit/refiner_constant_regions.cpp
         src/beatit/activation_merge.cpp
         src/beatit/stream_finalize.cpp
         src/beatit/inference_backend_coreml.cpp
