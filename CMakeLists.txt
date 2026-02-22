@@ -91,8 +91,8 @@ set(BEATIT_LIB_SOURCES
     src/beatit/analysis/backend.cpp
     src/beatit/audio/dsp.cpp
     src/beatit/audio/features.cpp
-    src/beatit/logging.cpp
-    src/beatit/version.cpp
+    src/beatit/runtime/logging.cpp
+    src/beatit/runtime/version.cpp
     src/beatit/inference/coreml/inference.mm
     src/beatit/inference/coreml/model_utils.mm
     src/beatit/inference/coreml/metadata.mm
@@ -116,7 +116,7 @@ set(BEATIT_LIB_SOURCES
     src/beatit/refiner/constant.cpp
     src/beatit/refiner/constant_regions.cpp
     src/beatit/inference/window_merge.cpp
-    src/beatit/stream_finalize.cpp
+    src/beatit/stream/finalize.cpp
     src/beatit/inference/backend_coreml.cpp
     src/beatit/sparse/probe.cpp
     src/beatit/sparse/probe_pick.cpp
@@ -128,13 +128,13 @@ set(BEATIT_LIB_SOURCES
     src/beatit/sparse/edge_metrics.cpp
     src/beatit/sparse/edge_phase.cpp
     src/beatit/sparse/waveform.cpp
-    src/beatit/stream.cpp
+    src/beatit/stream/core.cpp
 )
 if(BEATIT_USE_TORCH)
     list(APPEND BEATIT_LIB_SOURCES
         src/beatit/analysis/torch.cpp
         src/beatit/inference/backend_torch.cpp
-        src/beatit/torch_mel.cpp
+        src/beatit/audio/mel_torch.cpp
     )
 else()
     list(APPEND BEATIT_LIB_SOURCES
@@ -214,8 +214,8 @@ if(APPLE)
         src/beatit/analysis/backend.cpp
         src/beatit/audio/dsp.cpp
         src/beatit/audio/features.cpp
-        src/beatit/logging.cpp
-        src/beatit/version.cpp
+        src/beatit/runtime/logging.cpp
+        src/beatit/runtime/version.cpp
         src/beatit/inference/coreml/inference.mm
         src/beatit/inference/coreml/model_utils.mm
         src/beatit/inference/coreml/metadata.mm
@@ -239,7 +239,7 @@ if(APPLE)
         src/beatit/refiner/constant.cpp
         src/beatit/refiner/constant_regions.cpp
         src/beatit/inference/window_merge.cpp
-        src/beatit/stream_finalize.cpp
+        src/beatit/stream/finalize.cpp
         src/beatit/inference/backend_coreml.cpp
         src/beatit/sparse/probe.cpp
         src/beatit/sparse/probe_pick.cpp
@@ -251,14 +251,14 @@ if(APPLE)
         src/beatit/sparse/edge_metrics.cpp
         src/beatit/sparse/edge_phase.cpp
         src/beatit/sparse/waveform.cpp
-        src/beatit/stream.cpp
+        src/beatit/stream/core.cpp
         ${BEATIT_PUBLIC_HEADERS}
     )
     if(BEATIT_USE_TORCH)
         list(APPEND BEATIT_FRAMEWORK_SOURCES
             src/beatit/analysis/torch.cpp
             src/beatit/inference/backend_torch.cpp
-            src/beatit/torch_mel.cpp
+            src/beatit/audio/mel_torch.cpp
         )
     else()
         list(APPEND BEATIT_FRAMEWORK_SOURCES

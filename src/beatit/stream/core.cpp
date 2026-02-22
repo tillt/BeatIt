@@ -1,5 +1,5 @@
 //
-//  stream.cpp
+//  core.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-01-17.

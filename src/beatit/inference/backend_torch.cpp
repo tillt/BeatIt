@@ -8,7 +8,7 @@
 
 #include "beatit/inference/backend_torch.h"
 
-#include "beatit/torch_mel.h"
+#include "beatit/audio/mel_torch.h"
 
 #include <algorithm>
 #include <chrono>

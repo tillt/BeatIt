@@ -8,7 +8,7 @@
 
 #include "beatit/analysis/torch_backend.h"
 
-#include "beatit/torch_mel.h"
+#include "beatit/audio/mel_torch.h"
 
 #include <algorithm>
 #include <filesystem>

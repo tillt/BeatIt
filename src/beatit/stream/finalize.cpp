@@ -1,5 +1,5 @@
 //
-//  stream_finalize.cpp
+//  finalize.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.

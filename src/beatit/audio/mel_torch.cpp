@@ -1,12 +1,12 @@
 //
-//  torch_mel.cpp
+//  mel_torch.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-01-23.
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "beatit/torch_mel.h"
+#include "beatit/audio/mel_torch.h"
 
 #include <algorithm>
 #include <cmath>
