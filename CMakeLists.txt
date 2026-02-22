@@ -96,18 +96,18 @@ set(BEATIT_LIB_SOURCES
     src/beatit/coreml_inference.mm
     src/beatit/coreml_model_utils.mm
     src/beatit/coreml_metadata.mm
-    src/beatit/postprocess_pipeline.cpp
-    src/beatit/postprocess_helpers.cpp
-    src/beatit/postprocess_dbn.cpp
-    src/beatit/postprocess_dbn_decoded.cpp
-    src/beatit/postprocess_dbn_grid_anchor.cpp
-    src/beatit/postprocess_dbn_grid_stages.cpp
-    src/beatit/postprocess_dbn_tempo_decision.cpp
-    src/beatit/postprocess_logits.cpp
-    src/beatit/postprocess_grid_fill.cpp
-    src/beatit/postprocess_result_ops.cpp
-    src/beatit/postprocess_tempo_fit.cpp
-    src/beatit/postprocess_window.cpp
+    src/beatit/pp_pipeline.cpp
+    src/beatit/pp_helpers.cpp
+    src/beatit/pp_dbn.cpp
+    src/beatit/pp_dbn_decode.cpp
+    src/beatit/pp_dbn_anchor.cpp
+    src/beatit/pp_dbn_grid.cpp
+    src/beatit/pp_dbn_tempo.cpp
+    src/beatit/pp_logits.cpp
+    src/beatit/pp_grid_fill.cpp
+    src/beatit/pp_result_ops.cpp
+    src/beatit/pp_tempo_fit.cpp
+    src/beatit/pp_window.cpp
     src/beatit/coreml_preset.cpp
     src/beatit/dbn_calmdad.cpp
     src/beatit/dbn_calmdad_sparse.cpp
@@ -119,14 +119,14 @@ set(BEATIT_LIB_SOURCES
     src/beatit/stream_finalize.cpp
     src/beatit/inference_backend_coreml.cpp
     src/beatit/sparse_probe.cpp
-    src/beatit/sparse_probe_selection.cpp
-    src/beatit/sparse_probe_selection_scoring.cpp
+    src/beatit/sparse_probe_pick.cpp
+    src/beatit/sparse_probe_score.cpp
     src/beatit/sparse_phase_metrics.cpp
     src/beatit/sparse_refinement.cpp
-    src/beatit/sparse_refinement_edge.cpp
-    src/beatit/sparse_refinement_edge_adjust.cpp
-    src/beatit/sparse_refinement_edge_metrics.cpp
-    src/beatit/sparse_refinement_edge_phase.cpp
+    src/beatit/sparse_edge.cpp
+    src/beatit/sparse_edge_adjust.cpp
+    src/beatit/sparse_edge_metrics.cpp
+    src/beatit/sparse_edge_phase.cpp
     src/beatit/sparse_waveform.cpp
     src/beatit/stream.cpp
 )
@@ -219,18 +219,18 @@ if(APPLE)
         src/beatit/coreml_inference.mm
         src/beatit/coreml_model_utils.mm
         src/beatit/coreml_metadata.mm
-        src/beatit/postprocess_pipeline.cpp
-        src/beatit/postprocess_helpers.cpp
-        src/beatit/postprocess_dbn.cpp
-        src/beatit/postprocess_dbn_decoded.cpp
-        src/beatit/postprocess_dbn_grid_anchor.cpp
-        src/beatit/postprocess_dbn_grid_stages.cpp
-        src/beatit/postprocess_dbn_tempo_decision.cpp
-        src/beatit/postprocess_logits.cpp
-        src/beatit/postprocess_grid_fill.cpp
-        src/beatit/postprocess_result_ops.cpp
-        src/beatit/postprocess_tempo_fit.cpp
-        src/beatit/postprocess_window.cpp
+        src/beatit/pp_pipeline.cpp
+        src/beatit/pp_helpers.cpp
+        src/beatit/pp_dbn.cpp
+        src/beatit/pp_dbn_decode.cpp
+        src/beatit/pp_dbn_anchor.cpp
+        src/beatit/pp_dbn_grid.cpp
+        src/beatit/pp_dbn_tempo.cpp
+        src/beatit/pp_logits.cpp
+        src/beatit/pp_grid_fill.cpp
+        src/beatit/pp_result_ops.cpp
+        src/beatit/pp_tempo_fit.cpp
+        src/beatit/pp_window.cpp
         src/beatit/coreml_preset.cpp
         src/beatit/dbn_calmdad.cpp
         src/beatit/dbn_calmdad_sparse.cpp
@@ -242,14 +242,14 @@ if(APPLE)
         src/beatit/stream_finalize.cpp
         src/beatit/inference_backend_coreml.cpp
         src/beatit/sparse_probe.cpp
-        src/beatit/sparse_probe_selection.cpp
-        src/beatit/sparse_probe_selection_scoring.cpp
+        src/beatit/sparse_probe_pick.cpp
+        src/beatit/sparse_probe_score.cpp
         src/beatit/sparse_phase_metrics.cpp
         src/beatit/sparse_refinement.cpp
-        src/beatit/sparse_refinement_edge.cpp
-        src/beatit/sparse_refinement_edge_adjust.cpp
-        src/beatit/sparse_refinement_edge_metrics.cpp
-        src/beatit/sparse_refinement_edge_phase.cpp
+        src/beatit/sparse_edge.cpp
+        src/beatit/sparse_edge_adjust.cpp
+        src/beatit/sparse_edge_metrics.cpp
+        src/beatit/sparse_edge_phase.cpp
         src/beatit/sparse_waveform.cpp
         src/beatit/stream.cpp
         ${BEATIT_PUBLIC_HEADERS}

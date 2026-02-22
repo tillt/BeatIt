@@ -6,7 +6,7 @@
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "postprocess_dbn_grid_stages.h"
+#include "pp_dbn_grid.h"
 
 #include <cmath>
 #include <iostream>

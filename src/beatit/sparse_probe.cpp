@@ -7,7 +7,7 @@
 //
 
 #include "beatit/sparse_probe.h"
-#include "beatit/sparse_probe_selection.h"
+#include "beatit/sparse_probe_pick.h"
 #include "beatit/sparse_refinement.h"
 
 #include <algorithm>

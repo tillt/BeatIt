@@ -10,7 +10,7 @@
 
 #include "beatit/logging.hpp"
 #include "beatit/sparse_waveform.h"
-#include "sparse_refinement_common.h"
+#include "sparse_refine_common.h"
 
 #include <algorithm>
 #include <cmath>
