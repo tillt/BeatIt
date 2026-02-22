@@ -53,12 +53,12 @@ bool run_dbn_postprocess(CoreMLResult& result,
     constexpr std::size_t kRefineWindow = 2;
     const float hard_min_bpm = std::max(1.0f, config.min_bpm);
     const float hard_max_bpm = std::max(hard_min_bpm + 1.0f, config.max_bpm);
-    auto clamp_bpm_range = [&](float* min_value, float* max_value) {
-        *min_value = std::max(hard_min_bpm, *min_value);
-        *max_value = std::min(hard_max_bpm, *max_value);
-        if (*max_value <= *min_value) {
-            *min_value = hard_min_bpm;
-            *max_value = hard_max_bpm;
+    auto clamp_bpm_range = [&](float& min_value, float& max_value) {
+        min_value = std::max(hard_min_bpm, min_value);
+        max_value = std::min(hard_max_bpm, max_value);
+        if (max_value <= min_value) {
+            min_value = hard_min_bpm;
+            max_value = hard_max_bpm;
         }
     };
 
@@ -246,7 +246,7 @@ bool run_dbn_postprocess(CoreMLResult& result,
                         : 0.10;
                     min_bpm = static_cast<float>(prior_bpm * (1.0 - window_pct));
                     max_bpm = static_cast<float>(prior_bpm * (1.0 + window_pct));
-                    clamp_bpm_range(&min_bpm, &max_bpm);
+                    clamp_bpm_range(min_bpm, max_bpm);
                     if (config.verbose) {
                         BEATIT_LOG_DEBUG("DBN calmdad prior: bpm=" << prior_bpm
                                          << " peaks=" << prior_peaks.size()

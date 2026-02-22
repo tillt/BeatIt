@@ -63,7 +63,7 @@ const std::vector<unsigned long long>& output_beat_sample_frames(const AnalysisR
 
 const std::vector<unsigned long long>& output_downbeat_feature_frames(const AnalysisResult& result);
 
-void rebuild_output_beat_events(AnalysisResult* result,
+void rebuild_output_beat_events(AnalysisResult& result,
                                 double sample_rate,
                                 const CoreMLConfig& config);
 

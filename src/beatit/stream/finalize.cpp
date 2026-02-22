@@ -291,7 +291,7 @@ AnalysisResult BeatitStream::finalize() {
         result.coreml_downbeat_projected_feature_frames = std::move(projected_downbeats);
     }
     const auto marker_start = std::chrono::steady_clock::now();
-    rebuild_output_beat_events(&result, sample_rate_, coreml_config_);
+    rebuild_output_beat_events(result, sample_rate_, coreml_config_);
     const auto marker_end = std::chrono::steady_clock::now();
     perf_.marker_ms +=
         std::chrono::duration<double, std::milli>(marker_end - marker_start).count();

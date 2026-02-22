@@ -17,9 +17,9 @@
 namespace beatit {
 namespace detail {
 
-void apply_sparse_bounded_grid_refit(AnalysisResult* result, double sample_rate);
+void apply_sparse_bounded_grid_refit(AnalysisResult& result, double sample_rate);
 
-void apply_sparse_anchor_state_refit(AnalysisResult* result,
+void apply_sparse_anchor_state_refit(AnalysisResult& result,
                                      double sample_rate,
                                      double probe_duration,
                                      const std::vector<SparseProbeObservation>& probes,
@@ -36,7 +36,7 @@ struct SparseWaveformRefitParams {
     double middle_probe_start = 0.0;
 };
 
-void apply_sparse_waveform_edge_refit(AnalysisResult* result,
+void apply_sparse_waveform_edge_refit(AnalysisResult& result,
                                       const SparseWaveformRefitParams& params);
 
 } // namespace detail

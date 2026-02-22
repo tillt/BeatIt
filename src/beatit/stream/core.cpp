@@ -166,8 +166,8 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
 
 void BeatitStream::LinearResampler::push(const float* input,
                                          std::size_t count,
-                                         std::vector<float>* output) {
-    if (!output || count == 0) {
+                                         std::vector<float>& output) {
+    if (count == 0) {
         return;
     }
 
@@ -182,7 +182,7 @@ void BeatitStream::LinearResampler::push(const float* input,
         const double frac = src_index - static_cast<double>(index);
         const float a = buffer[index];
         const float b = buffer[index + 1];
-        output->push_back(static_cast<float>((1.0 - frac) * a + frac * b));
+        output.push_back(static_cast<float>((1.0 - frac) * a + frac * b));
         src_index += step;
     }
 
@@ -392,7 +392,7 @@ void BeatitStream::push(const float* samples, std::size_t count) {
     if (!prepend_done_ && prepend_samples_ > 0) {
         const std::size_t before_size = resampled_buffer_.size();
         std::vector<float> silence(prepend_samples_, 0.0f);
-        resampler_.push(silence.data(), silence.size(), &resampled_buffer_);
+        resampler_.push(silence.data(), silence.size(), resampled_buffer_);
         const std::size_t after_size = resampled_buffer_.size();
         accumulate_phase_energy(before_size, after_size);
         prepend_done_ = true;
@@ -428,7 +428,7 @@ void BeatitStream::push(const float* samples, std::size_t count) {
 
     const std::size_t before_size = resampled_buffer_.size();
     const auto resample_start = std::chrono::steady_clock::now();
-    resampler_.push(samples, count, &resampled_buffer_);
+    resampler_.push(samples, count, resampled_buffer_);
     const auto resample_end = std::chrono::steady_clock::now();
     perf_.resample_ms +=
         std::chrono::duration<double, std::milli>(resample_end - resample_start).count();

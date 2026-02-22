@@ -32,9 +32,9 @@ float choose_candidate_bpm(float peaks,
                            float comb,
                            float beats);
 
-void assign_coreml_result(AnalysisResult* result,
+void assign_coreml_result(AnalysisResult& result,
                           CoreMLResult&& coreml_result,
-                          const std::vector<float>& phase_energy,
+                          std::vector<float> phase_energy,
                           double sample_rate,
                           const CoreMLConfig& config);
 

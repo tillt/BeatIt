@@ -67,7 +67,7 @@ private:
         double src_index = 0.0;
         std::vector<float> buffer;
 
-        void push(const float* input, std::size_t count, std::vector<float>* output);
+        void push(const float* input, std::size_t count, std::vector<float>& output);
     } resampler_;
 
     std::vector<float> resampled_buffer_;

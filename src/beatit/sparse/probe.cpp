@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 #include <vector>
 
 namespace beatit {
@@ -46,17 +47,17 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
     selection_params.total_duration_seconds = total_duration_seconds;
     selection_params.provider = &provider;
     selection_params.run_probe = &run_probe_fn;
-    const SparseProbeSelectionResult selected = select_sparse_probe_result(selection_params);
+    SparseProbeSelectionResult selected = select_sparse_probe_result(selection_params);
 
-    result = selected.result;
+    result = std::move(selected.result);
     const bool needs_bounded_refit =
         selected.low_confidence ||
         (std::isfinite(selected.selected_intro_median_abs_ms) &&
          selected.selected_intro_median_abs_ms > 60.0);
     if (needs_bounded_refit) {
-        apply_sparse_bounded_grid_refit(&result, sample_rate);
+        apply_sparse_bounded_grid_refit(result, sample_rate);
     }
-    apply_sparse_anchor_state_refit(&result,
+    apply_sparse_anchor_state_refit(result,
                                     sample_rate,
                                     selected.probe_duration,
                                     selected.probes,
@@ -71,7 +72,7 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
     waveform_refit_params.probe_duration = selected.probe_duration;
     waveform_refit_params.between_probe_start = selected.between_probe_start;
     waveform_refit_params.middle_probe_start = selected.middle_probe_start;
-    apply_sparse_waveform_edge_refit(&result, waveform_refit_params);
+    apply_sparse_waveform_edge_refit(result, waveform_refit_params);
 
     {
         // Keep reported BPM consistent with the returned beat grid.
@@ -85,7 +86,7 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
             result.estimated_bpm = static_cast<float>(selected.consensus_bpm);
         }
     }
-    rebuild_output_beat_events(&result, sample_rate, original_config);
+    rebuild_output_beat_events(result, sample_rate, original_config);
 
     return result;
 }

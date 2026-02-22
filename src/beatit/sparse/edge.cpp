@@ -27,9 +27,9 @@
 namespace beatit {
 namespace detail {
 
-void apply_sparse_waveform_edge_refit(AnalysisResult* result,
+void apply_sparse_waveform_edge_refit(AnalysisResult& result,
                                       const SparseWaveformRefitParams& params) {
-    if (!result || !params.config || !params.provider || !params.probes) {
+    if (!params.config || !params.provider || !params.probes) {
         return;
     }
     const CoreMLConfig& original_config = *params.config;
@@ -51,18 +51,18 @@ void apply_sparse_waveform_edge_refit(AnalysisResult* result,
     }();
 
     std::vector<unsigned long long>* projected = nullptr;
-    if (!result->coreml_beat_projected_sample_frames.empty()) {
-        projected = &result->coreml_beat_projected_sample_frames;
-    } else if (!result->coreml_beat_sample_frames.empty()) {
-        projected = &result->coreml_beat_sample_frames;
+    if (!result.coreml_beat_projected_sample_frames.empty()) {
+        projected = &result.coreml_beat_projected_sample_frames;
+    } else if (!result.coreml_beat_sample_frames.empty()) {
+        projected = &result.coreml_beat_sample_frames;
     }
     if (!projected || projected->size() < 64) {
         return;
     }
     const std::vector<unsigned long long> projected_before_refit = *projected;
 
-    double bpm_hint = result->estimated_bpm > 0.0f
-        ? static_cast<double>(result->estimated_bpm)
+    double bpm_hint = result.estimated_bpm > 0.0f
+        ? static_cast<double>(result.estimated_bpm)
         : 0.0;
     if (!(bpm_hint > 0.0) &&
         params.estimate_bpm_from_beats &&

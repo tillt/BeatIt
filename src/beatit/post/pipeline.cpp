@@ -85,12 +85,12 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
 
     const float hard_min_bpm = std::max(1.0f, config.min_bpm);
     const float hard_max_bpm = std::max(hard_min_bpm + 1.0f, config.max_bpm);
-    auto clamp_bpm_range = [&](float* min_value, float* max_value) {
-        *min_value = std::max(hard_min_bpm, *min_value);
-        *max_value = std::min(hard_max_bpm, *max_value);
-        if (*max_value <= *min_value) {
-            *min_value = hard_min_bpm;
-            *max_value = hard_max_bpm;
+    auto clamp_bpm_range = [&](float& min_value, float& max_value) {
+        min_value = std::max(hard_min_bpm, min_value);
+        max_value = std::min(hard_max_bpm, max_value);
+        if (max_value <= min_value) {
+            min_value = hard_min_bpm;
+            max_value = hard_max_bpm;
         }
     };
 
@@ -109,8 +109,8 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
             max_bpm_alt = doubled * (1.0f + window);
             has_window = true;
         }
-        clamp_bpm_range(&min_bpm, &max_bpm);
-        clamp_bpm_range(&min_bpm_alt, &max_bpm_alt);
+        clamp_bpm_range(min_bpm, max_bpm);
+        clamp_bpm_range(min_bpm_alt, max_bpm_alt);
     }
 
     const double fps = static_cast<double>(config.sample_rate) / static_cast<double>(config.hop_size);
@@ -209,7 +209,7 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
             dbn_min_bpm = std::min(dbn_min_bpm, min_bpm_alt);
             dbn_max_bpm = std::max(dbn_max_bpm, max_bpm_alt);
         }
-        clamp_bpm_range(&dbn_min_bpm, &dbn_max_bpm);
+        clamp_bpm_range(dbn_min_bpm, dbn_max_bpm);
         if (detail::run_dbn_postprocess(result,
                                         phase_energy,
                                         config,

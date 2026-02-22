@@ -155,18 +155,15 @@ const std::vector<unsigned long long>& output_downbeat_feature_frames(const Anal
         : result.coreml_downbeat_projected_feature_frames;
 }
 
-void rebuild_output_beat_events(AnalysisResult* result,
+void rebuild_output_beat_events(AnalysisResult& result,
                                 double sample_rate,
                                 const CoreMLConfig& config) {
-    if (!result) {
-        return;
-    }
-    result->coreml_beat_events =
-        build_shakespear_markers(output_beat_feature_frames(*result),
-                                 output_beat_sample_frames(*result),
-                                 output_downbeat_feature_frames(*result),
-                                 &result->coreml_beat_activation,
-                                 result->estimated_bpm,
+    result.coreml_beat_events =
+        build_shakespear_markers(output_beat_feature_frames(result),
+                                 output_beat_sample_frames(result),
+                                 output_downbeat_feature_frames(result),
+                                 &result.coreml_beat_activation,
+                                 result.estimated_bpm,
                                  sample_rate,
                                  config);
 }

@@ -39,16 +39,13 @@ double sparse_median_frame_diff(const std::vector<unsigned long long>& frames) {
     return *mid;
 }
 
-void apply_sparse_bounded_grid_refit(AnalysisResult* result, double sample_rate) {
-    if (!result) {
-        return;
-    }
+void apply_sparse_bounded_grid_refit(AnalysisResult& result, double sample_rate) {
     if (!(sample_rate > 0.0)) {
         return;
     }
 
-    auto& projected = result->coreml_beat_projected_sample_frames;
-    const auto& observed = result->coreml_beat_sample_frames;
+    auto& projected = result.coreml_beat_projected_sample_frames;
+    const auto& observed = result.coreml_beat_sample_frames;
     if (projected.size() < 32 || observed.size() < 32) {
         return;
     }
@@ -106,20 +103,20 @@ void apply_sparse_bounded_grid_refit(AnalysisResult* result, double sample_rate)
     }
 }
 
-void apply_sparse_anchor_state_refit(AnalysisResult* result,
+void apply_sparse_anchor_state_refit(AnalysisResult& result,
                                      double sample_rate,
                                      double probe_duration,
                                      const std::vector<SparseProbeObservation>& probes,
                                      bool verbose) {
-    if (!result || sample_rate <= 0.0 || probes.size() < 2) {
+    if (sample_rate <= 0.0 || probes.size() < 2) {
         return;
     }
 
     std::vector<unsigned long long>* projected = nullptr;
-    if (!result->coreml_beat_projected_sample_frames.empty()) {
-        projected = &result->coreml_beat_projected_sample_frames;
-    } else if (!result->coreml_beat_sample_frames.empty()) {
-        projected = &result->coreml_beat_sample_frames;
+    if (!result.coreml_beat_projected_sample_frames.empty()) {
+        projected = &result.coreml_beat_projected_sample_frames;
+    } else if (!result.coreml_beat_sample_frames.empty()) {
+        projected = &result.coreml_beat_sample_frames;
     }
     if (!projected || projected->size() < 64) {
         return;

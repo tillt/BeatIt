@@ -80,7 +80,7 @@ AnalysisResult analyze(const std::vector<float>& samples,
     const std::size_t last_active_frame =
         estimate_last_active_frame(samples, sample_rate, config);
 
-    const std::vector<float> phase_energy = compute_phase_energy(samples, sample_rate, config);
+    std::vector<float> phase_energy = compute_phase_energy(samples, sample_rate, config);
 
     auto run_pipeline = [&](const std::vector<float>& beat_activation,
                             const std::vector<float>& downbeat_activation,
@@ -110,9 +110,9 @@ AnalysisResult analyze(const std::vector<float>& samples,
         CoreMLResult final_result = run_pipeline(raw.beat_activation,
                                                  raw.downbeat_activation,
                                                  raw.beat_sample_frames);
-        assign_coreml_result(&result,
+        assign_coreml_result(result,
                              std::move(final_result),
-                             phase_energy,
+                             std::move(phase_energy),
                              sample_rate,
                              config);
         return result;
@@ -122,9 +122,9 @@ AnalysisResult analyze(const std::vector<float>& samples,
     CoreMLResult final_result = run_pipeline(base.beat_activation,
                                              base.downbeat_activation,
                                              base.beat_sample_frames);
-    assign_coreml_result(&result,
+    assign_coreml_result(result,
                          std::move(final_result),
-                         phase_energy,
+                         std::move(phase_energy),
                          sample_rate,
                          config);
     return result;

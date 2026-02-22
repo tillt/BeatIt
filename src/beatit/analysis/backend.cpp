@@ -375,29 +375,25 @@ float choose_candidate_bpm(float peaks,
     return beats;
 }
 
-void assign_coreml_result(AnalysisResult* result,
+void assign_coreml_result(AnalysisResult& result,
                           CoreMLResult&& coreml_result,
-                          const std::vector<float>& phase_energy,
+                          std::vector<float> phase_energy,
                           double sample_rate,
                           const CoreMLConfig& config) {
-    if (!result) {
-        return;
-    }
-
-    result->coreml_beat_activation = std::move(coreml_result.beat_activation);
-    result->coreml_downbeat_activation = std::move(coreml_result.downbeat_activation);
-    result->coreml_phase_energy = phase_energy;
-    result->coreml_beat_feature_frames = std::move(coreml_result.beat_feature_frames);
-    result->coreml_beat_sample_frames = std::move(coreml_result.beat_sample_frames);
-    result->coreml_beat_projected_feature_frames =
+    result.coreml_beat_activation = std::move(coreml_result.beat_activation);
+    result.coreml_downbeat_activation = std::move(coreml_result.downbeat_activation);
+    result.coreml_phase_energy = std::move(phase_energy);
+    result.coreml_beat_feature_frames = std::move(coreml_result.beat_feature_frames);
+    result.coreml_beat_sample_frames = std::move(coreml_result.beat_sample_frames);
+    result.coreml_beat_projected_feature_frames =
         std::move(coreml_result.beat_projected_feature_frames);
-    result->coreml_beat_projected_sample_frames =
+    result.coreml_beat_projected_sample_frames =
         std::move(coreml_result.beat_projected_sample_frames);
-    result->coreml_beat_strengths = std::move(coreml_result.beat_strengths);
-    result->coreml_downbeat_feature_frames = std::move(coreml_result.downbeat_feature_frames);
-    result->coreml_downbeat_projected_feature_frames =
+    result.coreml_beat_strengths = std::move(coreml_result.beat_strengths);
+    result.coreml_downbeat_feature_frames = std::move(coreml_result.downbeat_feature_frames);
+    result.coreml_downbeat_projected_feature_frames =
         std::move(coreml_result.downbeat_projected_feature_frames);
-    result->estimated_bpm = estimate_bpm_from_beats(output_beat_sample_frames(*result), sample_rate);
+    result.estimated_bpm = estimate_bpm_from_beats(output_beat_sample_frames(result), sample_rate);
     rebuild_output_beat_events(result, sample_rate, config);
 }
 
