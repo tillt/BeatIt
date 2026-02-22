@@ -304,6 +304,81 @@ std::vector<float> make_tremolo_sine(double sample_rate,
     return samples;
 }
 
+std::vector<float> make_nonrhythmic_ambient(double sample_rate,
+                                            double seconds,
+                                            uint64_t seed) {
+    const std::size_t total_samples =
+        static_cast<std::size_t>(std::ceil(sample_rate * seconds));
+    std::vector<float> samples(total_samples, 0.0f);
+    if (total_samples == 0 || sample_rate <= 0.0) {
+        return samples;
+    }
+
+    struct Oscillator {
+        double base_hz = 0.0;
+        double drift_hz = 0.0;
+        double drift_rate_hz = 0.0;
+        double phase = 0.0;
+        double drift_phase = 0.0;
+    };
+
+    std::mt19937_64 rng(seed);
+    std::uniform_real_distribution<double> phase_dist(0.0, 2.0 * M_PI);
+    std::normal_distribution<float> noise_dist(0.0f, 1.0f);
+
+    std::vector<Oscillator> oscillators;
+    oscillators.push_back({87.0, 7.0, 0.009, phase_dist(rng), phase_dist(rng)});
+    oscillators.push_back({131.0, 11.0, 0.013, phase_dist(rng), phase_dist(rng)});
+    oscillators.push_back({197.0, 17.0, 0.017, phase_dist(rng), phase_dist(rng)});
+
+    const double env_phase_a = phase_dist(rng);
+    const double env_phase_b = phase_dist(rng);
+    float brown_noise = 0.0f;
+    constexpr double kTwoPi = 2.0 * M_PI;
+
+    for (std::size_t i = 0; i < total_samples; ++i) {
+        const double t = static_cast<double>(i) / sample_rate;
+
+        // Slow envelope movement (well below beat-rate modulation).
+        const double env_a = 0.5 + 0.5 * std::sin(kTwoPi * 0.011 * t + env_phase_a);
+        const double env_b = 0.5 + 0.5 * std::sin(kTwoPi * 0.017 * t + env_phase_b);
+        const double envelope = 0.05 + 0.2 * env_a + 0.15 * env_b;
+
+        double tonal = 0.0;
+        for (auto& osc : oscillators) {
+            const double drift =
+                osc.drift_hz * std::sin(kTwoPi * osc.drift_rate_hz * t + osc.drift_phase);
+            const double inst_hz = std::max(20.0, osc.base_hz + drift);
+            osc.phase += kTwoPi * inst_hz / sample_rate;
+            if (osc.phase > kTwoPi) {
+                osc.phase -= kTwoPi;
+            }
+            tonal += std::sin(osc.phase);
+        }
+        tonal /= static_cast<double>(oscillators.size());
+
+        const float white = noise_dist(rng) * 0.01f;
+        brown_noise = 0.998f * brown_noise + 0.002f * white;
+        float sample = static_cast<float>(envelope * (0.2 * tonal)) + brown_noise;
+
+        // Gentle in/out fade to avoid edges acting as transients.
+        const std::size_t fade_len = static_cast<std::size_t>(std::round(sample_rate * 2.0));
+        if (i < fade_len) {
+            sample *= static_cast<float>(i) / static_cast<float>(std::max<std::size_t>(1, fade_len));
+        } else if (i + fade_len > total_samples) {
+            const std::size_t remain = total_samples - i;
+            sample *= static_cast<float>(remain) /
+                      static_cast<float>(std::max<std::size_t>(1, fade_len));
+        }
+        samples[i] = sample;
+    }
+
+    for (float& sample : samples) {
+        sample = std::max(-1.0f, std::min(1.0f, sample));
+    }
+    return samples;
+}
+
 struct Scenario {
     std::string name;
     std::string description;
@@ -520,6 +595,8 @@ int main() {
     }
     const uint64_t sweep_seed = env_u64_or("BEATIT_SYNTH_SWEEP_SEED", 1337ULL);
     std::mt19937_64 sweep_rng(sweep_seed);
+    const uint64_t nonrhythmic_seed =
+        env_u64_or("BEATIT_SYNTH_NONRHYTHMIC_SEED", 424242ULL);
     const char* real_audio_env = std::getenv("BEATIT_SYNTH_REAL_AUDIO_PATH");
     const std::string real_audio_path = real_audio_env ? std::string(real_audio_env) : std::string();
     const double real_audio_max_seconds =
@@ -582,48 +659,49 @@ int main() {
         scenarios.push_back({"real_" + stem, description.str(), std::move(real_audio_samples)});
     }
 
-    const std::filesystem::path test_root =
-#ifdef BEATIT_TEST_DATA_DIR
-        std::filesystem::path(BEATIT_TEST_DATA_DIR);
-#else
-        std::filesystem::current_path();
-#endif
-    const std::filesystem::path echoes_path = test_root / "training" / "echoes.wav";
-    if (!std::filesystem::exists(echoes_path)) {
-        std::cerr << "Sparse synthetic test failed: missing required non-rhythmic fixture: "
-                  << echoes_path.string() << "\n";
-        return 1;
-    }
+    const std::filesystem::path synth_dir =
+        std::filesystem::current_path() / "logs" / "sparse_tempo_without_grid";
+    std::error_code synth_dir_ec;
+    std::filesystem::create_directories(synth_dir, synth_dir_ec);
+    const std::filesystem::path nonrhythmic_wav =
+        synth_dir / "synthetic_nonrhythmic.wav";
+    const std::vector<float> nonrhythmic_source =
+        make_nonrhythmic_ambient(kSampleRate, duration_seconds, nonrhythmic_seed);
+    write_pcm16_wav(nonrhythmic_wav,
+                    nonrhythmic_source,
+                    static_cast<int>(kSampleRate));
     {
-        std::vector<float> echoes_samples;
-        double echoes_rate = 0.0;
+        std::vector<float> nonrhythmic_samples;
+        double nonrhythmic_rate = 0.0;
         std::string decode_error;
-        if (!decode_audio_mono_limited(echoes_path.string(),
+        if (!decode_audio_mono_limited(nonrhythmic_wav.string(),
                                        0.0,
-                                       &echoes_samples,
-                                       &echoes_rate,
+                                       &nonrhythmic_samples,
+                                       &nonrhythmic_rate,
                                        &decode_error)) {
-            std::cerr << "Sparse synthetic test failed: could not decode echoes fixture: "
+            std::cerr << "Sparse synthetic test failed: could not decode generated non-rhythmic fixture: "
                       << decode_error << "\n";
             return 1;
         }
-        if (echoes_samples.empty()) {
-            std::cerr << "Sparse synthetic test failed: decoded empty echoes fixture.\n";
+        if (nonrhythmic_samples.empty()) {
+            std::cerr << "Sparse synthetic test failed: decoded empty generated non-rhythmic fixture.\n";
             return 1;
         }
-        if (std::abs(echoes_rate - kSampleRate) > 1.0) {
-            std::cerr << "Sparse synthetic test failed: echoes fixture rate mismatch; expected "
-                      << kSampleRate << "Hz, got " << echoes_rate << "Hz.\n";
+        if (std::abs(nonrhythmic_rate - kSampleRate) > 1.0) {
+            std::cerr << "Sparse synthetic test failed: generated non-rhythmic fixture rate mismatch; expected "
+                      << kSampleRate << "Hz, got " << nonrhythmic_rate << "Hz.\n";
             return 1;
         }
-        scenarios.push_back({"echoes_nonrhythmic",
-                             "ambient_nonrhythmic_regression path=" + echoes_path.string(),
-                             std::move(echoes_samples)});
+        scenarios.push_back({"ambient_nonrhythmic_synth",
+                             "ambient_nonrhythmic_synth seed=" + std::to_string(nonrhythmic_seed) +
+                                 " path=" + nonrhythmic_wav.string(),
+                             std::move(nonrhythmic_samples)});
     }
 
     std::cout << "Sparse synthetic corpus: baseline=5 sweep=" << sweep_cases
               << " seed=" << sweep_seed
               << " duration_s=" << duration_seconds
+              << " nonrhythmic_seed=" << nonrhythmic_seed
               << " real_audio=" << (real_audio_path.empty() ? "0" : "1")
               << "\n";
 
@@ -650,7 +728,7 @@ int main() {
 
         const ScenarioExpectation expectation = [&]() {
             ScenarioExpectation e;
-            if (scenario.name == "echoes_nonrhythmic") {
+            if (scenario.name == "ambient_nonrhythmic_synth") {
                 e.expect_no_tempo = true;
                 e.expect_no_projected_grid = true;
                 e.max_beats = 1;
