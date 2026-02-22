@@ -1,5 +1,5 @@
 //
-//  sparse_probe.h
+//  probe.h
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.

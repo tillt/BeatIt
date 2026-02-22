@@ -1,5 +1,5 @@
 //
-//  sparse_refine_common.h
+//  refine_common.h
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.

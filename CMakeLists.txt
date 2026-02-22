@@ -118,16 +118,16 @@ set(BEATIT_LIB_SOURCES
     src/beatit/activation_merge.cpp
     src/beatit/stream_finalize.cpp
     src/beatit/inference/backend_coreml.cpp
-    src/beatit/sparse_probe.cpp
-    src/beatit/sparse_probe_pick.cpp
-    src/beatit/sparse_probe_score.cpp
-    src/beatit/sparse_phase_metrics.cpp
-    src/beatit/sparse_refinement.cpp
-    src/beatit/sparse_edge.cpp
-    src/beatit/sparse_edge_adjust.cpp
-    src/beatit/sparse_edge_metrics.cpp
-    src/beatit/sparse_edge_phase.cpp
-    src/beatit/sparse_waveform.cpp
+    src/beatit/sparse/probe.cpp
+    src/beatit/sparse/probe_pick.cpp
+    src/beatit/sparse/probe_score.cpp
+    src/beatit/sparse/phase_metrics.cpp
+    src/beatit/sparse/refinement.cpp
+    src/beatit/sparse/edge.cpp
+    src/beatit/sparse/edge_adjust.cpp
+    src/beatit/sparse/edge_metrics.cpp
+    src/beatit/sparse/edge_phase.cpp
+    src/beatit/sparse/waveform.cpp
     src/beatit/stream.cpp
 )
 if(BEATIT_USE_TORCH)
@@ -241,16 +241,16 @@ if(APPLE)
         src/beatit/activation_merge.cpp
         src/beatit/stream_finalize.cpp
         src/beatit/inference/backend_coreml.cpp
-        src/beatit/sparse_probe.cpp
-        src/beatit/sparse_probe_pick.cpp
-        src/beatit/sparse_probe_score.cpp
-        src/beatit/sparse_phase_metrics.cpp
-        src/beatit/sparse_refinement.cpp
-        src/beatit/sparse_edge.cpp
-        src/beatit/sparse_edge_adjust.cpp
-        src/beatit/sparse_edge_metrics.cpp
-        src/beatit/sparse_edge_phase.cpp
-        src/beatit/sparse_waveform.cpp
+        src/beatit/sparse/probe.cpp
+        src/beatit/sparse/probe_pick.cpp
+        src/beatit/sparse/probe_score.cpp
+        src/beatit/sparse/phase_metrics.cpp
+        src/beatit/sparse/refinement.cpp
+        src/beatit/sparse/edge.cpp
+        src/beatit/sparse/edge_adjust.cpp
+        src/beatit/sparse/edge_metrics.cpp
+        src/beatit/sparse/edge_phase.cpp
+        src/beatit/sparse/waveform.cpp
         src/beatit/stream.cpp
         ${BEATIT_PUBLIC_HEADERS}
     )

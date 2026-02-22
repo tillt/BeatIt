@@ -1,14 +1,14 @@
 //
-//  sparse_edge_metrics.cpp
+//  edge_metrics.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "sparse_edge_metrics.h"
+#include "edge_metrics.h"
 
-#include "beatit/sparse_waveform.h"
+#include "beatit/sparse/waveform.h"
 
 #include <algorithm>
 #include <cmath>

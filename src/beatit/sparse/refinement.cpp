@@ -1,16 +1,16 @@
 //
-//  sparse_refinement.cpp
+//  refinement.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "beatit/sparse_refinement.h"
+#include "beatit/sparse/refinement.h"
 
 #include "beatit/logging.hpp"
-#include "beatit/sparse_waveform.h"
-#include "sparse_refine_common.h"
+#include "beatit/sparse/waveform.h"
+#include "refine_common.h"
 
 #include <algorithm>
 #include <cmath>

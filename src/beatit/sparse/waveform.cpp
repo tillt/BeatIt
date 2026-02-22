@@ -1,12 +1,12 @@
 //
-//  sparse_waveform.cpp
+//  waveform.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "beatit/sparse_waveform.h"
+#include "beatit/sparse/waveform.h"
 
 #include <algorithm>
 #include <cmath>

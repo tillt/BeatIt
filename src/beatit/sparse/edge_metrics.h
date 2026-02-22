@@ -1,5 +1,5 @@
 //
-//  sparse_edge_metrics.h
+//  edge_metrics.h
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include "beatit/sparse_probe.h"
+#include "beatit/sparse/probe.h"
 
 #include <cstddef>
 #include <limits>

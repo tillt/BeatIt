@@ -1,5 +1,5 @@
 //
-//  sparse_probe_score.h
+//  probe_score.h
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
@@ -8,8 +8,8 @@
 
 #pragma once
 
-#include "beatit/sparse_phase_metrics.h"
-#include "beatit/sparse_probe.h"
+#include "beatit/sparse/phase_metrics.h"
+#include "beatit/sparse/probe.h"
 
 #include <limits>
 #include <vector>

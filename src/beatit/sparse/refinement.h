@@ -1,5 +1,5 @@
 //
-//  sparse_refinement.h
+//  refinement.h
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
@@ -10,7 +10,7 @@
 
 #include "beatit/analysis.h"
 #include "beatit/coreml.h"
-#include "beatit/sparse_probe.h"
+#include "beatit/sparse/probe.h"
 
 #include <vector>
 

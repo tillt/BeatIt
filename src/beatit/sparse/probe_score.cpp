@@ -1,14 +1,14 @@
 //
-//  sparse_probe_score.cpp
+//  probe_score.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "sparse_probe_score.h"
+#include "probe_score.h"
 
-#include "beatit/sparse_waveform.h"
+#include "beatit/sparse/waveform.h"
 
 #include <algorithm>
 #include <cmath>

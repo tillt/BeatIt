@@ -1,15 +1,15 @@
 //
-//  sparse_edge_phase.cpp
+//  edge_phase.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "sparse_edge_phase.h"
+#include "edge_phase.h"
 
-#include "beatit/sparse_phase_metrics.h"
-#include "sparse_edge_metrics.h"
+#include "beatit/sparse/phase_metrics.h"
+#include "edge_metrics.h"
 
 #include <algorithm>
 #include <cmath>

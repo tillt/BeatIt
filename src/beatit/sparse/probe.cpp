@@ -1,14 +1,14 @@
 //
-//  sparse_probe.cpp
+//  probe.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "beatit/sparse_probe.h"
-#include "beatit/sparse_probe_pick.h"
-#include "beatit/sparse_refinement.h"
+#include "beatit/sparse/probe.h"
+#include "beatit/sparse/probe_pick.h"
+#include "beatit/sparse/refinement.h"
 
 #include <algorithm>
 #include <cmath>

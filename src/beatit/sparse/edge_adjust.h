@@ -1,5 +1,5 @@
 //
-//  sparse_edge_adjust.h
+//  edge_adjust.h
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include "sparse_edge_metrics.h"
+#include "edge_metrics.h"
 
 #include <vector>
 

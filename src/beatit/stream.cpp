@@ -10,7 +10,7 @@
 #include "beatit/activation_merge.h"
 #include "beatit/inference/backend.h"
 #include "beatit/logging.hpp"
-#include "beatit/sparse_probe.h"
+#include "beatit/sparse/probe.h"
 
 #include <algorithm>
 #include <chrono>
