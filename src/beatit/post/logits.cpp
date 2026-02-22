@@ -6,12 +6,12 @@
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "beatit/pp_logits.h"
+#include "beatit/post/logits.h"
 
 #include "beatit/logging.hpp"
-#include "beatit/pp_helpers.h"
-#include "beatit/pp_result_ops.h"
-#include "beatit/pp_window.h"
+#include "beatit/post/helpers.h"
+#include "beatit/post/result_ops.h"
+#include "beatit/post/window.h"
 
 #include <algorithm>
 #include <cmath>

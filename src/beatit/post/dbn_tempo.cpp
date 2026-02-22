@@ -8,8 +8,8 @@
 
 #include "dbn_tempo.h"
 
-#include "beatit/pp_tempo_fit.h"
-#include "beatit/pp_window.h"
+#include "beatit/post/tempo_fit.h"
+#include "beatit/post/window.h"
 
 #include <algorithm>
 #include <cmath>

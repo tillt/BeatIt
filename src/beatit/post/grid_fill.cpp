@@ -6,7 +6,7 @@
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "beatit/pp_helpers.h"
+#include "beatit/post/helpers.h"
 
 #include <algorithm>
 #include <cmath>

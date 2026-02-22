@@ -10,12 +10,12 @@
 #include "beatit/dbn/beatit.h"
 #include "beatit/dbn/calmdad.h"
 
-#include "beatit/pp_helpers.h"
-#include "beatit/pp_dbn.h"
-#include "beatit/pp_result_ops.h"
-#include "beatit/pp_logits.h"
-#include "beatit/pp_tempo_fit.h"
-#include "beatit/pp_window.h"
+#include "beatit/post/helpers.h"
+#include "beatit/post/dbn.h"
+#include "beatit/post/result_ops.h"
+#include "beatit/post/logits.h"
+#include "beatit/post/tempo_fit.h"
+#include "beatit/post/window.h"
 #include "beatit/logging.hpp"
 #include <algorithm>
 #include <array>

@@ -6,9 +6,9 @@
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "beatit/pp_window.h"
+#include "beatit/post/window.h"
 
-#include "beatit/pp_helpers.h"
+#include "beatit/post/helpers.h"
 
 #include <algorithm>
 #include <array>

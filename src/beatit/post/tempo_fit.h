@@ -1,5 +1,5 @@
 //
-//  pp_tempo_fit.h
+//  tempo_fit.h
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
@@ -30,4 +30,3 @@ double bpm_from_global_fit(const CoreMLResult& result,
                            std::size_t used_frames);
 
 } // namespace beatit::detail
-

@@ -8,9 +8,9 @@
 
 #include "dbn_grid.h"
 
-#include "beatit/pp_helpers.h"
-#include "beatit/pp_result_ops.h"
-#include "beatit/pp_window.h"
+#include "beatit/post/helpers.h"
+#include "beatit/post/result_ops.h"
+#include "beatit/post/window.h"
 
 #include <algorithm>
 #include <cmath>

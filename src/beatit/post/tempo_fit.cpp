@@ -6,7 +6,7 @@
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "beatit/pp_tempo_fit.h"
+#include "beatit/post/tempo_fit.h"
 
 #include "beatit/dbn/calmdad.h"
 

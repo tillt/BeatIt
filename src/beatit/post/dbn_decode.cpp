@@ -6,11 +6,11 @@
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "beatit/pp_dbn_decode.h"
+#include "beatit/post/dbn_decode.h"
 
-#include "beatit/pp_helpers.h"
-#include "beatit/pp_result_ops.h"
-#include "beatit/pp_window.h"
+#include "beatit/post/helpers.h"
+#include "beatit/post/result_ops.h"
+#include "beatit/post/window.h"
 #include "dbn_anchor.h"
 #include "dbn_grid.h"
 #include "dbn_tempo.h"

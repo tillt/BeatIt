@@ -1,5 +1,5 @@
 //
-//  pp_result_ops.h
+//  result_ops.h
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.

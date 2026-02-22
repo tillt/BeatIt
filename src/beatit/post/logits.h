@@ -1,5 +1,5 @@
 //
-//  pp_logits.h
+//  logits.h
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
@@ -30,4 +30,3 @@ void run_logit_consensus_postprocess(CoreMLResult& result,
                                      double peaks_ms);
 
 } // namespace beatit::detail
-

@@ -1,5 +1,5 @@
 //
-//  pp_window.h
+//  window.h
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.

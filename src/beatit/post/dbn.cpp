@@ -6,13 +6,13 @@
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "beatit/pp_dbn.h"
+#include "beatit/post/dbn.h"
 
-#include "beatit/pp_dbn_decode.h"
-#include "beatit/pp_helpers.h"
-#include "beatit/pp_result_ops.h"
-#include "beatit/pp_tempo_fit.h"
-#include "beatit/pp_window.h"
+#include "beatit/post/dbn_decode.h"
+#include "beatit/post/helpers.h"
+#include "beatit/post/result_ops.h"
+#include "beatit/post/tempo_fit.h"
+#include "beatit/post/window.h"
 #include "beatit/logging.hpp"
 #include "beatit/dbn/beatit.h"
 #include "beatit/dbn/calmdad.h"
