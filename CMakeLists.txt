@@ -57,7 +57,7 @@ if(BEATIT_USE_TORCH)
     list(APPEND BEATIT_LIB_SOURCES
         src/beatit/analysis_torch.cpp
         src/beatit/inference_backend_torch.cpp
-        src/beatit/torch_mel.mm
+        src/beatit/torch_mel.cpp
     )
 else()
     list(APPEND BEATIT_LIB_SOURCES
@@ -157,7 +157,7 @@ if(APPLE)
         list(APPEND BEATIT_FRAMEWORK_SOURCES
             src/beatit/analysis_torch.cpp
             src/beatit/inference_backend_torch.cpp
-            src/beatit/torch_mel.mm
+            src/beatit/torch_mel.cpp
         )
     else()
         list(APPEND BEATIT_FRAMEWORK_SOURCES
@@ -254,7 +254,7 @@ endif()
 enable_testing()
 
 add_executable(beatit_dbn_tests
-    tests/dbn_decoder_test.mm
+    tests/dbn_decoder_test.cpp
 )
 
 target_link_libraries(beatit_dbn_tests
