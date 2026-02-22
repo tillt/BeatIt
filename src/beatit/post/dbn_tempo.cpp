@@ -1,12 +1,12 @@
 //
-//  pp_dbn_tempo.cpp
+//  dbn_tempo.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "pp_dbn_tempo.h"
+#include "dbn_tempo.h"
 
 #include "beatit/pp_tempo_fit.h"
 #include "beatit/pp_window.h"

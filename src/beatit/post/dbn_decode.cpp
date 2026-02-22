@@ -1,5 +1,5 @@
 //
-//  pp_dbn_decode.cpp
+//  dbn_decode.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
@@ -11,9 +11,9 @@
 #include "beatit/pp_helpers.h"
 #include "beatit/pp_result_ops.h"
 #include "beatit/pp_window.h"
-#include "pp_dbn_anchor.h"
-#include "pp_dbn_grid.h"
-#include "pp_dbn_tempo.h"
+#include "dbn_anchor.h"
+#include "dbn_grid.h"
+#include "dbn_tempo.h"
 
 #include <algorithm>
 #include <cstddef>

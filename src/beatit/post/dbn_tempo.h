@@ -1,5 +1,5 @@
 //
-//  pp_dbn_tempo.h
+//  dbn_tempo.h
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
@@ -12,7 +12,7 @@
 #include "beatit/coreml.h"
 #include "beatit/pp_helpers.h"
 #include "beatit/dbn_calmdad.h"
-#include "dbn_beatit.h"
+#include "../dbn_beatit.h"
 
 #include <cstddef>
 #include <string>

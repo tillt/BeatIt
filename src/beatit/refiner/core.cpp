@@ -1,5 +1,5 @@
 //
-//  refiner.cpp
+//  core.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-01-17.
@@ -8,7 +8,7 @@
 
 #include "beatit/refiner.h"
 
-#include "refiner_constant_internal.h"
+#include "constant_internal.h"
 
 #include <algorithm>
 #include <cmath>

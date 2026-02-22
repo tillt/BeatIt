@@ -1,5 +1,5 @@
 //
-//  pp_pipeline.cpp
+//  pipeline.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.

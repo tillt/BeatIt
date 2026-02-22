@@ -1,12 +1,12 @@
 //
-//  refiner_constant_regions.cpp
+//  constant_regions.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "refiner_constant_internal.h"
+#include "constant_internal.h"
 
 #include <algorithm>
 #include <cmath>

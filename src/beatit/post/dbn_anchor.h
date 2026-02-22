@@ -1,5 +1,5 @@
 //
-//  pp_dbn_anchor.h
+//  dbn_anchor.h
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
@@ -10,7 +10,7 @@
 #define BEATIT_INTERNAL_POSTPROCESS_DBN_GRID_ANCHOR_H
 
 #include "beatit/coreml.h"
-#include "dbn_beatit.h"
+#include "../dbn_beatit.h"
 
 #include <cstddef>
 

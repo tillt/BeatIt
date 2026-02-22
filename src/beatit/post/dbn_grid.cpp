@@ -1,12 +1,12 @@
 //
-//  pp_dbn_grid.cpp
+//  dbn_grid.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "pp_dbn_grid.h"
+#include "dbn_grid.h"
 
 #include "beatit/pp_helpers.h"
 #include "beatit/pp_result_ops.h"

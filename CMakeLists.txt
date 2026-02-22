@@ -96,25 +96,25 @@ set(BEATIT_LIB_SOURCES
     src/beatit/coreml_inference.mm
     src/beatit/coreml_model_utils.mm
     src/beatit/coreml_metadata.mm
-    src/beatit/pp_pipeline.cpp
-    src/beatit/pp_helpers.cpp
-    src/beatit/pp_dbn.cpp
-    src/beatit/pp_dbn_decode.cpp
-    src/beatit/pp_dbn_anchor.cpp
-    src/beatit/pp_dbn_grid.cpp
-    src/beatit/pp_dbn_tempo.cpp
-    src/beatit/pp_logits.cpp
-    src/beatit/pp_grid_fill.cpp
-    src/beatit/pp_result_ops.cpp
-    src/beatit/pp_tempo_fit.cpp
-    src/beatit/pp_window.cpp
+    src/beatit/post/pipeline.cpp
+    src/beatit/post/helpers.cpp
+    src/beatit/post/dbn.cpp
+    src/beatit/post/dbn_decode.cpp
+    src/beatit/post/dbn_anchor.cpp
+    src/beatit/post/dbn_grid.cpp
+    src/beatit/post/dbn_tempo.cpp
+    src/beatit/post/logits.cpp
+    src/beatit/post/grid_fill.cpp
+    src/beatit/post/result_ops.cpp
+    src/beatit/post/tempo_fit.cpp
+    src/beatit/post/window.cpp
     src/beatit/coreml_preset.cpp
     src/beatit/dbn_calmdad.cpp
     src/beatit/dbn_calmdad_sparse.cpp
     src/beatit/dbn_beatit.cpp
-    src/beatit/refiner.cpp
-    src/beatit/refiner_constant.cpp
-    src/beatit/refiner_constant_regions.cpp
+    src/beatit/refiner/core.cpp
+    src/beatit/refiner/constant.cpp
+    src/beatit/refiner/constant_regions.cpp
     src/beatit/activation_merge.cpp
     src/beatit/stream_finalize.cpp
     src/beatit/inference_backend_coreml.cpp
@@ -219,25 +219,25 @@ if(APPLE)
         src/beatit/coreml_inference.mm
         src/beatit/coreml_model_utils.mm
         src/beatit/coreml_metadata.mm
-        src/beatit/pp_pipeline.cpp
-        src/beatit/pp_helpers.cpp
-        src/beatit/pp_dbn.cpp
-        src/beatit/pp_dbn_decode.cpp
-        src/beatit/pp_dbn_anchor.cpp
-        src/beatit/pp_dbn_grid.cpp
-        src/beatit/pp_dbn_tempo.cpp
-        src/beatit/pp_logits.cpp
-        src/beatit/pp_grid_fill.cpp
-        src/beatit/pp_result_ops.cpp
-        src/beatit/pp_tempo_fit.cpp
-        src/beatit/pp_window.cpp
+        src/beatit/post/pipeline.cpp
+        src/beatit/post/helpers.cpp
+        src/beatit/post/dbn.cpp
+        src/beatit/post/dbn_decode.cpp
+        src/beatit/post/dbn_anchor.cpp
+        src/beatit/post/dbn_grid.cpp
+        src/beatit/post/dbn_tempo.cpp
+        src/beatit/post/logits.cpp
+        src/beatit/post/grid_fill.cpp
+        src/beatit/post/result_ops.cpp
+        src/beatit/post/tempo_fit.cpp
+        src/beatit/post/window.cpp
         src/beatit/coreml_preset.cpp
         src/beatit/dbn_calmdad.cpp
         src/beatit/dbn_calmdad_sparse.cpp
         src/beatit/dbn_beatit.cpp
-        src/beatit/refiner.cpp
-        src/beatit/refiner_constant.cpp
-        src/beatit/refiner_constant_regions.cpp
+        src/beatit/refiner/core.cpp
+        src/beatit/refiner/constant.cpp
+        src/beatit/refiner/constant_regions.cpp
         src/beatit/activation_merge.cpp
         src/beatit/stream_finalize.cpp
         src/beatit/inference_backend_coreml.cpp

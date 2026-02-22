@@ -1,12 +1,12 @@
 //
-//  pp_dbn_anchor.cpp
+//  dbn_anchor.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "pp_dbn_anchor.h"
+#include "dbn_anchor.h"
 
 #include "beatit/pp_helpers.h"
 

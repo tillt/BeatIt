@@ -1,5 +1,5 @@
 //
-//  refiner_constant_internal.h
+//  constant_internal.h
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
