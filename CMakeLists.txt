@@ -91,6 +91,7 @@ set(BEATIT_LIB_SOURCES
     src/beatit/analysis/backend.cpp
     src/beatit/audio/dsp.cpp
     src/beatit/audio/features.cpp
+    src/beatit/audio/wav.cpp
     src/beatit/runtime/logging.cpp
     src/beatit/runtime/version.cpp
     src/beatit/inference/coreml/inference.mm
@@ -219,6 +220,7 @@ if(APPLE)
         src/beatit/analysis/backend.cpp
         src/beatit/audio/dsp.cpp
         src/beatit/audio/features.cpp
+        src/beatit/audio/wav.cpp
         src/beatit/runtime/logging.cpp
         src/beatit/runtime/version.cpp
         src/beatit/inference/coreml/inference.mm
