@@ -77,8 +77,6 @@ struct CoreMLConfig {
     float offbeat_tolerance = 0.10f;
     std::size_t tempo_window_beats = 8;
     bool use_dbn = true;
-    double logit_block_seconds = 120.0;
-    double logit_block_hop_seconds = 60.0;
     double logit_phase_window_seconds = 2.0;
     float logit_phase_max_shift_seconds = 0.03f;
     std::size_t logit_min_peaks = 8;
@@ -110,10 +108,10 @@ struct CoreMLConfig {
     double analysis_start_seconds = 0.0;
 
     // DBN-only window start offset (seconds).
-    double dbn_window_start_seconds = 120.0;
+    double dbn_window_start_seconds = 0.0;
     // Sparse tempo anchors for global BPM fit when multi-window mode is enabled.
-    double dbn_tempo_anchor_intro_seconds = 120.0;
-    double dbn_tempo_anchor_outro_offset_seconds = 60.0;
+    double dbn_tempo_anchor_intro_seconds = 10.0;
+    double dbn_tempo_anchor_outro_offset_seconds = 10.0;
     bool dbn_project_grid = true;
     // Run sparse multi-window probing (single-switch mode) instead of full activation inference.
     // When enabled, BeatIt auto-enables the required internal DBN/consensus logic.

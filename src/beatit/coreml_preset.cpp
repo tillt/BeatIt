@@ -74,8 +74,6 @@ public:
         config.max_bpm = 180.0f;
         config.output_latency_seconds = 0.016;
         config.use_dbn = true;
-        config.logit_block_seconds = 120.0;
-        config.logit_block_hop_seconds = 60.0;
         config.logit_phase_window_seconds = 2.0;
         config.logit_phase_max_shift_seconds = 0.03f;
         config.logit_min_peaks = 8;
@@ -90,8 +88,8 @@ public:
         config.use_minimal_postprocess = true;
         config.dbn_window_seconds = model_window_seconds;
         config.dbn_window_start_seconds = 0.0;
-        config.dbn_tempo_anchor_intro_seconds = 120.0;
-        config.dbn_tempo_anchor_outro_offset_seconds = 60.0;
+        config.dbn_tempo_anchor_intro_seconds = 10.0;
+        config.dbn_tempo_anchor_outro_offset_seconds = 10.0;
         config.dbn_project_grid = true;
         config.dbn_grid_global_fit = true;
         config.dbn_trace = false;

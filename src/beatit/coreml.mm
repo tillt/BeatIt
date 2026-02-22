@@ -3350,8 +3350,6 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
             std::cerr << "Logit consensus: bpm=" << bpm
                       << " step_frames=" << step_frames
                       << " used_frames=" << used_frames
-                      << " block_seconds=" << config.logit_block_seconds
-                      << " hop_seconds=" << config.logit_block_hop_seconds
                       << " max_shift_s=" << config.logit_phase_max_shift_seconds
                       << "\n";
         }
@@ -3462,36 +3460,19 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                       << " best_score=" << best_score << "\n";
         }
 
-        const std::size_t block_frames = static_cast<std::size_t>(
-            std::max(1.0, std::round(config.logit_block_seconds * fps)));
-        const std::size_t hop_frames = static_cast<std::size_t>(
-            std::max(1.0, std::round(config.logit_block_hop_seconds * fps)));
-
-        (void)block_frames;
-        (void)hop_frames;
         auto build_grid_frames = [&](double phase_seed) {
             std::vector<std::size_t> grid_frames;
             grid_frames.reserve(static_cast<std::size_t>(
                 std::ceil(static_cast<double>(used_frames) / step_frames)) + 8);
 
-            for (std::size_t block_start = 0;
-                 block_start < used_frames;
-                 block_start += hop_frames) {
-                const std::size_t block_end =
-                    std::min(block_start + block_frames, used_frames);
-
-                const double block_phase = phase_seed;
-
-                double cursor = block_phase;
-                if (cursor < static_cast<double>(block_start)) {
-                    const double k =
-                        std::ceil((static_cast<double>(block_start) - cursor) / step_frames);
-                    cursor += k * step_frames;
-                }
-                while (cursor < static_cast<double>(block_end)) {
-                    grid_frames.push_back(static_cast<std::size_t>(std::llround(cursor)));
-                    cursor += step_frames;
-                }
+            double cursor = phase_seed;
+            if (cursor < 0.0) {
+                const double k = std::ceil((-cursor) / step_frames);
+                cursor += k * step_frames;
+            }
+            while (cursor < static_cast<double>(used_frames)) {
+                grid_frames.push_back(static_cast<std::size_t>(std::llround(cursor)));
+                cursor += step_frames;
             }
 
             std::vector<std::size_t> projected_frames;
