@@ -40,6 +40,7 @@ set(BEATIT_LIB_SOURCES
     src/beatit/coreml_postprocess.cpp
     src/beatit/coreml_postprocess_helpers.cpp
     src/beatit/coreml_postprocess_grid_fill.cpp
+    src/beatit/coreml_postprocess_tempo_fit.cpp
     src/beatit/coreml_postprocess_window.cpp
     src/beatit/coreml_preset.cpp
     src/beatit/dbn_calmdad.cpp
@@ -142,6 +143,7 @@ if(APPLE)
         src/beatit/coreml_postprocess.cpp
         src/beatit/coreml_postprocess_helpers.cpp
         src/beatit/coreml_postprocess_grid_fill.cpp
+        src/beatit/coreml_postprocess_tempo_fit.cpp
         src/beatit/coreml_postprocess_window.cpp
         src/beatit/coreml_preset.cpp
         src/beatit/dbn_calmdad.cpp
