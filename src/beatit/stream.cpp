@@ -1908,11 +1908,7 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
             !r->coreml_beat_projected_sample_frames.empty()
                 ? &r->coreml_beat_projected_sample_frames
                 : &r->coreml_beat_sample_frames;
-        std::vector<unsigned long long>* beat_features =
-            !r->coreml_beat_projected_feature_frames.empty()
-                ? &r->coreml_beat_projected_feature_frames
-                : &r->coreml_beat_feature_frames;
-        if (!beat_samples || beat_samples->size() < 64 || beat_features == nullptr) {
+        if (!beat_samples || beat_samples->size() < 64) {
             return;
         }
 
@@ -1929,44 +1925,42 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
             return;
         }
 
+        std::vector<float> full_samples;
+        const std::size_t full_received =
+            provider(0.0, std::max(0.0, total_duration_seconds), &full_samples);
+        if (full_received == 0 || full_samples.empty()) {
+            return;
+        }
+        if (full_samples.size() > full_received) {
+            full_samples.resize(full_received);
+        }
+
         auto offset_for_beat_ms = [&](unsigned long long beat_frame_ull) -> double {
             const std::size_t beat_frame = static_cast<std::size_t>(beat_frame_ull);
-            const std::size_t margin = radius + static_cast<std::size_t>(std::llround(sample_rate_ * 1.5));
-            const std::size_t segment_start = beat_frame > margin ? beat_frame - margin : 0;
-            const std::size_t segment_end = beat_frame + margin;
-            const double segment_start_s = static_cast<double>(segment_start) / sample_rate_;
-            const double segment_duration_s =
-                static_cast<double>(std::max<std::size_t>(1, segment_end - segment_start)) / sample_rate_;
-
-            std::vector<float> samples;
-            const std::size_t received = provider(segment_start_s, segment_duration_s, &samples);
-            if (received == 0 || samples.empty()) {
+            if (full_samples.empty()) {
                 return std::numeric_limits<double>::infinity();
             }
-            if (samples.size() > received) {
-                samples.resize(received);
-            }
-
             const std::size_t local_center =
-                std::min<std::size_t>(samples.size() - 1, beat_frame - segment_start);
+                std::min<std::size_t>(full_samples.size() - 1, beat_frame);
             const std::size_t start = local_center > radius ? local_center - radius : 0;
-            const std::size_t end = std::min(samples.size() - 1, local_center + radius);
+            const std::size_t end =
+                std::min(full_samples.size() - 1, local_center + radius);
             if (end <= start + 2) {
                 return std::numeric_limits<double>::infinity();
             }
 
             float window_max = 0.0f;
             for (std::size_t i = start; i <= end; ++i) {
-                window_max = std::max(window_max, std::fabs(samples[i]));
+                window_max = std::max(window_max, std::fabs(full_samples[i]));
             }
             const float threshold = window_max * 0.6f;
 
             std::size_t best_peak = local_center;
             float best_value = 0.0f;
             for (std::size_t i = start + 1; i < end; ++i) {
-                const float left = std::fabs(samples[i - 1]);
-                const float value = std::fabs(samples[i]);
-                const float right = std::fabs(samples[i + 1]);
+                const float left = std::fabs(full_samples[i - 1]);
+                const float value = std::fabs(full_samples[i]);
+                const float right = std::fabs(full_samples[i + 1]);
                 if (value < threshold) {
                     continue;
                 }
@@ -1978,7 +1972,7 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
             if (best_value <= 0.0f) {
                 float max_value = 0.0f;
                 for (std::size_t i = start; i <= end; ++i) {
-                    const float value = std::fabs(samples[i]);
+                    const float value = std::fabs(full_samples[i]);
                     if (value > max_value) {
                         max_value = value;
                         best_peak = i;
@@ -1991,7 +1985,6 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
             return (delta_frames * 1000.0) / sample_rate_;
         };
         const double beat_ms = 60000.0 / std::max(1e-6, bpm_hint);
-        const double outlier_ms = std::max(80.0, beat_ms * 0.25);
         auto apply_sample_shift_ms = [&](std::size_t idx, double offset_ms) {
             if (idx >= beat_samples->size()) {
                 return;
@@ -2013,17 +2006,71 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
             (*beat_samples)[idx] =
                 static_cast<unsigned long long>(std::max<long long>(0, shifted));
         };
+        auto robust_center_scale = [&](const std::vector<double>& offsets_ms,
+                                       double* center_ms,
+                                       double* scale_ms) {
+            std::vector<double> finite;
+            finite.reserve(offsets_ms.size());
+            for (double v : offsets_ms) {
+                if (std::isfinite(v)) {
+                    finite.push_back(v);
+                }
+            }
+            if (finite.size() < 16) {
+                return false;
+            }
+            const double center = median_value(finite);
+            std::vector<double> abs_dev;
+            abs_dev.reserve(finite.size());
+            for (double v : finite) {
+                abs_dev.push_back(std::fabs(v - center));
+            }
+            const double mad = median_value(abs_dev);
+            *center_ms = center;
+            *scale_ms = 1.4826 * mad;
+            return true;
+        };
 
-        // Snap clearly-off beats to the nearest strong local peak.
-        // This cleans sparse edge outliers without changing beat count.
         if (beat_samples->size() > 16) {
             for (std::size_t pass = 0; pass < 2; ++pass) {
-                for (std::size_t idx = 0; idx < beat_samples->size(); ++idx) {
-                    const double offset = offset_for_beat_ms((*beat_samples)[idx]);
-                    if (!std::isfinite(offset) || std::fabs(offset) <= outlier_ms) {
+                std::vector<double> offsets_ms(beat_samples->size(),
+                                               std::numeric_limits<double>::infinity());
+                for (std::size_t i = 0; i < beat_samples->size(); ++i) {
+                    offsets_ms[i] = offset_for_beat_ms((*beat_samples)[i]);
+                }
+
+                double center_ms = 0.0;
+                double scale_ms = 0.0;
+                if (!robust_center_scale(offsets_ms, &center_ms, &scale_ms)) {
+                    break;
+                }
+
+                const double inlier_limit_ms =
+                    std::max({beat_ms * 0.15, 20.0, 3.0 * std::max(1.0, scale_ms)});
+                std::size_t finite_count = 0;
+                std::size_t outlier_count = 0;
+                std::vector<std::size_t> outlier_indices;
+                outlier_indices.reserve(offsets_ms.size() / 8);
+                for (std::size_t i = 0; i < offsets_ms.size(); ++i) {
+                    const double off = offsets_ms[i];
+                    if (!std::isfinite(off)) {
                         continue;
                     }
-                    apply_sample_shift_ms(idx, offset);
+                    ++finite_count;
+                    if (std::fabs(off - center_ms) > inlier_limit_ms) {
+                        ++outlier_count;
+                        outlier_indices.push_back(i);
+                    }
+                }
+                if (outlier_indices.empty()) {
+                    break;
+                }
+                if (finite_count > 0 &&
+                    static_cast<double>(outlier_count) / static_cast<double>(finite_count) > 0.30) {
+                    break;
+                }
+                for (std::size_t idx : outlier_indices) {
+                    apply_sample_shift_ms(idx, offsets_ms[idx]);
                 }
             }
         }

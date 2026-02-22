@@ -235,6 +235,55 @@ double linear_slope(const std::vector<double>& values) {
     return (n * sxy - sx * sy) / den;
 }
 
+double robust_linear_slope(const std::vector<double>& values, double beat_period_ms) {
+    if (values.size() < 2) {
+        return 0.0;
+    }
+
+    const double center = median(values);
+    std::vector<double> abs_dev;
+    abs_dev.reserve(values.size());
+    for (double v : values) {
+        abs_dev.push_back(std::fabs(v - center));
+    }
+    const double mad = median(abs_dev);
+    const double scale = 1.4826 * mad;
+    const double raw_limit = 3.0 * std::max(1.0, scale);
+    const double min_limit = std::max(12.0, beat_period_ms * 0.03);
+    const double max_limit = std::max(30.0, beat_period_ms * 0.08);
+    const double inlier_limit = std::min(std::max(raw_limit, min_limit), max_limit);
+
+    std::vector<std::size_t> inlier_idx;
+    inlier_idx.reserve(values.size());
+    for (std::size_t i = 0; i < values.size(); ++i) {
+        if (std::fabs(values[i] - center) <= inlier_limit) {
+            inlier_idx.push_back(i);
+        }
+    }
+    if (inlier_idx.size() < 2) {
+        return linear_slope(values);
+    }
+
+    const double n = static_cast<double>(inlier_idx.size());
+    double sx = 0.0;
+    double sy = 0.0;
+    double sxx = 0.0;
+    double sxy = 0.0;
+    for (std::size_t idx : inlier_idx) {
+        const double x = static_cast<double>(idx);
+        const double y = values[idx];
+        sx += x;
+        sy += y;
+        sxx += x * x;
+        sxy += x * y;
+    }
+    const double den = n * sxx - sx * sx;
+    if (std::fabs(den) < 1e-12) {
+        return 0.0;
+    }
+    return (n * sxy - sx * sy) / den;
+}
+
 bool is_bar_event(const beatit::BeatEvent& event) {
     return (static_cast<unsigned long long>(event.style) &
             static_cast<unsigned long long>(beatit::BeatEventStyleBar)) != 0ULL;
@@ -575,7 +624,9 @@ int main() {
                                    : 0.0;
     const double start_end_delta_beats =
         ms_per_beat > 0.0 ? (std::fabs(start_end_delta_ms) / ms_per_beat) : 0.0;
-    const double slope_ms_per_beat = linear_slope(offsets_ms);
+    const double beat_period_ms =
+        (result.estimated_bpm > 0.0f) ? (60000.0 / result.estimated_bpm) : 500.0;
+    const double slope_ms_per_beat = robust_linear_slope(offsets_ms, beat_period_ms);
 
     const std::size_t alt_n = std::min<std::size_t>(kAlternationWindowBeats, offsets_ms.size());
     std::vector<double> odd;
