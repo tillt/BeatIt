@@ -156,7 +156,19 @@ else()
     )
 endif()
 
-add_library(beatit_lib ${BEATIT_LIB_SOURCES})
+add_library(beatit_objects OBJECT ${BEATIT_LIB_SOURCES})
+set_target_properties(beatit_objects PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+)
+
+target_include_directories(beatit_objects
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_BINARY_DIR}/generated
+)
+
+add_library(beatit_lib STATIC $<TARGET_OBJECTS:beatit_objects>)
 
 target_include_directories(beatit_lib
     PUBLIC
@@ -192,6 +204,13 @@ function(beatit_link_torch target)
     set(Torch_DIR "${_beatit_torch_cmake_dir}")
     find_package(Torch REQUIRED)
     target_include_directories(${target} PRIVATE ${TORCH_INCLUDE_DIRS})
+    target_compile_definitions(${target} PRIVATE BEATIT_USE_TORCH=1)
+
+    get_target_property(_beatit_target_type ${target} TYPE)
+    if(_beatit_target_type STREQUAL "OBJECT_LIBRARY")
+        return()
+    endif()
+
     set(BEATIT_TORCH_LIBS
         torch
         torch_cpu
@@ -206,12 +225,12 @@ function(beatit_link_torch target)
         list(APPEND BEATIT_TORCH_LIBS "${TORCH_GLOBAL_DEPS_LIB}")
     endif()
     target_link_libraries(${target} PRIVATE ${BEATIT_TORCH_LIBS})
-    target_compile_definitions(${target} PRIVATE BEATIT_USE_TORCH=1)
     set_target_properties(${target} PROPERTIES
         BUILD_RPATH "${_beatit_torch_lib_dir}"
     )
 endfunction()
 
+beatit_link_torch(beatit_objects)
 beatit_link_torch(beatit_lib)
 
 add_executable(beatit
@@ -224,8 +243,7 @@ target_link_libraries(beatit
 )
 
 if(APPLE)
-    target_compile_options(beatit_lib PRIVATE -Wall -Wextra -Wpedantic)
-    target_compile_options(beatit_lib PRIVATE -fobjc-arc)
+    target_compile_options(beatit_objects PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
     target_compile_options(beatit PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
     target_link_libraries(beatit_lib PRIVATE "-framework Accelerate" "-framework CoreML" "-framework Foundation")
     target_link_libraries(beatit PRIVATE "-framework AVFoundation" "-framework Foundation" "-framework CoreMedia" "-framework AudioToolbox")
@@ -242,65 +260,9 @@ if(APPLE)
         "${CMAKE_CURRENT_SOURCE_DIR}/include/beatit/version.h")
 
     set(BEATIT_FRAMEWORK_SOURCES
-        src/beatit/analysis/core.cpp
-        src/beatit/analysis/bpm_beats.cpp
-        src/beatit/analysis/bpm_activation.cpp
-        src/beatit/analysis/backend.cpp
-        src/beatit/audio/dsp.cpp
-        src/beatit/audio/features.cpp
-        src/beatit/audio/wav.cpp
-        src/beatit/runtime/logging.cpp
-        src/beatit/runtime/version.cpp
-        src/beatit/inference/coreml/inference.mm
-        src/beatit/inference/coreml/model_utils.mm
-        src/beatit/inference/coreml/metadata.mm
-        src/beatit/post/pipeline.cpp
-        src/beatit/post/helpers.cpp
-        src/beatit/post/dbn.cpp
-        src/beatit/post/dbn_decode.cpp
-        src/beatit/post/dbn_anchor.cpp
-        src/beatit/post/dbn_grid.cpp
-        src/beatit/post/dbn_tempo.cpp
-        src/beatit/post/logits.cpp
-        src/beatit/post/grid_fill.cpp
-        src/beatit/post/result_ops.cpp
-        src/beatit/post/tempo_fit.cpp
-        src/beatit/post/window.cpp
-        src/beatit/coreml/preset.cpp
-        src/beatit/dbn/calmdad.cpp
-        src/beatit/dbn/calmdad_sparse.cpp
-        src/beatit/dbn/beatit.cpp
-        src/beatit/refiner/core.cpp
-        src/beatit/refiner/constant.cpp
-        src/beatit/refiner/constant_regions.cpp
-        src/beatit/inference/window_merge.cpp
-        src/beatit/stream/finalize.cpp
-        src/beatit/inference/backend_coreml.cpp
-        src/beatit/sparse/probe.cpp
-        src/beatit/sparse/probe_pick.cpp
-        src/beatit/sparse/probe_score.cpp
-        src/beatit/sparse/phase_metrics.cpp
-        src/beatit/sparse/refinement.cpp
-        src/beatit/sparse/edge.cpp
-        src/beatit/sparse/edge_adjust.cpp
-        src/beatit/sparse/edge_metrics.cpp
-        src/beatit/sparse/edge_phase.cpp
-        src/beatit/sparse/waveform.cpp
-        src/beatit/stream/core.cpp
+        $<TARGET_OBJECTS:beatit_objects>
         ${BEATIT_PUBLIC_HEADERS}
     )
-    if(BEATIT_USE_TORCH)
-        list(APPEND BEATIT_FRAMEWORK_SOURCES
-            src/beatit/analysis/torch.cpp
-            src/beatit/inference/backend_torch.cpp
-            src/beatit/audio/mel_torch.cpp
-        )
-    else()
-        list(APPEND BEATIT_FRAMEWORK_SOURCES
-            src/beatit/analysis/torch_stub.cpp
-            src/beatit/inference/backend_torch_stub.cpp
-        )
-    endif()
 
     add_library(beatit_framework SHARED ${BEATIT_FRAMEWORK_SOURCES})
 
