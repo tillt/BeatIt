@@ -30,8 +30,18 @@ endif()
 
 set(BEATIT_LIB_SOURCES
     src/beatit/analysis.cpp
-    src/beatit/coreml.mm
+    src/beatit/analysis_bpm_beats.cpp
+    src/beatit/analysis_bpm_activation.cpp
+    src/beatit/analysis_backend.cpp
+    src/beatit/audio_features.cpp
+    src/beatit/coreml_inference.mm
+    src/beatit/coreml_model_utils.mm
+    src/beatit/coreml_metadata.mm
+    src/beatit/coreml_postprocess.cpp
     src/beatit/coreml_preset.cpp
+    src/beatit/dbn_calmdad.cpp
+    src/beatit/dbn_calmdad_sparse.cpp
+    src/beatit/dbn_beatit.cpp
     src/beatit/refiner.cpp
     src/beatit/activation_merge.cpp
     src/beatit/stream_finalize.cpp
@@ -119,8 +129,18 @@ if(APPLE)
 
     set(BEATIT_FRAMEWORK_SOURCES
         src/beatit/analysis.cpp
-        src/beatit/coreml.mm
+        src/beatit/analysis_bpm_beats.cpp
+        src/beatit/analysis_bpm_activation.cpp
+        src/beatit/analysis_backend.cpp
+        src/beatit/audio_features.cpp
+        src/beatit/coreml_inference.mm
+        src/beatit/coreml_model_utils.mm
+        src/beatit/coreml_metadata.mm
+        src/beatit/coreml_postprocess.cpp
         src/beatit/coreml_preset.cpp
+        src/beatit/dbn_calmdad.cpp
+        src/beatit/dbn_calmdad_sparse.cpp
+        src/beatit/dbn_beatit.cpp
         src/beatit/refiner.cpp
         src/beatit/activation_merge.cpp
         src/beatit/stream_finalize.cpp
