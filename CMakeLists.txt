@@ -34,6 +34,7 @@ set(BEATIT_LIB_SOURCES
     src/beatit/analysis_bpm_activation.cpp
     src/beatit/analysis_backend.cpp
     src/beatit/audio_features.cpp
+    src/beatit/logging.cpp
     src/beatit/coreml_inference.mm
     src/beatit/coreml_model_utils.mm
     src/beatit/coreml_metadata.mm
@@ -143,7 +144,9 @@ if(APPLE)
 endif()
 
 if(APPLE)
-    file(GLOB BEATIT_PUBLIC_HEADERS "${CMAKE_CURRENT_SOURCE_DIR}/include/beatit/*.h")
+    file(GLOB BEATIT_PUBLIC_HEADERS
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/beatit/*.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/beatit/*.hpp")
 
     set(BEATIT_FRAMEWORK_SOURCES
         src/beatit/analysis.cpp
@@ -151,6 +154,7 @@ if(APPLE)
         src/beatit/analysis_bpm_activation.cpp
         src/beatit/analysis_backend.cpp
         src/beatit/audio_features.cpp
+        src/beatit/logging.cpp
         src/beatit/coreml_inference.mm
         src/beatit/coreml_model_utils.mm
         src/beatit/coreml_metadata.mm

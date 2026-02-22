@@ -9,6 +9,7 @@
 #include "beatit/analysis.h"
 #include "beatit/analysis_torch_backend.h"
 #include "beatit/coreml.h"
+#include "beatit/logging.hpp"
 #include "beatit/stream.h"
 
 #include "analysis_internal.h"
@@ -23,6 +24,8 @@ namespace beatit {
 AnalysisResult analyze(const std::vector<float>& samples,
                        double sample_rate,
                        const CoreMLConfig& config) {
+    set_log_verbosity_from_config(config);
+
     AnalysisResult result;
     if (samples.empty() || sample_rate <= 0.0) {
         return result;

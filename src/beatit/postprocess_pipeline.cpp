@@ -16,6 +16,7 @@
 #include "beatit/postprocess_logits.h"
 #include "beatit/postprocess_tempo_fit.h"
 #include "beatit/postprocess_window.h"
+#include "beatit/logging.hpp"
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -66,6 +67,8 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                                             float reference_bpm,
                                             std::size_t last_active_frame,
                                             std::size_t total_frames_full) {
+    set_log_verbosity_from_config(config);
+
     double dbn_ms = 0.0;
     double peaks_ms = 0.0;
 
@@ -238,8 +241,8 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
             result.downbeat_feature_frames.push_back(static_cast<unsigned long long>(frame));
         }
         if (config.profile) {
-            std::cerr << "Timing(postprocess): dbn=" << dbn_ms
-                      << "ms peaks=" << peaks_ms << "ms\n";
+            BEATIT_LOG_INFO("Timing(postprocess): dbn=" << dbn_ms
+                            << "ms peaks=" << peaks_ms << "ms");
         }
         return result;
     }
@@ -359,8 +362,8 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
     }
 
     if (config.profile) {
-        std::cerr << "Timing(postprocess): dbn=" << dbn_ms
-                  << "ms peaks=" << peaks_ms << "ms\n";
+        BEATIT_LOG_INFO("Timing(postprocess): dbn=" << dbn_ms
+                        << "ms peaks=" << peaks_ms << "ms");
     }
 
     return result;

@@ -7,9 +7,9 @@
 //
 
 #include "beatit/inference_backend_torch.h"
+#include "beatit/logging.hpp"
 
 #include <algorithm>
-#include <iostream>
 
 namespace beatit {
 namespace detail {
@@ -26,13 +26,11 @@ public:
     }
 
     bool infer_window(const std::vector<float>&,
-                      const CoreMLConfig& config,
+                      const CoreMLConfig&,
                       std::vector<float>*,
                       std::vector<float>*,
                       InferenceTiming*) override {
-        if (config.verbose) {
-            std::cerr << "Torch backend not enabled in this build.\n";
-        }
+        BEATIT_LOG_ERROR("Torch backend not enabled in this build.");
         return false;
     }
 };

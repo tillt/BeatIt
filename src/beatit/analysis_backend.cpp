@@ -7,6 +7,7 @@
 //
 
 #include "analysis_internal.h"
+#include "beatit/logging.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -294,9 +295,7 @@ AnalysisResult analyze_with_beatthis(const std::vector<float>& samples,
                                &beat_times,
                                &downbeat_times,
                                &error)) {
-        if (config.verbose) {
-            std::cerr << "BeatThis failed: " << error << "\n";
-        }
+        BEATIT_LOG_ERROR("BeatThis failed: " << error);
         return result;
     }
 

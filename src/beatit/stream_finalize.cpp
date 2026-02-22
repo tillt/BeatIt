@@ -9,6 +9,7 @@
 #include "beatit/stream.h"
 #include "beatit/activation_merge.h"
 #include "beatit/inference_backend.h"
+#include "beatit/logging.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -207,18 +208,15 @@ AnalysisResult BeatitStream::finalize() {
         tempo_reference_bpm_ = reference_bpm;
         tempo_reference_valid_ = true;
     }
-    if (coreml_config_.verbose) {
-        std::cerr << "Tempo anchor: peaks=" << peaks_bpm
-                  << " autocorr=" << autocorr_bpm
-                  << " comb=" << comb_bpm
-                  << " beats=" << beats_bpm
-                  << " chosen=" << reference_bpm
-                  << " prior=" << prior_bpm
-                  << " state=" << tempo_state
-                  << " ratio=" << prior_ratio
-                  << " consensus=" << consensus_ratio
-                  << "\n";
-    }
+    BEATIT_LOG_DEBUG("Tempo anchor: peaks=" << peaks_bpm
+                     << " autocorr=" << autocorr_bpm
+                     << " comb=" << comb_bpm
+                     << " beats=" << beats_bpm
+                     << " chosen=" << reference_bpm
+                     << " prior=" << prior_bpm
+                     << " state=" << tempo_state
+                     << " ratio=" << prior_ratio
+                     << " consensus=" << consensus_ratio);
 
     CoreMLResult final_result = postprocess_coreml_activations(coreml_beat_activation_,
                                                               coreml_downbeat_activation_,
@@ -334,17 +332,17 @@ AnalysisResult BeatitStream::finalize() {
         std::chrono::duration<double, std::milli>(finalize_end - finalize_start).count();
 
     if (coreml_config_.profile) {
-        std::cerr << "Timing(stream): resample=" << perf_.resample_ms
-                  << "ms process=" << perf_.process_ms
-                  << "ms mel=" << perf_.mel_ms
-                  << "ms torch=" << perf_.torch_forward_ms
-                  << "ms window_infer=" << perf_.window_infer_ms
-                  << "ms windows=" << perf_.window_count
-                  << " finalize_infer=" << perf_.finalize_infer_ms
-                  << "ms postprocess=" << perf_.postprocess_ms
-                  << "ms markers=" << perf_.marker_ms
-                  << "ms total_finalize=" << perf_.finalize_ms
-                  << "ms\n";
+        BEATIT_LOG_INFO("Timing(stream): resample=" << perf_.resample_ms
+                        << "ms process=" << perf_.process_ms
+                        << "ms mel=" << perf_.mel_ms
+                        << "ms torch=" << perf_.torch_forward_ms
+                        << "ms window_infer=" << perf_.window_infer_ms
+                        << "ms windows=" << perf_.window_count
+                        << " finalize_infer=" << perf_.finalize_infer_ms
+                        << "ms postprocess=" << perf_.postprocess_ms
+                        << "ms markers=" << perf_.marker_ms
+                        << "ms total_finalize=" << perf_.finalize_ms
+                        << "ms");
     }
 
     return result;

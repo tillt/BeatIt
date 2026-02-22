@@ -9,6 +9,7 @@
 #include "beatit/stream.h"
 #include "beatit/activation_merge.h"
 #include "beatit/inference_backend.h"
+#include "beatit/logging.hpp"
 #include "beatit/sparse_probe.h"
 
 #include <algorithm>
@@ -199,6 +200,8 @@ BeatitStream::BeatitStream(double sample_rate,
       coreml_config_(coreml_config),
       coreml_enabled_(enable_coreml),
       inference_backend_(detail::make_inference_backend(coreml_config)) {
+    set_log_verbosity_from_config(coreml_config_);
+
     resampler_.ratio = coreml_config_.sample_rate / sample_rate_;
     if (coreml_config_.prepend_silence_seconds > 0.0 && sample_rate_ > 0.0) {
         prepend_samples_ = static_cast<std::size_t>(

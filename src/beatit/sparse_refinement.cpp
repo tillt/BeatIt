@@ -8,12 +8,12 @@
 
 #include "beatit/sparse_refinement.h"
 
+#include "beatit/logging.hpp"
 #include "beatit/sparse_waveform.h"
 #include "sparse_refinement_common.h"
 
 #include <algorithm>
 #include <cmath>
-#include <iostream>
 #include <limits>
 #include <vector>
 
@@ -270,14 +270,13 @@ void apply_sparse_anchor_state_refit(AnalysisResult* result,
     }
 
     if (verbose) {
-        std::cerr << "Sparse anchor state refit:"
-                  << " anchors=" << anchors.size()
-                  << " spread_ratio=" << spread_ratio
-                  << " step_target=" << step_target
-                  << " ratio=" << raw_ratio
-                  << " ratio_applied=" << ratio
-                  << " base_step=" << base_step
-                  << "\n";
+        BEATIT_LOG_DEBUG("Sparse anchor state refit:"
+                         << " anchors=" << anchors.size()
+                         << " spread_ratio=" << spread_ratio
+                         << " step_target=" << step_target
+                         << " ratio=" << raw_ratio
+                         << " ratio_applied=" << ratio
+                         << " base_step=" << base_step);
     }
 }
 
