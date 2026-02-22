@@ -12,9 +12,7 @@
 #include <cmath>
 #include <cstring>
 
-#if defined(BEATIT_USE_TORCH)
 #include <torch/torch.h>
-#endif
 
 namespace beatit {
 namespace {
@@ -120,7 +118,6 @@ std::vector<float> resample_linear(const std::vector<float>& input,
 
 } // namespace
 
-#if defined(BEATIT_USE_TORCH)
 std::vector<float> compute_mel_features_torch(const std::vector<float>& samples,
                                               double sample_rate,
                                               const CoreMLConfig& config,
@@ -214,6 +211,5 @@ std::vector<float> compute_mel_features_torch(const std::vector<float>& samples,
 
     return output;
 }
-#endif
 
 } // namespace beatit

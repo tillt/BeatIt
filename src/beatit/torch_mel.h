@@ -12,21 +12,17 @@
 #include <string>
 #include <vector>
 
-#if defined(BEATIT_USE_TORCH)
 #include <torch/torch.h>
-#endif
 
 #include "beatit/coreml.h"
 
 namespace beatit {
 
-#if defined(BEATIT_USE_TORCH)
 std::vector<float> compute_mel_features_torch(const std::vector<float>& samples,
                                               double sample_rate,
                                               const CoreMLConfig& config,
                                               const torch::Device& device,
                                               std::size_t* out_frames,
                                               std::string* error);
-#endif
 
 } // namespace beatit

@@ -41,7 +41,16 @@ set(BEATIT_LIB_SOURCES
     src/beatit/stream.cpp
 )
 if(BEATIT_USE_TORCH)
-    list(APPEND BEATIT_LIB_SOURCES src/beatit/torch_mel.mm)
+    list(APPEND BEATIT_LIB_SOURCES
+        src/beatit/analysis_torch.cpp
+        src/beatit/stream_inference_backend_torch.cpp
+        src/beatit/torch_mel.mm
+    )
+else()
+    list(APPEND BEATIT_LIB_SOURCES
+        src/beatit/analysis_torch_stub.cpp
+        src/beatit/stream_inference_backend_torch_stub.cpp
+    )
 endif()
 
 add_library(beatit_lib ${BEATIT_LIB_SOURCES})
@@ -119,7 +128,16 @@ if(APPLE)
         ${BEATIT_PUBLIC_HEADERS}
     )
     if(BEATIT_USE_TORCH)
-        list(APPEND BEATIT_FRAMEWORK_SOURCES src/beatit/torch_mel.mm)
+        list(APPEND BEATIT_FRAMEWORK_SOURCES
+            src/beatit/analysis_torch.cpp
+            src/beatit/stream_inference_backend_torch.cpp
+            src/beatit/torch_mel.mm
+        )
+    else()
+        list(APPEND BEATIT_FRAMEWORK_SOURCES
+            src/beatit/analysis_torch_stub.cpp
+            src/beatit/stream_inference_backend_torch_stub.cpp
+        )
     endif()
 
     add_library(beatit_framework SHARED ${BEATIT_FRAMEWORK_SOURCES})
