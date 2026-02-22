@@ -943,12 +943,6 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
         const bool use_window = (window_start > 0 || window_end < used_frames);
         std::vector<float> beat_slice;
         std::vector<float> downbeat_slice;
-        std::vector<std::pair<std::size_t, std::size_t>> window_candidates;
-        std::vector<DBNDecodeResult> window_decodes;
-        std::vector<double> window_bpms;
-        double window_consensus_bpm = 0.0;
-        bool consensus_phase_valid = false;
-        double consensus_phase_frames = 0.0;
         if (use_window) {
             beat_slice.assign(result.beat_activation.begin() + window_start,
                               result.beat_activation.begin() + window_end);
@@ -1651,7 +1645,6 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                               << " bpm_from_downbeats_median=" << bpm_from_downbeats_median
                               << " bpm_from_downbeats_reg=" << bpm_from_downbeats_reg
                               << " base_interval=" << base_interval
-                              << " bpm_window_consensus=" << window_consensus_bpm
                               << " bpm_reference=" << reference_bpm
                               << " quality_qpar=" << quality_qpar
                               << " quality_qkur=" << quality_qkur
@@ -2334,20 +2327,6 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                         const double frames_per_second = fps;
                         grid_start -= static_cast<double>(config.dbn_grid_start_advance_seconds) *
                             frames_per_second;
-                    }
-                    if (consensus_phase_valid && step_frames > 1.0 && !reliable_downbeat_start) {
-                        double target = std::fmod(consensus_phase_frames, step_frames);
-                        if (target < 0.0) {
-                            target += step_frames;
-                        }
-                        const double anchor = (earliest_downbeat_peak > 0)
-                            ? static_cast<double>(earliest_downbeat_peak)
-                            : static_cast<double>(strongest_peak);
-                        const double k = std::round((anchor - target) / step_frames);
-                        grid_start = target + k * step_frames;
-                        while (grid_start < 0.0) {
-                            grid_start += step_frames;
-                        }
                     }
                     if (!reliable_downbeat_start && step_frames > 1.0 &&
                         result.beat_activation.size() >= 8) {
