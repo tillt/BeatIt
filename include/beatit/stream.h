@@ -18,6 +18,9 @@
 #include <vector>
 
 namespace beatit {
+namespace detail {
+class StreamInferenceBackend;
+}
 
 class BeatitStream {
 public:
@@ -52,18 +55,11 @@ private:
     void reset_state();
     void process_coreml_windows();
     void process_torch_windows();
-#if defined(BEATIT_USE_TORCH)
-    bool infer_torch_window(const std::vector<float>& window,
-                            std::vector<float>* beat,
-                            std::vector<float>* downbeat);
-    bool infer_torch_windows(const std::vector<std::vector<float>>& windows,
-                             std::vector<std::vector<float>>* beats,
-                             std::vector<std::vector<float>>* downbeats);
-#endif
 
     double sample_rate_ = 0.0;
     CoreMLConfig coreml_config_;
     bool coreml_enabled_ = true;
+    std::unique_ptr<detail::StreamInferenceBackend> inference_backend_;
 
     struct LinearResampler {
         double ratio = 1.0;
@@ -104,11 +100,6 @@ private:
         double marker_ms = 0.0;
         double finalize_ms = 0.0;
     } perf_;
-
-#if defined(BEATIT_USE_TORCH)
-    struct TorchState;
-    std::unique_ptr<TorchState> torch_state_;
-#endif
 };
 
 } // namespace beatit
