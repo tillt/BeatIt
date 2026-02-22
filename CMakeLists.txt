@@ -61,6 +61,7 @@ set(BEATIT_LIB_SOURCES
     src/beatit/inference_backend_coreml.cpp
     src/beatit/sparse_probe.cpp
     src/beatit/sparse_probe_selection.cpp
+    src/beatit/sparse_probe_selection_scoring.cpp
     src/beatit/sparse_phase_metrics.cpp
     src/beatit/sparse_refinement.cpp
     src/beatit/sparse_refinement_edge.cpp
@@ -174,6 +175,7 @@ if(APPLE)
         src/beatit/inference_backend_coreml.cpp
         src/beatit/sparse_probe.cpp
         src/beatit/sparse_probe_selection.cpp
+        src/beatit/sparse_probe_selection_scoring.cpp
         src/beatit/sparse_phase_metrics.cpp
         src/beatit/sparse_refinement.cpp
         src/beatit/sparse_refinement_edge.cpp

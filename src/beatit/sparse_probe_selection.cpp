@@ -9,46 +9,17 @@
 #include "beatit/sparse_probe_selection.h"
 #include "beatit/sparse_phase_metrics.h"
 #include "beatit/sparse_waveform.h"
+#include "sparse_probe_selection_scoring.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
-#include <limits>
 #include <string>
 #include <vector>
 
 namespace beatit {
 namespace detail {
-
-namespace {
-
-struct IntroPhaseMetrics {
-    double median_abs_ms = std::numeric_limits<double>::infinity();
-    double odd_even_gap_ms = std::numeric_limits<double>::infinity();
-    std::size_t count = 0;
-};
-
-struct WindowPhaseGate {
-    bool has_data = false;
-    double beat_ms = 0.0;
-    double signed_limit_ms = 0.0;
-    double abs_limit_ms = 0.0;
-    bool signed_exceeds = false;
-    bool abs_exceeds = false;
-    bool unstable_and = false;
-    bool unstable_or = false;
-};
-
-struct DecisionOutcome {
-    std::size_t selected_index = 0;
-    double selected_score = std::numeric_limits<double>::infinity();
-    double score_margin = 0.0;
-    bool low_confidence = true;
-    std::string mode;
-};
-
-} // namespace
 
 SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelectionParams& params) {
     SparseProbeSelectionResult out;
@@ -85,154 +56,23 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
     double left_anchor_start = min_allowed_start;
 
     using ProbeResult = SparseProbeObservation;
-    auto estimate_probe_confidence = [&](const AnalysisResult& r) -> double {
-        const auto& beats = !r.coreml_beat_projected_sample_frames.empty()
-            ? r.coreml_beat_projected_sample_frames
-            : r.coreml_beat_sample_frames;
-        if (beats.size() < 8 || sample_rate_ <= 0.0) {
-            return 0.0;
-        }
-        std::vector<double> intervals;
-        intervals.reserve(beats.size() - 1);
-        for (std::size_t i = 1; i < beats.size(); ++i) {
-            if (beats[i] > beats[i - 1]) {
-                intervals.push_back(static_cast<double>(beats[i] - beats[i - 1]) / sample_rate_);
-            }
-        }
-        if (intervals.size() < 4) {
-            return 0.0;
-        }
-        double sum = 0.0;
-        double sum_sq = 0.0;
-        for (double v : intervals) {
-            sum += v;
-            sum_sq += v * v;
-        }
-        const double n = static_cast<double>(intervals.size());
-        const double mean = sum / n;
-        if (!(mean > 0.0)) {
-            return 0.0;
-        }
-        const double var = std::max(0.0, (sum_sq / n) - (mean * mean));
-        const double cv = std::sqrt(var) / mean;
-        return (1.0 / (1.0 + cv)) * std::min(1.0, n / 32.0);
-    };
-    auto mode_penalty = [](double mode) {
-        const double kTol = 1e-6;
-        if (std::fabs(mode - 1.0) < kTol) {
-            return 1.0;
-        }
-        if (std::fabs(mode - 0.5) < kTol || std::fabs(mode - 2.0) < kTol) {
-            return 1.15;
-        }
-        if (std::fabs(mode - 1.5) < kTol || std::fabs(mode - (2.0 / 3.0)) < kTol) {
-            return 1.9;
-        }
-        if (std::fabs(mode - 3.0) < kTol) {
-            return 2.4;
-        }
-        return 2.0;
-    };
-    auto expand_modes = [&](double bpm, double conf) {
-        struct ModeCand {
-            double bpm = 0.0;
-            double conf = 0.0;
-            double mode = 1.0;
-            double penalty = 1.0;
-        };
-        std::vector<ModeCand> modes;
-        if (!(bpm > 0.0) || !(conf > 0.0)) {
-            return modes;
-        }
-        static const double kModes[] = {0.5, 1.0, 2.0};
-        for (double m : kModes) {
-            const double cand = bpm * m;
-            if (cand >= original_config.min_bpm && cand <= original_config.max_bpm) {
-                modes.push_back({cand, conf, m, mode_penalty(m)});
-            }
-        }
-        return modes;
-    };
-    auto relative_diff = [](double a, double b) {
-        const double mean = 0.5 * (a + b);
-        return mean > 0.0 ? (std::abs(a - b) / mean) : 1.0;
-    };
-    auto probe_beat_count = [](const AnalysisResult& r) -> std::size_t {
-        return sparse_select_beats(r).size();
-    };
-    auto estimate_intro_phase_abs_ms = [&](const AnalysisResult& r, double bpm_hint) -> double {
-        if (sample_rate_ <= 0.0 || bpm_hint <= 0.0 || !provider) {
-            return std::numeric_limits<double>::infinity();
-        }
-        const auto& beats = sparse_select_beats(r);
-        if (beats.size() < 12) {
-            return std::numeric_limits<double>::infinity();
-        }
-
-        const std::size_t probe_beats = std::min<std::size_t>(24, beats.size());
-        const double beat_period_s = 60.0 / bpm_hint;
-        const double intro_s = std::max(20.0, beat_period_s * static_cast<double>(probe_beats + 4));
-
-        std::vector<float> intro_samples;
-        if (!sparse_load_samples(provider, 0.0, intro_s, &intro_samples)) {
-            return std::numeric_limits<double>::infinity();
-        }
-        const std::size_t radius = sparse_waveform_radius(sample_rate_, bpm_hint);
-        if (radius == 0) {
-            return std::numeric_limits<double>::infinity();
-        }
-
-        std::vector<double> signed_offsets_ms;
-        std::vector<double> abs_offsets_ms;
-        abs_offsets_ms.reserve(probe_beats);
-        sparse_collect_offsets(beats,
-                               0,
-                               probe_beats,
-                               0,
-                               intro_samples,
-                               radius,
-                               SparsePeakMode::AbsoluteMax,
-                               sample_rate_,
-                               &signed_offsets_ms,
-                               &abs_offsets_ms);
-        if (abs_offsets_ms.size() < 8) {
-            return std::numeric_limits<double>::infinity();
-        }
-        return sparse_median_inplace(&abs_offsets_ms);
-    };
     auto run_probe_result = [&](double start_s) {
         ProbeResult p;
         p.start = clamp_start(start_s);
         p.analysis = run_probe(p.start, probe_duration);
         p.bpm = p.analysis.estimated_bpm;
-        p.conf = estimate_probe_confidence(p.analysis);
-        p.phase_abs_ms = estimate_intro_phase_abs_ms(p.analysis, p.bpm);
+        p.conf = sparse_estimate_probe_confidence(p.analysis, sample_rate_);
+        p.phase_abs_ms = sparse_estimate_intro_phase_abs_ms(p.analysis,
+                                                            p.bpm,
+                                                            sample_rate_,
+                                                            provider);
         return p;
-    };
-    auto probe_quality_score = [&](const ProbeResult& p) {
-        const std::size_t beat_count = probe_beat_count(p.analysis);
-        if (!(p.bpm > 0.0) || beat_count < 4) {
-            return 0.0;
-        }
-        const double beat_factor =
-            std::min(1.0, static_cast<double>(beat_count) / 24.0);
-        const double phase_factor = std::isfinite(p.phase_abs_ms)
-            ? (1.0 / (1.0 + (p.phase_abs_ms / 120.0)))
-            : 0.15;
-        return p.conf * beat_factor * phase_factor;
-    };
-    auto probe_is_usable = [&](const ProbeResult& p) {
-        const std::size_t beat_count = probe_beat_count(p.analysis);
-        return (p.bpm > 0.0) &&
-               (beat_count >= 16) &&
-               (p.conf >= 0.55) &&
-               (!std::isfinite(p.phase_abs_ms) || p.phase_abs_ms <= 120.0);
     };
     auto seek_quality_probe = [&](double seed_start, bool shift_right) {
         double start_s = std::clamp(seed_start, min_allowed_start, max_allowed_start);
         ProbeResult best = run_probe_result(start_s);
-        double best_score = probe_quality_score(best);
-        if (probe_is_usable(best)) {
+        double best_score = sparse_probe_quality_score(best);
+        if (sparse_probe_is_usable(best)) {
             return best;
         }
         for (std::size_t round = 0; round < max_quality_shifts; ++round) {
@@ -245,12 +85,12 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
             }
             start_s = next_start;
             ProbeResult candidate = run_probe_result(start_s);
-            const double score = probe_quality_score(candidate);
+            const double score = sparse_probe_quality_score(candidate);
             if (score > best_score) {
                 best = candidate;
                 best_score = score;
             }
-            if (probe_is_usable(candidate)) {
+            if (sparse_probe_is_usable(candidate)) {
                 return candidate;
             }
         }
@@ -267,10 +107,10 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
         return value[0] == 'r' || value[0] == 'R';
     }();
     auto push_unique_probe = [&](ProbeResult&& probe) {
-        const double incoming_score = probe_quality_score(probe);
+        const double incoming_score = sparse_probe_quality_score(probe);
         for (auto& existing : probes) {
             if (std::abs(existing.start - probe.start) < 1.0) {
-                if (incoming_score > probe_quality_score(existing)) {
+                if (incoming_score > sparse_probe_quality_score(existing)) {
                     existing = std::move(probe);
                 }
                 return;
@@ -297,113 +137,6 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
     if (probes.size() < 2 && (max_allowed_start - min_allowed_start) > 1.0) {
         push_unique_probe(run_probe_result(clamp_start(total * 0.5 - probe_duration * 0.5)));
     }
-
-    auto consensus_from_probes = [&](const std::vector<ProbeResult>& values) {
-        struct ConsensusCand {
-            double bpm = 0.0;
-            double conf = 0.0;
-            double mode = 1.0;
-            double penalty = 1.0;
-        };
-        std::vector<ConsensusCand> all_modes;
-        for (const auto& p : values) {
-            const auto modes = expand_modes(p.bpm, p.conf);
-            for (const auto& m : modes) {
-                all_modes.push_back({m.bpm, m.conf, m.mode, m.penalty});
-            }
-        }
-        if (all_modes.empty()) {
-            return 0.0;
-        }
-        double best_bpm = 0.0;
-        double best_score = std::numeric_limits<double>::infinity();
-        for (const auto& cand : all_modes) {
-            double score = 0.0;
-            double support = 0.0;
-            for (const auto& p : values) {
-                const auto modes = expand_modes(p.bpm, p.conf);
-                double best_local = std::numeric_limits<double>::infinity();
-                for (const auto& m : modes) {
-                    best_local = std::min(best_local, relative_diff(cand.bpm, m.bpm) * m.penalty);
-                }
-                score += best_local / std::max(1e-6, p.conf);
-                if (best_local <= 0.02) {
-                    support += p.conf;
-                }
-            }
-            score *= cand.penalty;
-            score /= (1.0 + (0.8 * support));
-            if (score < best_score) {
-                best_score = score;
-                best_bpm = cand.bpm;
-            }
-        }
-        return best_bpm;
-    };
-
-    auto measure_intro_phase = [&](const AnalysisResult& r, double bpm_hint) -> IntroPhaseMetrics {
-        IntroPhaseMetrics metrics;
-        if (sample_rate_ <= 0.0 || bpm_hint <= 0.0 || !provider) {
-            return metrics;
-        }
-        const auto& beats = sparse_select_beats(r);
-        if (beats.size() < 12) {
-            return metrics;
-        }
-
-        const std::size_t probe_beats = std::min<std::size_t>(24, beats.size());
-        const double beat_period_s = 60.0 / bpm_hint;
-        const double intro_s = std::max(20.0, beat_period_s * static_cast<double>(probe_beats + 4));
-
-        std::vector<float> intro_samples;
-        if (!sparse_load_samples(provider, 0.0, intro_s, &intro_samples)) {
-            return metrics;
-        }
-        const std::size_t radius = sparse_waveform_radius(sample_rate_, bpm_hint);
-        if (radius == 0) {
-            return metrics;
-        }
-
-        std::vector<double> signed_offsets_ms;
-        std::vector<double> abs_offsets_ms;
-        signed_offsets_ms.reserve(probe_beats);
-        abs_offsets_ms.reserve(probe_beats);
-        sparse_collect_offsets(beats,
-                               0,
-                               probe_beats,
-                               0,
-                               intro_samples,
-                               radius,
-                               SparsePeakMode::ThresholdedLocalMax,
-                               sample_rate_,
-                               &signed_offsets_ms,
-                               &abs_offsets_ms);
-
-        if (abs_offsets_ms.size() < 8) {
-            return metrics;
-        }
-        metrics.count = abs_offsets_ms.size();
-        metrics.median_abs_ms = sparse_median_inplace(&abs_offsets_ms);
-
-        std::vector<double> odd;
-        std::vector<double> even;
-        odd.reserve(signed_offsets_ms.size() / 2);
-        even.reserve((signed_offsets_ms.size() + 1) / 2);
-        for (std::size_t i = 0; i < signed_offsets_ms.size(); ++i) {
-            if ((i % 2) == 0) {
-                even.push_back(signed_offsets_ms[i]);
-            } else {
-                odd.push_back(signed_offsets_ms[i]);
-            }
-        }
-        if (!odd.empty() && !even.empty()) {
-            metrics.odd_even_gap_ms = std::fabs(
-                sparse_median_inplace(&even) - sparse_median_inplace(&odd));
-        } else {
-            metrics.odd_even_gap_ms = 0.0;
-        }
-        return metrics;
-    };
     auto probe_start_extents = [&]() -> std::pair<double, double> {
         if (probes.empty()) {
             return {min_allowed_start, max_allowed_start};
@@ -417,17 +150,18 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
         return {min_start, max_start};
     };
 
-    double consensus_bpm = consensus_from_probes(probes);
+    double consensus_bpm = sparse_consensus_from_probes(probes,
+                                                        original_config.min_bpm,
+                                                        original_config.max_bpm);
     if (probes.size() >= 2 && consensus_bpm > 0.0) {
-        double max_err = 0.0;
-        for (const auto& p : probes) {
-            const auto modes = expand_modes(p.bpm, p.conf);
-            double best_local = std::numeric_limits<double>::infinity();
-            for (const auto& m : modes) {
-                best_local = std::min(best_local, relative_diff(consensus_bpm, m.bpm) * m.penalty);
-            }
-            max_err = std::max(max_err, best_local);
-        }
+        const std::vector<double> mode_errors =
+            sparse_probe_mode_errors(probes,
+                                     consensus_bpm,
+                                     original_config.min_bpm,
+                                     original_config.max_bpm);
+        const double max_err = mode_errors.empty()
+            ? 0.0
+            : *std::max_element(mode_errors.begin(), mode_errors.end());
         if (max_err > 0.025 && probes.size() == 2) {
             push_unique_probe(run_probe_result(clamp_start(total * 0.5 - probe_duration * 0.5)));
         }
@@ -443,22 +177,15 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
     double between_probe_start = clamp_start(0.5 * (min_allowed_start + middle_probe_start));
 
     auto recompute_probe_scores = [&]() {
-        consensus_bpm = consensus_from_probes(probes);
+        consensus_bpm = sparse_consensus_from_probes(probes,
+                                                     original_config.min_bpm,
+                                                     original_config.max_bpm);
         have_consensus = consensus_bpm > 0.0;
 
-        probe_mode_errors.assign(probes.size(), 1.0);
-        for (std::size_t i = 0; i < probes.size(); ++i) {
-            if (!have_consensus) {
-                probe_mode_errors[i] = 0.0;
-                continue;
-            }
-            const auto modes = expand_modes(probes[i].bpm, probes[i].conf);
-            double mode_error = 1.0;
-            for (const auto& m : modes) {
-                mode_error = std::min(mode_error, relative_diff(consensus_bpm, m.bpm) * m.penalty);
-            }
-            probe_mode_errors[i] = mode_error;
-        }
+        probe_mode_errors = sparse_probe_mode_errors(probes,
+                                                     consensus_bpm,
+                                                     original_config.min_bpm,
+                                                     original_config.max_bpm);
 
         const auto probe_extents = probe_start_extents();
         left_probe_start = probe_extents.first;
@@ -470,7 +197,10 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
         probe_middle_metrics.assign(probes.size(), SparseWindowPhaseMetrics{});
         for (std::size_t i = 0; i < probes.size(); ++i) {
             const double bpm_hint = have_consensus ? consensus_bpm : probes[i].bpm;
-            probe_intro_metrics[i] = measure_intro_phase(probes[i].analysis, bpm_hint);
+            probe_intro_metrics[i] = sparse_measure_intro_phase(probes[i].analysis,
+                                                                bpm_hint,
+                                                                sample_rate_,
+                                                                provider);
             probe_middle_metrics[i] = measure_sparse_window_phase(probes[i].analysis,
                                                                   bpm_hint,
                                                                   middle_probe_start,
@@ -483,69 +213,9 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
     recompute_probe_scores();
 
     const double anchor_start = left_anchor_start;
-    auto decide_unified = [&]() {
-        DecisionOutcome decision;
-        decision.mode = "unified";
-        double second_best = std::numeric_limits<double>::infinity();
-        for (std::size_t i = 0; i < probes.size(); ++i) {
-            const auto& intro = probe_intro_metrics[i];
-            const double tempo_term = probe_mode_errors[i];
-            const double phase_term =
-                std::isfinite(intro.median_abs_ms) ? (intro.median_abs_ms / 120.0) : 2.0;
-            const double stability_term =
-                std::isfinite(intro.odd_even_gap_ms) ? (intro.odd_even_gap_ms / 220.0) : 1.0;
-            const double confidence_term = 1.0 - std::min(1.0, std::max(0.0, probes[i].conf));
-            const double score =
-                (2.4 * tempo_term) +
-                (1.2 * phase_term) +
-                (0.9 * stability_term) +
-                (0.5 * confidence_term);
-            if (score < decision.selected_score) {
-                second_best = decision.selected_score;
-                decision.selected_score = score;
-                decision.selected_index = i;
-            } else if (score < second_best) {
-                second_best = score;
-            }
-        }
-        decision.score_margin = std::isfinite(second_best)
-            ? std::max(0.0, second_best - decision.selected_score)
-            : 0.0;
-        const auto& intro = probe_intro_metrics[decision.selected_index];
-        const bool severe_intro_miss =
-            std::isfinite(intro.median_abs_ms) && intro.median_abs_ms > 220.0;
-        const bool intro_miss_with_weak_conf =
-            std::isfinite(intro.median_abs_ms) &&
-            intro.median_abs_ms > 170.0 &&
-            probes[decision.selected_index].conf < 0.80;
-        decision.low_confidence =
-            (probes[decision.selected_index].conf < 0.55) ||
-            (probe_mode_errors[decision.selected_index] > 0.03) ||
-            severe_intro_miss ||
-            intro_miss_with_weak_conf ||
-            (std::isfinite(intro.odd_even_gap_ms) && intro.odd_even_gap_ms > 220.0);
-        return decision;
-    };
-    auto evaluate_window_phase_gate = [&](const SparseWindowPhaseMetrics& metrics,
-                                          double bpm_hint) -> WindowPhaseGate {
-        WindowPhaseGate gate;
-        gate.has_data = metrics.count >= 10 &&
-                        std::isfinite(metrics.median_ms) &&
-                        std::isfinite(metrics.median_abs_ms);
-        if (!gate.has_data) {
-            return gate;
-        }
-        gate.beat_ms = bpm_hint > 0.0 ? (60000.0 / bpm_hint) : 500.0;
-        gate.signed_limit_ms = sparse_signed_phase_limit_ms(bpm_hint);
-        gate.abs_limit_ms = sparse_abs_phase_limit_ms(bpm_hint);
-        gate.signed_exceeds = std::fabs(metrics.median_ms) > gate.signed_limit_ms;
-        gate.abs_exceeds = metrics.median_abs_ms > gate.abs_limit_ms;
-        gate.unstable_and = gate.signed_exceeds && gate.abs_exceeds;
-        gate.unstable_or = gate.signed_exceeds || gate.abs_exceeds;
-        return gate;
-    };
-
-    DecisionOutcome decision = decide_unified();
+    DecisionOutcome decision = sparse_decide_unified(probes,
+                                                     probe_mode_errors,
+                                                     probe_intro_metrics);
     std::size_t selected_index = decision.selected_index;
     double selected_score = decision.selected_score;
     double score_margin = decision.score_margin;
@@ -569,14 +239,16 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
     auto refresh_selected_window_diagnostics = [&]() {
         const double selected_bpm_hint = have_consensus ? consensus_bpm : probes[selected_index].bpm;
         selected_middle_metrics = probe_middle_metrics[selected_index];
-        selected_middle_gate = evaluate_window_phase_gate(selected_middle_metrics, selected_bpm_hint);
+        selected_middle_gate =
+            sparse_evaluate_window_phase_gate(selected_middle_metrics, selected_bpm_hint);
         selected_between_metrics = measure_sparse_window_phase(probes[selected_index].analysis,
                                                                selected_bpm_hint,
                                                                between_probe_start,
                                                                probe_duration,
                                                                sample_rate_,
                                                                provider);
-        selected_between_gate = evaluate_window_phase_gate(selected_between_metrics, selected_bpm_hint);
+        selected_between_gate =
+            sparse_evaluate_window_phase_gate(selected_between_metrics, selected_bpm_hint);
         selected_left_window_metrics = measure_sparse_window_phase(probes[selected_index].analysis,
                                                                    selected_bpm_hint,
                                                                    left_probe_start,
@@ -589,9 +261,9 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
                                                                     probe_duration,
                                                                     sample_rate_,
                                                                     provider);
-        selected_left_gate = evaluate_window_phase_gate(
+        selected_left_gate = sparse_evaluate_window_phase_gate(
             selected_left_window_metrics, selected_bpm_hint);
-        selected_right_gate = evaluate_window_phase_gate(
+        selected_right_gate = sparse_evaluate_window_phase_gate(
             selected_right_window_metrics, selected_bpm_hint);
     };
 
@@ -632,7 +304,7 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
         if (middle_gate_triggered || consistency_gate_triggered) {
             push_unique_probe(run_probe_result(between_probe_start));
             recompute_probe_scores();
-            decision = decide_unified();
+            decision = sparse_decide_unified(probes, probe_mode_errors, probe_intro_metrics);
             selected_index = decision.selected_index;
             selected_score = decision.selected_score;
             score_margin = decision.score_margin;
