@@ -6,6 +6,7 @@
 //
 
 #include "beatit/stream_sparse.h"
+#include "beatit/stream_sparse_waveform.h"
 
 #include <algorithm>
 #include <cmath>
@@ -137,9 +138,7 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
     };
 
     auto probe_beat_count = [](const AnalysisResult& r) -> std::size_t {
-        const auto& beats = !r.coreml_beat_projected_sample_frames.empty()
-            ? r.coreml_beat_projected_sample_frames
-            : r.coreml_beat_sample_frames;
+        const auto& beats = sparse_select_beats(r);
         return beats.size();
     };
     auto estimate_intro_phase_abs_ms =
@@ -147,9 +146,7 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
         if (sample_rate_ <= 0.0 || bpm_hint <= 0.0 || !provider) {
             return std::numeric_limits<double>::infinity();
         }
-        const auto& beats = !r.coreml_beat_projected_sample_frames.empty()
-            ? r.coreml_beat_projected_sample_frames
-            : r.coreml_beat_sample_frames;
+        const auto& beats = sparse_select_beats(r);
         if (beats.size() < 12) {
             return std::numeric_limits<double>::infinity();
         }
@@ -159,53 +156,31 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
         const double intro_s = std::max(20.0, beat_period_s * static_cast<double>(probe_beats + 4));
 
         std::vector<float> intro_samples;
-        const std::size_t received = provider(0.0, intro_s, &intro_samples);
-        if (received == 0 || intro_samples.empty()) {
+        if (!sparse_load_samples(provider, 0.0, intro_s, &intro_samples)) {
             return std::numeric_limits<double>::infinity();
         }
-        if (intro_samples.size() > received) {
-            intro_samples.resize(received);
-        }
-        const std::size_t radius = static_cast<std::size_t>(
-            std::llround(sample_rate_ * beat_period_s * 0.6));
+        const std::size_t radius = sparse_waveform_radius(sample_rate_, bpm_hint);
         if (radius == 0) {
             return std::numeric_limits<double>::infinity();
         }
 
+        std::vector<double> signed_offsets_ms;
         std::vector<double> abs_offsets_ms;
         abs_offsets_ms.reserve(probe_beats);
-        for (std::size_t i = 0; i < probe_beats; ++i) {
-            const std::size_t beat_frame = static_cast<std::size_t>(
-                std::min<unsigned long long>(beats[i], intro_samples.size() - 1));
-            const std::size_t start = beat_frame > radius ? beat_frame - radius : 0;
-            const std::size_t end = std::min(intro_samples.size() - 1, beat_frame + radius);
-            if (end <= start + 2) {
-                continue;
-            }
-
-            std::size_t best_peak = beat_frame;
-            float best_value = 0.0f;
-            for (std::size_t p = start; p <= end; ++p) {
-                const float value = std::fabs(intro_samples[p]);
-                if (value > best_value) {
-                    best_value = value;
-                    best_peak = p;
-                }
-            }
-            if (best_value <= 0.0f) {
-                continue;
-            }
-
-            const double delta_frames = static_cast<double>(
-                static_cast<long long>(best_peak) - static_cast<long long>(beat_frame));
-            abs_offsets_ms.push_back(std::fabs((delta_frames * 1000.0) / sample_rate_));
-        }
+        sparse_collect_offsets(beats,
+                               0,
+                               probe_beats,
+                               0,
+                               intro_samples,
+                               radius,
+                               SparsePeakMode::AbsoluteMax,
+                               sample_rate_,
+                               &signed_offsets_ms,
+                               &abs_offsets_ms);
         if (abs_offsets_ms.size() < 8) {
             return std::numeric_limits<double>::infinity();
         }
-        auto mid = abs_offsets_ms.begin() + static_cast<long>(abs_offsets_ms.size() / 2);
-        std::nth_element(abs_offsets_ms.begin(), mid, abs_offsets_ms.end());
-        return *mid;
+        return sparse_median_inplace(&abs_offsets_ms);
     };
     auto run_probe_result = [&](double start_s) {
         ProbeResult p;
@@ -358,9 +333,7 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
         if (sample_rate_ <= 0.0 || bpm_hint <= 0.0 || !provider) {
             return metrics;
         }
-        const auto& beats = !r.coreml_beat_projected_sample_frames.empty()
-            ? r.coreml_beat_projected_sample_frames
-            : r.coreml_beat_sample_frames;
+        const auto& beats = sparse_select_beats(r);
         if (beats.size() < 12) {
             return metrics;
         }
@@ -370,16 +343,10 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
         const double intro_s = std::max(20.0, beat_period_s * static_cast<double>(probe_beats + 4));
 
         std::vector<float> intro_samples;
-        const std::size_t received = provider(0.0, intro_s, &intro_samples);
-        if (received == 0 || intro_samples.empty()) {
+        if (!sparse_load_samples(provider, 0.0, intro_s, &intro_samples)) {
             return metrics;
         }
-        if (intro_samples.size() > received) {
-            intro_samples.resize(received);
-        }
-
-        const std::size_t radius = static_cast<std::size_t>(
-            std::llround(sample_rate_ * beat_period_s * 0.6));
+        const std::size_t radius = sparse_waveform_radius(sample_rate_, bpm_hint);
         if (radius == 0) {
             return metrics;
         }
@@ -388,60 +355,22 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
         std::vector<double> abs_offsets_ms;
         signed_offsets_ms.reserve(probe_beats);
         abs_offsets_ms.reserve(probe_beats);
-        for (std::size_t i = 0; i < probe_beats; ++i) {
-            const std::size_t beat_frame = static_cast<std::size_t>(
-                std::min<unsigned long long>(beats[i], intro_samples.size() - 1));
-            const std::size_t start = beat_frame > radius ? beat_frame - radius : 0;
-            const std::size_t end = std::min(intro_samples.size() - 1, beat_frame + radius);
-            if (end <= start + 2) {
-                continue;
-            }
-
-            float window_max = 0.0f;
-            for (std::size_t p = start; p <= end; ++p) {
-                window_max = std::max(window_max, std::fabs(intro_samples[p]));
-            }
-            const float threshold = window_max * 0.6f;
-
-            std::size_t best_peak = beat_frame;
-            float best_value = 0.0f;
-            for (std::size_t p = start + 1; p < end; ++p) {
-                const float left = std::fabs(intro_samples[p - 1]);
-                const float value = std::fabs(intro_samples[p]);
-                const float right = std::fabs(intro_samples[p + 1]);
-                if (value < threshold) {
-                    continue;
-                }
-                if (value >= left && value > right && value > best_value) {
-                    best_value = value;
-                    best_peak = p;
-                }
-            }
-            if (best_value <= 0.0f) {
-                float max_value = 0.0f;
-                for (std::size_t p = start; p <= end; ++p) {
-                    const float value = std::fabs(intro_samples[p]);
-                    if (value > max_value) {
-                        max_value = value;
-                        best_peak = p;
-                    }
-                }
-            }
-
-            const double delta_frames = static_cast<double>(
-                static_cast<long long>(best_peak) - static_cast<long long>(beat_frame));
-            const double offset_ms = (delta_frames * 1000.0) / sample_rate_;
-            signed_offsets_ms.push_back(offset_ms);
-            abs_offsets_ms.push_back(std::fabs(offset_ms));
-        }
+        sparse_collect_offsets(beats,
+                               0,
+                               probe_beats,
+                               0,
+                               intro_samples,
+                               radius,
+                               SparsePeakMode::ThresholdedLocalMax,
+                               sample_rate_,
+                               &signed_offsets_ms,
+                               &abs_offsets_ms);
 
         if (abs_offsets_ms.size() < 8) {
             return metrics;
         }
         metrics.count = abs_offsets_ms.size();
-        auto mid = abs_offsets_ms.begin() + static_cast<long>(abs_offsets_ms.size() / 2);
-        std::nth_element(abs_offsets_ms.begin(), mid, abs_offsets_ms.end());
-        metrics.median_abs_ms = *mid;
+        metrics.median_abs_ms = sparse_median_inplace(&abs_offsets_ms);
 
         std::vector<double> odd;
         std::vector<double> even;
@@ -454,16 +383,9 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
                 odd.push_back(signed_offsets_ms[i]);
             }
         }
-        auto median_inplace = [](std::vector<double>& values) -> double {
-            if (values.empty()) {
-                return 0.0;
-            }
-            auto m = values.begin() + static_cast<long>(values.size() / 2);
-            std::nth_element(values.begin(), m, values.end());
-            return *m;
-        };
         if (!odd.empty() && !even.empty()) {
-            metrics.odd_even_gap_ms = std::fabs(median_inplace(even) - median_inplace(odd));
+            metrics.odd_even_gap_ms = std::fabs(
+                sparse_median_inplace(&even) - sparse_median_inplace(&odd));
         } else {
             metrics.odd_even_gap_ms = 0.0;
         }
@@ -474,6 +396,10 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
         double median_ms = std::numeric_limits<double>::infinity();
         double median_abs_ms = std::numeric_limits<double>::infinity();
         double odd_even_gap_ms = std::numeric_limits<double>::infinity();
+        double abs_p90_ms = std::numeric_limits<double>::infinity();
+        double abs_p95_ms = std::numeric_limits<double>::infinity();
+        double abs_limit_exceed_ratio = std::numeric_limits<double>::infinity();
+        double signed_limit_exceed_ratio = std::numeric_limits<double>::infinity();
         std::size_t count = 0;
     };
     auto measure_window_phase = [&](const AnalysisResult& r,
@@ -483,9 +409,7 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
         if (sample_rate_ <= 0.0 || bpm_hint <= 0.0 || !provider) {
             return metrics;
         }
-        const auto& beats = !r.coreml_beat_projected_sample_frames.empty()
-            ? r.coreml_beat_projected_sample_frames
-            : r.coreml_beat_sample_frames;
+        const auto& beats = sparse_select_beats(r);
         if (beats.size() < 12) {
             return metrics;
         }
@@ -500,8 +424,7 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
             return metrics;
         }
 
-        const std::size_t radius = static_cast<std::size_t>(
-            std::llround(sample_rate_ * (60.0 / bpm_hint) * 0.6));
+        const std::size_t radius = sparse_waveform_radius(sample_rate_, bpm_hint);
         if (radius == 0) {
             return metrics;
         }
@@ -516,89 +439,68 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
             static_cast<double>(std::max<std::size_t>(1, segment_end - segment_start)) / sample_rate_;
 
         std::vector<float> samples;
-        const std::size_t received = provider(segment_start_s, segment_duration_s, &samples);
-        if (received == 0 || samples.empty()) {
+        if (!sparse_load_samples(provider, segment_start_s, segment_duration_s, &samples)) {
             return metrics;
-        }
-        if (samples.size() > received) {
-            samples.resize(received);
         }
 
         std::vector<double> signed_offsets_ms;
         std::vector<double> abs_offsets_ms;
         signed_offsets_ms.reserve(static_cast<std::size_t>(std::distance(begin_it, end_it)));
         abs_offsets_ms.reserve(static_cast<std::size_t>(std::distance(begin_it, end_it)));
-
-        for (auto it = begin_it; it != end_it; ++it) {
-            const std::size_t beat_frame = static_cast<std::size_t>(*it);
-            if (beat_frame < segment_start) {
-                continue;
-            }
-            const std::size_t local_center =
-                std::min<std::size_t>(samples.size() - 1, beat_frame - segment_start);
-            const std::size_t start = local_center > radius ? local_center - radius : 0;
-            const std::size_t end = std::min(samples.size() - 1, local_center + radius);
-            if (end <= start + 2) {
-                continue;
-            }
-
-            float window_max = 0.0f;
-            for (std::size_t p = start; p <= end; ++p) {
-                window_max = std::max(window_max, std::fabs(samples[p]));
-            }
-            const float threshold = window_max * 0.6f;
-
-            std::size_t best_peak = local_center;
-            float best_value = 0.0f;
-            for (std::size_t p = start + 1; p < end; ++p) {
-                const float left = std::fabs(samples[p - 1]);
-                const float value = std::fabs(samples[p]);
-                const float right = std::fabs(samples[p + 1]);
-                if (value < threshold) {
-                    continue;
-                }
-                if (value >= left && value > right && value > best_value) {
-                    best_value = value;
-                    best_peak = p;
-                }
-            }
-            if (best_value <= 0.0f) {
-                float max_value = 0.0f;
-                for (std::size_t p = start; p <= end; ++p) {
-                    const float value = std::fabs(samples[p]);
-                    if (value > max_value) {
-                        max_value = value;
-                        best_peak = p;
-                    }
-                }
-            }
-
-            const double delta_frames = static_cast<double>(
-                static_cast<long long>(best_peak) - static_cast<long long>(local_center));
-            const double offset_ms = (delta_frames * 1000.0) / sample_rate_;
-            signed_offsets_ms.push_back(offset_ms);
-            abs_offsets_ms.push_back(std::fabs(offset_ms));
-        }
+        const std::size_t begin_idx =
+            static_cast<std::size_t>(std::distance(beats.begin(), begin_it));
+        const std::size_t end_idx =
+            static_cast<std::size_t>(std::distance(beats.begin(), end_it));
+        sparse_collect_offsets(beats,
+                               begin_idx,
+                               end_idx,
+                               segment_start,
+                               samples,
+                               radius,
+                               SparsePeakMode::ThresholdedLocalMax,
+                               sample_rate_,
+                               &signed_offsets_ms,
+                               &abs_offsets_ms);
 
         if (abs_offsets_ms.size() < 8) {
             return metrics;
         }
         metrics.count = abs_offsets_ms.size();
-        auto signed_mid = signed_offsets_ms.begin() + static_cast<long>(signed_offsets_ms.size() / 2);
-        std::nth_element(signed_offsets_ms.begin(), signed_mid, signed_offsets_ms.end());
-        metrics.median_ms = *signed_mid;
-        auto abs_mid = abs_offsets_ms.begin() + static_cast<long>(abs_offsets_ms.size() / 2);
-        std::nth_element(abs_offsets_ms.begin(), abs_mid, abs_offsets_ms.end());
-        metrics.median_abs_ms = *abs_mid;
-
-        auto median_inplace = [](std::vector<double>& values) -> double {
-            if (values.empty()) {
-                return 0.0;
+        metrics.median_ms = sparse_median_inplace(&signed_offsets_ms);
+        metrics.median_abs_ms = sparse_median_inplace(&abs_offsets_ms);
+        const double beat_ms = bpm_hint > 0.0 ? (60000.0 / bpm_hint) : 500.0;
+        const double signed_limit_ms = std::max(30.0, beat_ms * 0.12);
+        const double abs_limit_ms = std::max(45.0, beat_ms * 0.18);
+        std::size_t abs_exceed_count = 0;
+        std::size_t signed_exceed_count = 0;
+        for (double v : abs_offsets_ms) {
+            if (v > abs_limit_ms) {
+                ++abs_exceed_count;
             }
-            auto m = values.begin() + static_cast<long>(values.size() / 2);
-            std::nth_element(values.begin(), m, values.end());
-            return *m;
+        }
+        for (double v : signed_offsets_ms) {
+            if (std::fabs(v) > signed_limit_ms) {
+                ++signed_exceed_count;
+            }
+        }
+        metrics.abs_limit_exceed_ratio =
+            static_cast<double>(abs_exceed_count) / static_cast<double>(abs_offsets_ms.size());
+        metrics.signed_limit_exceed_ratio =
+            static_cast<double>(signed_exceed_count) / static_cast<double>(signed_offsets_ms.size());
+        auto quantile = [](std::vector<double> values, double q) {
+            if (values.empty()) {
+                return std::numeric_limits<double>::infinity();
+            }
+            q = std::clamp(q, 0.0, 1.0);
+            const std::size_t index = static_cast<std::size_t>(
+                std::llround(q * static_cast<double>(values.size() - 1)));
+            std::nth_element(values.begin(),
+                             values.begin() + static_cast<long>(index),
+                             values.end());
+            return values[index];
         };
+        metrics.abs_p90_ms = quantile(abs_offsets_ms, 0.90);
+        metrics.abs_p95_ms = quantile(abs_offsets_ms, 0.95);
 
         std::vector<double> odd;
         std::vector<double> even;
@@ -612,7 +514,8 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
             }
         }
         if (!odd.empty() && !even.empty()) {
-            metrics.odd_even_gap_ms = std::fabs(median_inplace(even) - median_inplace(odd));
+            metrics.odd_even_gap_ms = std::fabs(
+                sparse_median_inplace(&even) - sparse_median_inplace(&odd));
         } else {
             metrics.odd_even_gap_ms = 0.0;
         }
@@ -652,6 +555,8 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
     std::vector<double> probe_mode_errors;
     std::vector<IntroPhaseMetrics> probe_intro_metrics;
     std::vector<WindowPhaseMetrics> probe_middle_metrics;
+    double left_probe_start = min_allowed_start;
+    double right_probe_start = max_allowed_start;
     double middle_probe_start = clamp_start(total * 0.5 - probe_duration * 0.5);
     double between_probe_start = clamp_start(0.5 * (min_allowed_start + middle_probe_start));
 
@@ -674,6 +579,8 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
         }
 
         const auto probe_extents = probe_start_extents();
+        left_probe_start = probe_extents.first;
+        right_probe_start = probe_extents.second;
         middle_probe_start = clamp_start(0.5 * (probe_extents.first + probe_extents.second));
         between_probe_start = clamp_start(0.5 * (probe_extents.first + middle_probe_start));
 
@@ -741,19 +648,34 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
             (std::isfinite(intro.odd_even_gap_ms) && intro.odd_even_gap_ms > 220.0);
         return out;
     };
-    auto window_phase_unstable = [&](const WindowPhaseMetrics& metrics, double bpm_hint) {
-        if (metrics.count < 10 ||
-            !std::isfinite(metrics.median_ms) ||
-            !std::isfinite(metrics.median_abs_ms)) {
-            return false;
-        }
-        const double beat_ms = bpm_hint > 0.0 ? (60000.0 / bpm_hint) : 500.0;
-        const double signed_limit = std::max(30.0, beat_ms * 0.12);
-        const double abs_limit = std::max(45.0, beat_ms * 0.18);
-        return (std::fabs(metrics.median_ms) > signed_limit) &&
-               (metrics.median_abs_ms > abs_limit);
+    struct WindowPhaseGate {
+        bool has_data = false;
+        double beat_ms = 0.0;
+        double signed_limit_ms = 0.0;
+        double abs_limit_ms = 0.0;
+        bool signed_exceeds = false;
+        bool abs_exceeds = false;
+        bool unstable_and = false;
+        bool unstable_or = false;
     };
-
+    auto evaluate_window_phase_gate = [&](const WindowPhaseMetrics& metrics,
+                                          double bpm_hint) -> WindowPhaseGate {
+        WindowPhaseGate gate;
+        gate.has_data = metrics.count >= 10 &&
+                        std::isfinite(metrics.median_ms) &&
+                        std::isfinite(metrics.median_abs_ms);
+        if (!gate.has_data) {
+            return gate;
+        }
+        gate.beat_ms = bpm_hint > 0.0 ? (60000.0 / bpm_hint) : 500.0;
+        gate.signed_limit_ms = std::max(30.0, gate.beat_ms * 0.12);
+        gate.abs_limit_ms = std::max(45.0, gate.beat_ms * 0.18);
+        gate.signed_exceeds = std::fabs(metrics.median_ms) > gate.signed_limit_ms;
+        gate.abs_exceeds = metrics.median_abs_ms > gate.abs_limit_ms;
+        gate.unstable_and = gate.signed_exceeds && gate.abs_exceeds;
+        gate.unstable_or = gate.signed_exceeds || gate.abs_exceeds;
+        return gate;
+    };
     DecisionOutcome decision = decide_unified();
     std::size_t selected_index = decision.selected_index;
     double selected_score = decision.selected_score;
@@ -761,11 +683,70 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
     bool low_confidence = decision.low_confidence;
     IntroPhaseMetrics selected_intro_metrics = probe_intro_metrics[selected_index];
     WindowPhaseMetrics selected_middle_metrics = probe_middle_metrics[selected_index];
+    WindowPhaseMetrics selected_between_metrics;
+    WindowPhaseMetrics selected_left_window_metrics;
+    WindowPhaseMetrics selected_right_window_metrics;
+    WindowPhaseGate selected_middle_gate;
+    WindowPhaseGate selected_between_gate;
+    WindowPhaseGate selected_left_gate;
+    WindowPhaseGate selected_right_gate;
+    bool middle_gate_triggered = false;
+    bool consistency_gate_triggered = false;
+    bool consistency_edges_calm = false;
+    bool consistency_between_hot = false;
+    bool consistency_middle_hot = false;
     bool interior_probe_added = false;
 
-    if (probes.size() == 2) {
+    auto refresh_selected_window_diagnostics = [&]() {
         const double selected_bpm_hint = have_consensus ? consensus_bpm : probes[selected_index].bpm;
-        if (window_phase_unstable(selected_middle_metrics, selected_bpm_hint)) {
+        selected_middle_metrics = probe_middle_metrics[selected_index];
+        selected_middle_gate = evaluate_window_phase_gate(selected_middle_metrics, selected_bpm_hint);
+        selected_between_metrics = measure_window_phase(
+            probes[selected_index].analysis, selected_bpm_hint, between_probe_start);
+        selected_between_gate = evaluate_window_phase_gate(selected_between_metrics, selected_bpm_hint);
+        selected_left_window_metrics = measure_window_phase(
+            probes[selected_index].analysis, selected_bpm_hint, left_probe_start);
+        selected_right_window_metrics = measure_window_phase(
+            probes[selected_index].analysis, selected_bpm_hint, right_probe_start);
+        selected_left_gate = evaluate_window_phase_gate(
+            selected_left_window_metrics, selected_bpm_hint);
+        selected_right_gate = evaluate_window_phase_gate(
+            selected_right_window_metrics, selected_bpm_hint);
+    };
+
+    auto evaluate_consistency_gate = [&]() {
+        constexpr double kHotAbsRatio = 0.75;
+        constexpr double kHotSignedRatio = 0.85;
+        constexpr double kCalmAbsRatio = 0.20;
+        constexpr double kCalmSignedRatio = 0.25;
+
+        const auto window_hot = [&](const WindowPhaseMetrics& metrics, const WindowPhaseGate& gate) {
+            return gate.has_data &&
+                   std::isfinite(metrics.abs_limit_exceed_ratio) &&
+                   std::isfinite(metrics.signed_limit_exceed_ratio) &&
+                   metrics.abs_limit_exceed_ratio >= kHotAbsRatio &&
+                   metrics.signed_limit_exceed_ratio >= kHotSignedRatio;
+        };
+        const auto window_calm = [&](const WindowPhaseMetrics& metrics, const WindowPhaseGate& gate) {
+            return gate.has_data &&
+                   std::isfinite(metrics.abs_limit_exceed_ratio) &&
+                   std::isfinite(metrics.signed_limit_exceed_ratio) &&
+                   metrics.abs_limit_exceed_ratio <= kCalmAbsRatio &&
+                   metrics.signed_limit_exceed_ratio <= kCalmSignedRatio;
+        };
+
+        consistency_between_hot = window_hot(selected_between_metrics, selected_between_gate);
+        consistency_middle_hot = window_hot(selected_middle_metrics, selected_middle_gate);
+        consistency_edges_calm = window_calm(selected_left_window_metrics, selected_left_gate) &&
+                                 window_calm(selected_right_window_metrics, selected_right_gate);
+        return consistency_edges_calm && (consistency_between_hot || consistency_middle_hot);
+    };
+
+    if (probes.size() == 2) {
+        refresh_selected_window_diagnostics();
+        middle_gate_triggered = selected_middle_gate.unstable_and;
+        consistency_gate_triggered = evaluate_consistency_gate();
+        if (middle_gate_triggered || consistency_gate_triggered) {
             push_unique_probe(run_probe_result(between_probe_start));
             recompute_probe_scores();
             decision = decide_unified();
@@ -774,9 +755,16 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
             score_margin = decision.score_margin;
             low_confidence = decision.low_confidence;
             selected_intro_metrics = probe_intro_metrics[selected_index];
-            selected_middle_metrics = probe_middle_metrics[selected_index];
+            refresh_selected_window_diagnostics();
+            middle_gate_triggered = selected_middle_gate.unstable_and;
+            consistency_gate_triggered = evaluate_consistency_gate();
             interior_probe_added = true;
         }
+    }
+    if (original_config.verbose) {
+        refresh_selected_window_diagnostics();
+        middle_gate_triggered = selected_middle_gate.unstable_and;
+        consistency_gate_triggered = evaluate_consistency_gate();
     }
 
     // Sparse mode returns directly from the best probe to avoid an extra anchor pass.
@@ -818,14 +806,6 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
         std::nth_element(diffs.begin(), mid, diffs.end());
         return *mid;
     };
-    auto median_value = [](std::vector<double>& values) -> double {
-        if (values.empty()) {
-            return 0.0;
-        }
-        auto mid = values.begin() + static_cast<long>(values.size() / 2);
-        std::nth_element(values.begin(), mid, values.end());
-        return *mid;
-    };
     struct EdgeOffsetMetrics {
         double median_ms = std::numeric_limits<double>::infinity();
         double mad_ms = std::numeric_limits<double>::infinity();
@@ -854,8 +834,7 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
             return metrics;
         }
 
-        const std::size_t radius = static_cast<std::size_t>(
-            std::llround(sample_rate_ * (60.0 / bpm_hint) * 0.6));
+        const std::size_t radius = sparse_waveform_radius(sample_rate_, bpm_hint);
         if (radius == 0) {
             return metrics;
         }
@@ -869,76 +848,33 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
             static_cast<double>(std::max<std::size_t>(1, segment_end - segment_start)) / sample_rate_;
 
         std::vector<float> samples;
-        const std::size_t received = provider(segment_start_s, segment_duration_s, &samples);
-        if (received == 0 || samples.empty()) {
+        if (!sparse_load_samples(provider, segment_start_s, segment_duration_s, &samples)) {
             return metrics;
-        }
-        if (samples.size() > received) {
-            samples.resize(received);
         }
 
         std::vector<double> offsets_ms;
         offsets_ms.reserve(edge_beats.size());
-        for (unsigned long long beat_frame_ull : edge_beats) {
-            const std::size_t beat_frame = static_cast<std::size_t>(beat_frame_ull);
-            if (beat_frame < segment_start) {
-                continue;
-            }
-            const std::size_t local_center =
-                std::min<std::size_t>(samples.size() - 1, beat_frame - segment_start);
-            const std::size_t start = local_center > radius ? local_center - radius : 0;
-            const std::size_t end = std::min(samples.size() - 1, local_center + radius);
-            if (end <= start + 2) {
-                continue;
-            }
-
-            float window_max = 0.0f;
-            for (std::size_t i = start; i <= end; ++i) {
-                window_max = std::max(window_max, std::fabs(samples[i]));
-            }
-            const float threshold = window_max * 0.6f;
-
-            std::size_t best_peak = local_center;
-            float best_value = 0.0f;
-            for (std::size_t i = start + 1; i < end; ++i) {
-                const float left = std::fabs(samples[i - 1]);
-                const float value = std::fabs(samples[i]);
-                const float right = std::fabs(samples[i + 1]);
-                if (value < threshold) {
-                    continue;
-                }
-                if (value >= left && value > right && value > best_value) {
-                    best_value = value;
-                    best_peak = i;
-                }
-            }
-            if (best_value <= 0.0f) {
-                float max_value = 0.0f;
-                for (std::size_t i = start; i <= end; ++i) {
-                    const float value = std::fabs(samples[i]);
-                    if (value > max_value) {
-                        max_value = value;
-                        best_peak = i;
-                    }
-                }
-            }
-
-            const double delta_frames = static_cast<double>(
-                static_cast<long long>(best_peak) - static_cast<long long>(local_center));
-            offsets_ms.push_back((delta_frames * 1000.0) / sample_rate_);
-        }
+        sparse_collect_offsets(edge_beats,
+                               0,
+                               edge_beats.size(),
+                               segment_start,
+                               samples,
+                               radius,
+                               SparsePeakMode::ThresholdedLocalMax,
+                               sample_rate_,
+                               &offsets_ms,
+                               nullptr);
         if (offsets_ms.size() < 8) {
             return metrics;
         }
         metrics.count = offsets_ms.size();
-        std::vector<double> med_buf = offsets_ms;
-        metrics.median_ms = median_value(med_buf);
+        metrics.median_ms = sparse_median_inplace(&offsets_ms);
         std::vector<double> abs_dev;
         abs_dev.reserve(offsets_ms.size());
         for (double v : offsets_ms) {
             abs_dev.push_back(std::fabs(v - metrics.median_ms));
         }
-        metrics.mad_ms = median_value(abs_dev);
+        metrics.mad_ms = sparse_median_inplace(&abs_dev);
         return metrics;
     };
     auto apply_bounded_grid_refit = [&](AnalysisResult* r) {
@@ -979,8 +915,8 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
         }
         std::vector<double> head(errors.begin(), errors.begin() + static_cast<long>(edge));
         std::vector<double> tail(errors.end() - static_cast<long>(edge), errors.end());
-        const double head_med = median_value(head);
-        const double tail_med = median_value(tail);
+        const double head_med = sparse_median_inplace(&head);
+        const double tail_med = sparse_median_inplace(&tail);
         const double err_delta = tail_med - head_med;
         const double beats_span = static_cast<double>(projected.size() - 1);
         if (!(beats_span > 0.0)) {
@@ -1065,7 +1001,7 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
             if (diffs.size() < 4) {
                 return median_diff(beats);
             }
-            return median_value(diffs);
+            return sparse_median_inplace(&diffs);
         };
 
         std::vector<AnchorObservation> anchors;
@@ -1200,6 +1136,7 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
         if (!projected || projected->size() < 64) {
             return;
         }
+        const std::vector<unsigned long long> projected_before_refit = *projected;
 
         const double bpm_hint = r->estimated_bpm > 0.0f
             ? static_cast<double>(r->estimated_bpm)
@@ -1207,6 +1144,19 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
         if (!(bpm_hint > 0.0)) {
             return;
         }
+
+        auto measure_middle_windows = [&](const std::vector<unsigned long long>& beats) {
+            WindowPhaseMetrics between_metrics;
+            WindowPhaseMetrics middle_metrics;
+            if (beats.size() < 32) {
+                return std::pair<WindowPhaseMetrics, WindowPhaseMetrics>{between_metrics, middle_metrics};
+            }
+            AnalysisResult tmp;
+            tmp.coreml_beat_projected_sample_frames = beats;
+            between_metrics = measure_window_phase(tmp, bpm_hint, between_probe_start);
+            middle_metrics = measure_window_phase(tmp, bpm_hint, middle_probe_start);
+            return std::pair<WindowPhaseMetrics, WindowPhaseMetrics>{between_metrics, middle_metrics};
+        };
 
         std::size_t first_probe_index = 0;
         std::size_t last_probe_index = 0;
@@ -1531,6 +1481,146 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
             }
         }
 
+        struct PhaseScoreSummary {
+            bool valid = false;
+            double score = std::numeric_limits<double>::infinity();
+            double global_delta_ms = std::numeric_limits<double>::infinity();
+            double intro_abs_ms = std::numeric_limits<double>::infinity();
+            double outro_abs_ms = std::numeric_limits<double>::infinity();
+            double between_abs_ms = std::numeric_limits<double>::infinity();
+            double middle_abs_ms = std::numeric_limits<double>::infinity();
+        };
+        auto score_phase_candidate = [&](const std::vector<unsigned long long>& beats)
+            -> PhaseScoreSummary {
+            PhaseScoreSummary out;
+            if (beats.size() < 64) {
+                return out;
+            }
+            const EdgeOffsetMetrics intro_m = measure_edge_offsets(beats, bpm_hint, false);
+            const EdgeOffsetMetrics outro_m = measure_edge_offsets(beats, bpm_hint, true);
+            const auto middle_pair = measure_middle_windows(beats);
+            if (intro_m.count < 8 || outro_m.count < 8 ||
+                middle_pair.first.count < 8 || middle_pair.second.count < 8) {
+                return out;
+            }
+            if (!std::isfinite(intro_m.median_ms) || !std::isfinite(outro_m.median_ms) ||
+                !std::isfinite(middle_pair.first.median_abs_ms) ||
+                !std::isfinite(middle_pair.second.median_abs_ms)) {
+                return out;
+            }
+
+            out.valid = true;
+            out.intro_abs_ms = std::abs(intro_m.median_ms);
+            out.outro_abs_ms = std::abs(outro_m.median_ms);
+            out.global_delta_ms = std::abs(outro_m.median_ms - intro_m.median_ms);
+            out.between_abs_ms = middle_pair.first.median_abs_ms;
+            out.middle_abs_ms = middle_pair.second.median_abs_ms;
+            // Emphasize interior consistency while keeping edge lock and phase alignment.
+            out.score = (0.60 * out.global_delta_ms) +
+                        (0.35 * (out.intro_abs_ms + out.outro_abs_ms)) +
+                        out.between_abs_ms +
+                        out.middle_abs_ms;
+            return out;
+        };
+
+        auto apply_ratio_candidate = [&](const std::vector<unsigned long long>& beats,
+                                         double ratio) {
+            std::vector<unsigned long long> candidate = beats;
+            if (candidate.size() < 2 || !(ratio > 0.0)) {
+                return candidate;
+            }
+            const long long anchor = static_cast<long long>(candidate.front());
+            for (std::size_t i = 0; i < candidate.size(); ++i) {
+                const long long current = static_cast<long long>(candidate[i]);
+                const double rel = static_cast<double>(current - anchor);
+                const long long adjusted =
+                    anchor + static_cast<long long>(std::llround(rel * ratio));
+                candidate[i] =
+                    static_cast<unsigned long long>(std::max<long long>(0, adjusted));
+            }
+            return candidate;
+        };
+
+        double phase_try_base_score = std::numeric_limits<double>::infinity();
+        double phase_try_minus_score = std::numeric_limits<double>::infinity();
+        double phase_try_plus_score = std::numeric_limits<double>::infinity();
+        int phase_try_selected = 0;
+        bool phase_try_applied = false;
+        {
+            const auto base_score = score_phase_candidate(*projected);
+            phase_try_base_score = base_score.score;
+            if (base_score.valid && projected->size() >= 128) {
+                const double intervals = static_cast<double>(projected->size() - 1);
+                const double minus_intervals = intervals - 1.0;  // -1 beat over full playtime.
+                const double plus_intervals = intervals + 1.0;   // +1 beat over full playtime.
+                const double minus_ratio =
+                    (minus_intervals > 0.0) ? (intervals / minus_intervals) : 1.0;
+                const double plus_ratio =
+                    (plus_intervals > 0.0) ? (intervals / plus_intervals) : 1.0;
+
+                const std::vector<unsigned long long> minus_candidate =
+                    apply_ratio_candidate(*projected, minus_ratio);
+                const std::vector<unsigned long long> plus_candidate =
+                    apply_ratio_candidate(*projected, plus_ratio);
+                const auto minus_score = score_phase_candidate(minus_candidate);
+                const auto plus_score = score_phase_candidate(plus_candidate);
+                phase_try_minus_score = minus_score.score;
+                phase_try_plus_score = plus_score.score;
+
+                double best_score = base_score.score;
+                std::vector<unsigned long long> best_beats = *projected;
+                int best_choice = 0;
+                if (minus_score.valid && minus_score.score < (best_score - 2.0)) {
+                    best_score = minus_score.score;
+                    best_beats = minus_candidate;
+                    best_choice = -1;
+                }
+                if (plus_score.valid && plus_score.score < (best_score - 2.0)) {
+                    best_score = plus_score.score;
+                    best_beats = plus_candidate;
+                    best_choice = 1;
+                }
+                if (best_choice != 0) {
+                    *projected = std::move(best_beats);
+                    phase_try_selected = best_choice;
+                    phase_try_applied = true;
+                }
+            }
+        }
+
+        const EdgeOffsetMetrics pre_global_intro =
+            measure_edge_offsets(projected_before_refit, bpm_hint, false);
+        const EdgeOffsetMetrics pre_global_outro =
+            measure_edge_offsets(projected_before_refit, bpm_hint, true);
+        const auto pre_middle_pair = measure_middle_windows(projected_before_refit);
+        const auto post_middle_pair = measure_middle_windows(*projected);
+        const double pre_global_delta_ms =
+            (pre_global_intro.count >= 8 && pre_global_outro.count >= 8 &&
+             std::isfinite(pre_global_intro.median_ms) && std::isfinite(pre_global_outro.median_ms))
+                ? std::abs(pre_global_outro.median_ms - pre_global_intro.median_ms)
+                : std::numeric_limits<double>::infinity();
+        const double post_global_delta_ms =
+            (global_intro.count >= 8 && global_outro.count >= 8 &&
+             std::isfinite(global_intro.median_ms) && std::isfinite(global_outro.median_ms))
+                ? std::abs(global_outro.median_ms - global_intro.median_ms)
+                : std::numeric_limits<double>::infinity();
+        const double pre_between_abs_ms = pre_middle_pair.first.median_abs_ms;
+        const double pre_middle_abs_ms = pre_middle_pair.second.median_abs_ms;
+        const double post_between_abs_ms = post_middle_pair.first.median_abs_ms;
+        const double post_middle_abs_ms = post_middle_pair.second.median_abs_ms;
+        const double pre_phase_score =
+            (std::isfinite(pre_global_delta_ms) &&
+             std::isfinite(pre_between_abs_ms) &&
+             std::isfinite(pre_middle_abs_ms))
+                ? ((0.40 * pre_global_delta_ms) + pre_between_abs_ms + pre_middle_abs_ms)
+                : std::numeric_limits<double>::infinity();
+        const double post_phase_score =
+            (std::isfinite(post_global_delta_ms) &&
+             std::isfinite(post_between_abs_ms) &&
+             std::isfinite(post_middle_abs_ms))
+                ? ((0.40 * post_global_delta_ms) + post_between_abs_ms + post_middle_abs_ms)
+                : std::numeric_limits<double>::infinity();
+
         if (original_config.verbose) {
             const double err_delta_frames =
                 ((outro.median_ms - intro.median_ms) * sample_rate_) / 1000.0;
@@ -1547,6 +1637,19 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
                       << " post_outro_ms=" << post_outro.median_ms
                       << " global_intro_ms=" << global_intro.median_ms
                       << " global_outro_ms=" << global_outro.median_ms
+                      << " pre_global_delta_ms=" << pre_global_delta_ms
+                      << " post_global_delta_ms=" << post_global_delta_ms
+                      << " pre_between_abs_ms=" << pre_between_abs_ms
+                      << " pre_middle_abs_ms=" << pre_middle_abs_ms
+                      << " post_between_abs_ms=" << post_between_abs_ms
+                      << " post_middle_abs_ms=" << post_middle_abs_ms
+                      << " pre_phase_score=" << pre_phase_score
+                      << " post_phase_score=" << post_phase_score
+                      << " phase_try_base_score=" << phase_try_base_score
+                      << " phase_try_minus_score=" << phase_try_minus_score
+                      << " phase_try_plus_score=" << phase_try_plus_score
+                      << " phase_try_selected=" << phase_try_selected
+                      << " phase_try_applied=" << (phase_try_applied ? 1 : 0)
                       << " global_ratio_applied=" << global_guard_ratio
                       << " delta_frames=" << err_delta_frames
                       << " ratio=" << ratio
@@ -1602,6 +1705,8 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
         }
         std::cerr << " consensus=" << consensus_bpm
                   << " anchor_start=" << anchor_start
+                  << " left_probe_start_s=" << left_probe_start
+                  << " right_probe_start_s=" << right_probe_start
                   << " decision=" << decision.mode
                   << " selected_start=" << probes[selected_index].start
                   << " selected_score=" << selected_score
@@ -1613,6 +1718,62 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
                   << " selected_middle_ms=" << selected_middle_metrics.median_ms
                   << " selected_middle_abs_ms=" << selected_middle_metrics.median_abs_ms
                   << " selected_middle_odd_even_gap_ms=" << selected_middle_metrics.odd_even_gap_ms
+                  << " selected_middle_abs_p90_ms=" << selected_middle_metrics.abs_p90_ms
+                  << " selected_middle_abs_p95_ms=" << selected_middle_metrics.abs_p95_ms
+                  << " selected_middle_abs_exceed_ratio=" << selected_middle_metrics.abs_limit_exceed_ratio
+                  << " selected_middle_signed_exceed_ratio="
+                  << selected_middle_metrics.signed_limit_exceed_ratio
+                  << " middle_gate_triggered=" << (middle_gate_triggered ? 1 : 0)
+                  << " consistency_gate_triggered=" << (consistency_gate_triggered ? 1 : 0)
+                  << " consistency_edges_calm=" << (consistency_edges_calm ? 1 : 0)
+                  << " consistency_between_hot=" << (consistency_between_hot ? 1 : 0)
+                  << " consistency_middle_hot=" << (consistency_middle_hot ? 1 : 0)
+                  << " middle_gate_has_data=" << (selected_middle_gate.has_data ? 1 : 0)
+                  << " middle_gate_signed_limit_ms=" << selected_middle_gate.signed_limit_ms
+                  << " middle_gate_abs_limit_ms=" << selected_middle_gate.abs_limit_ms
+                  << " middle_gate_signed_exceeds=" << (selected_middle_gate.signed_exceeds ? 1 : 0)
+                  << " middle_gate_abs_exceeds=" << (selected_middle_gate.abs_exceeds ? 1 : 0)
+                  << " middle_gate_and=" << (selected_middle_gate.unstable_and ? 1 : 0)
+                  << " middle_gate_or=" << (selected_middle_gate.unstable_or ? 1 : 0)
+                  << " selected_between_ms=" << selected_between_metrics.median_ms
+                  << " selected_between_abs_ms=" << selected_between_metrics.median_abs_ms
+                  << " selected_between_odd_even_gap_ms=" << selected_between_metrics.odd_even_gap_ms
+                  << " selected_between_abs_p90_ms=" << selected_between_metrics.abs_p90_ms
+                  << " selected_between_abs_p95_ms=" << selected_between_metrics.abs_p95_ms
+                  << " selected_between_abs_exceed_ratio=" << selected_between_metrics.abs_limit_exceed_ratio
+                  << " selected_between_signed_exceed_ratio="
+                  << selected_between_metrics.signed_limit_exceed_ratio
+                  << " between_gate_has_data=" << (selected_between_gate.has_data ? 1 : 0)
+                  << " between_gate_signed_exceeds=" << (selected_between_gate.signed_exceeds ? 1 : 0)
+                  << " between_gate_abs_exceeds=" << (selected_between_gate.abs_exceeds ? 1 : 0)
+                  << " between_gate_and=" << (selected_between_gate.unstable_and ? 1 : 0)
+                  << " between_gate_or=" << (selected_between_gate.unstable_or ? 1 : 0)
+                  << " selected_left_ms=" << selected_left_window_metrics.median_ms
+                  << " selected_left_abs_ms=" << selected_left_window_metrics.median_abs_ms
+                  << " selected_left_odd_even_gap_ms=" << selected_left_window_metrics.odd_even_gap_ms
+                  << " selected_left_abs_p90_ms=" << selected_left_window_metrics.abs_p90_ms
+                  << " selected_left_abs_p95_ms=" << selected_left_window_metrics.abs_p95_ms
+                  << " selected_left_abs_exceed_ratio=" << selected_left_window_metrics.abs_limit_exceed_ratio
+                  << " selected_left_signed_exceed_ratio="
+                  << selected_left_window_metrics.signed_limit_exceed_ratio
+                  << " left_gate_has_data=" << (selected_left_gate.has_data ? 1 : 0)
+                  << " left_gate_signed_exceeds=" << (selected_left_gate.signed_exceeds ? 1 : 0)
+                  << " left_gate_abs_exceeds=" << (selected_left_gate.abs_exceeds ? 1 : 0)
+                  << " left_gate_and=" << (selected_left_gate.unstable_and ? 1 : 0)
+                  << " left_gate_or=" << (selected_left_gate.unstable_or ? 1 : 0)
+                  << " selected_right_ms=" << selected_right_window_metrics.median_ms
+                  << " selected_right_abs_ms=" << selected_right_window_metrics.median_abs_ms
+                  << " selected_right_odd_even_gap_ms=" << selected_right_window_metrics.odd_even_gap_ms
+                  << " selected_right_abs_p90_ms=" << selected_right_window_metrics.abs_p90_ms
+                  << " selected_right_abs_p95_ms=" << selected_right_window_metrics.abs_p95_ms
+                  << " selected_right_abs_exceed_ratio=" << selected_right_window_metrics.abs_limit_exceed_ratio
+                  << " selected_right_signed_exceed_ratio="
+                  << selected_right_window_metrics.signed_limit_exceed_ratio
+                  << " right_gate_has_data=" << (selected_right_gate.has_data ? 1 : 0)
+                  << " right_gate_signed_exceeds=" << (selected_right_gate.signed_exceeds ? 1 : 0)
+                  << " right_gate_abs_exceeds=" << (selected_right_gate.abs_exceeds ? 1 : 0)
+                  << " right_gate_and=" << (selected_right_gate.unstable_and ? 1 : 0)
+                  << " right_gate_or=" << (selected_right_gate.unstable_or ? 1 : 0)
                   << " middle_probe_start_s=" << middle_probe_start
                   << " between_probe_start_s=" << between_probe_start
                   << " interior_probe_added=" << (interior_probe_added ? 1 : 0)

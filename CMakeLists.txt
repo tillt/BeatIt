@@ -37,6 +37,7 @@ set(BEATIT_LIB_SOURCES
     src/beatit/stream_finalize.cpp
     src/beatit/stream_inference_backend.cpp
     src/beatit/stream_sparse.cpp
+    src/beatit/stream_sparse_waveform.cpp
     src/beatit/stream.cpp
 )
 if(BEATIT_USE_TORCH)
@@ -113,6 +114,7 @@ if(APPLE)
         src/beatit/stream_finalize.cpp
         src/beatit/stream_inference_backend.cpp
         src/beatit/stream_sparse.cpp
+        src/beatit/stream_sparse_waveform.cpp
         src/beatit/stream.cpp
         ${BEATIT_PUBLIC_HEADERS}
     )
@@ -275,6 +277,24 @@ set_tests_properties(beatit_sparse_tempo_grid_consistency_tests PROPERTIES
     WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     SKIP_RETURN_CODE 77
 )
+
+add_executable(beatit_file_drift_probe
+    tests/file_drift_probe_test.mm
+)
+
+target_link_libraries(beatit_file_drift_probe
+    PRIVATE
+        beatit_lib
+)
+
+target_compile_definitions(beatit_file_drift_probe PRIVATE
+    BEATIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+)
+
+if(APPLE)
+    target_compile_options(beatit_file_drift_probe PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
+    target_link_libraries(beatit_file_drift_probe PRIVATE "-framework AVFoundation" "-framework CoreML" "-framework Foundation")
+endif()
 
 add_executable(beatit_manucho_window_alignment_sparse_tests
     tests/manucho_window_alignment_test.mm
