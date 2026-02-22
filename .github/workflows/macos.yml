@@ -18,11 +18,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install ninja
-        run: brew list ninja || brew install ninja
+      - name: Install build dependencies
+        run: |
+          brew list ninja || brew install ninja
+          brew list libtorch || brew install libtorch
 
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBEATIT_TORCH_ROOT="$(brew --prefix libtorch)"
 
       - name: Build
         run: cmake --build build
@@ -49,8 +51,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install ninja
-        run: brew list ninja || brew install ninja
+      - name: Install build dependencies
+        run: |
+          brew list ninja || brew install ninja
+          brew list libtorch || brew install libtorch
 
       - name: Import signing certificate
         env:
@@ -74,7 +78,7 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" build.keychain
 
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBEATIT_TORCH_ROOT="$(brew --prefix libtorch)"
 
       - name: Build
         run: cmake --build build
