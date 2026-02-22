@@ -1,11 +1,11 @@
 //
-//  stream_activation_accumulator.cpp
+//  activation_merge.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
 //
 
-#include "beatit/stream_activation_accumulator.h"
+#include "beatit/activation_merge.h"
 
 #include <algorithm>
 

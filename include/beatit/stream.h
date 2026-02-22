@@ -19,7 +19,7 @@
 
 namespace beatit {
 namespace detail {
-class StreamInferenceBackend;
+class InferenceBackend;
 }
 
 class BeatitStream {
@@ -60,7 +60,7 @@ private:
     double sample_rate_ = 0.0;
     CoreMLConfig coreml_config_;
     bool coreml_enabled_ = true;
-    std::unique_ptr<detail::StreamInferenceBackend> inference_backend_;
+    std::unique_ptr<detail::InferenceBackend> inference_backend_;
 
     struct LinearResampler {
         double ratio = 1.0;

@@ -7,9 +7,9 @@
 //
 
 #include "beatit/stream.h"
-#include "beatit/stream_activation_accumulator.h"
-#include "beatit/stream_inference_backend.h"
-#include "beatit/stream_sparse.h"
+#include "beatit/activation_merge.h"
+#include "beatit/inference_backend.h"
+#include "beatit/sparse_probe.h"
 
 #include <algorithm>
 #include <chrono>
@@ -198,7 +198,7 @@ BeatitStream::BeatitStream(double sample_rate,
     : sample_rate_(sample_rate),
       coreml_config_(coreml_config),
       coreml_enabled_(enable_coreml),
-      inference_backend_(detail::make_stream_inference_backend(coreml_config)) {
+      inference_backend_(detail::make_inference_backend(coreml_config)) {
     resampler_.ratio = coreml_config_.sample_rate / sample_rate_;
     if (coreml_config_.prepend_silence_seconds > 0.0 && sample_rate_ > 0.0) {
         prepend_samples_ = static_cast<std::size_t>(
@@ -229,7 +229,7 @@ void BeatitStream::process_coreml_windows() {
         const auto infer_start = std::chrono::steady_clock::now();
         std::vector<float> beat_activation;
         std::vector<float> downbeat_activation;
-        detail::StreamInferenceTiming timing;
+        detail::InferenceTiming timing;
         const bool ok = inference_backend_->infer_window(window,
                                                          coreml_config_,
                                                          &beat_activation,
@@ -301,7 +301,7 @@ void BeatitStream::process_torch_windows() {
         std::vector<std::vector<float>> downbeat_activations;
 
         const auto infer_start = std::chrono::steady_clock::now();
-        detail::StreamInferenceTiming timing;
+        detail::InferenceTiming timing;
         bool ok = inference_backend_->infer_windows(windows,
                                                     coreml_config_,
                                                     &beat_activations,

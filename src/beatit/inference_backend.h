@@ -1,5 +1,5 @@
 //
-//  stream_inference_backend.h
+//  inference_backend.h
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
@@ -16,14 +16,14 @@
 namespace beatit {
 namespace detail {
 
-struct StreamInferenceTiming {
+struct InferenceTiming {
     double mel_ms = 0.0;
     double torch_forward_ms = 0.0;
 };
 
-class StreamInferenceBackend {
+class InferenceBackend {
 public:
-    virtual ~StreamInferenceBackend() = default;
+    virtual ~InferenceBackend() = default;
 
     virtual std::size_t max_batch_size(const CoreMLConfig& config) const = 0;
     virtual std::size_t border_frames(const CoreMLConfig& config) const = 0;
@@ -32,16 +32,16 @@ public:
                               const CoreMLConfig& config,
                               std::vector<float>* beat,
                               std::vector<float>* downbeat,
-                              StreamInferenceTiming* timing) = 0;
+                              InferenceTiming* timing) = 0;
 
     virtual bool infer_windows(const std::vector<std::vector<float>>& windows,
                                const CoreMLConfig& config,
                                std::vector<std::vector<float>>* beats,
                                std::vector<std::vector<float>>* downbeats,
-                               StreamInferenceTiming* timing);
+                               InferenceTiming* timing);
 };
 
-std::unique_ptr<StreamInferenceBackend> make_stream_inference_backend(
+std::unique_ptr<InferenceBackend> make_inference_backend(
     const CoreMLConfig& config);
 
 } // namespace detail

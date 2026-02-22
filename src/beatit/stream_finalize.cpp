@@ -6,8 +6,8 @@
 //
 
 #include "beatit/stream.h"
-#include "beatit/stream_activation_accumulator.h"
-#include "beatit/stream_inference_backend.h"
+#include "beatit/activation_merge.h"
+#include "beatit/inference_backend.h"
 
 #include <algorithm>
 #include <chrono>
@@ -45,7 +45,7 @@ AnalysisResult BeatitStream::finalize() {
             const auto infer_start = std::chrono::steady_clock::now();
             std::vector<float> beat_activation;
             std::vector<float> downbeat_activation;
-            detail::StreamInferenceTiming timing;
+            detail::InferenceTiming timing;
             const bool ok = inference_backend_ &&
                 inference_backend_->infer_window(window,
                                                  local_config,

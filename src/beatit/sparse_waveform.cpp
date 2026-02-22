@@ -1,11 +1,11 @@
 //
-//  stream_sparse_waveform.cpp
+//  sparse_waveform.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
 //
 
-#include "beatit/stream_sparse_waveform.h"
+#include "beatit/sparse_waveform.h"
 
 #include <algorithm>
 #include <cmath>

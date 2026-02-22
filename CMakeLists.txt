@@ -33,23 +33,23 @@ set(BEATIT_LIB_SOURCES
     src/beatit/coreml.mm
     src/beatit/coreml_preset.cpp
     src/beatit/refiner.cpp
-    src/beatit/stream_activation_accumulator.cpp
+    src/beatit/activation_merge.cpp
     src/beatit/stream_finalize.cpp
-    src/beatit/stream_inference_backend.cpp
-    src/beatit/stream_sparse.cpp
-    src/beatit/stream_sparse_waveform.cpp
+    src/beatit/inference_backend_coreml.cpp
+    src/beatit/sparse_probe.cpp
+    src/beatit/sparse_waveform.cpp
     src/beatit/stream.cpp
 )
 if(BEATIT_USE_TORCH)
     list(APPEND BEATIT_LIB_SOURCES
         src/beatit/analysis_torch.cpp
-        src/beatit/stream_inference_backend_torch.cpp
+        src/beatit/inference_backend_torch.cpp
         src/beatit/torch_mel.mm
     )
 else()
     list(APPEND BEATIT_LIB_SOURCES
         src/beatit/analysis_torch_stub.cpp
-        src/beatit/stream_inference_backend_torch_stub.cpp
+        src/beatit/inference_backend_torch_stub.cpp
     )
 endif()
 
@@ -119,24 +119,24 @@ if(APPLE)
         src/beatit/coreml.mm
         src/beatit/coreml_preset.cpp
         src/beatit/refiner.cpp
-        src/beatit/stream_activation_accumulator.cpp
+        src/beatit/activation_merge.cpp
         src/beatit/stream_finalize.cpp
-        src/beatit/stream_inference_backend.cpp
-        src/beatit/stream_sparse.cpp
-        src/beatit/stream_sparse_waveform.cpp
+        src/beatit/inference_backend_coreml.cpp
+        src/beatit/sparse_probe.cpp
+        src/beatit/sparse_waveform.cpp
         src/beatit/stream.cpp
         ${BEATIT_PUBLIC_HEADERS}
     )
     if(BEATIT_USE_TORCH)
         list(APPEND BEATIT_FRAMEWORK_SOURCES
             src/beatit/analysis_torch.cpp
-            src/beatit/stream_inference_backend_torch.cpp
+            src/beatit/inference_backend_torch.cpp
             src/beatit/torch_mel.mm
         )
     else()
         list(APPEND BEATIT_FRAMEWORK_SOURCES
             src/beatit/analysis_torch_stub.cpp
-            src/beatit/stream_inference_backend_torch_stub.cpp
+            src/beatit/inference_backend_torch_stub.cpp
         )
     endif()
 

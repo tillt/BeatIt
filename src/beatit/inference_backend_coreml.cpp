@@ -1,23 +1,23 @@
 //
-//  stream_inference_backend.cpp
+//  inference_backend_coreml.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
 //
 
-#include "beatit/stream_inference_backend.h"
-#include "beatit/stream_inference_backend_torch.h"
+#include "beatit/inference_backend.h"
+#include "beatit/inference_backend_torch.h"
 
 #include <algorithm>
 
 namespace beatit {
 namespace detail {
 
-bool StreamInferenceBackend::infer_windows(const std::vector<std::vector<float>>& windows,
-                                           const CoreMLConfig& config,
-                                           std::vector<std::vector<float>>* beats,
-                                           std::vector<std::vector<float>>* downbeats,
-                                           StreamInferenceTiming* timing) {
+bool InferenceBackend::infer_windows(const std::vector<std::vector<float>>& windows,
+                                     const CoreMLConfig& config,
+                                     std::vector<std::vector<float>>* beats,
+                                     std::vector<std::vector<float>>* downbeats,
+                                     InferenceTiming* timing) {
     if (!beats || !downbeats) {
         return false;
     }
@@ -40,7 +40,7 @@ bool StreamInferenceBackend::infer_windows(const std::vector<std::vector<float>>
 
 namespace {
 
-class CoreMLStreamInferenceBackend final : public StreamInferenceBackend {
+class CoreMLInferenceBackend final : public InferenceBackend {
 public:
     std::size_t max_batch_size(const CoreMLConfig&) const override {
         return 1;
@@ -54,7 +54,7 @@ public:
                       const CoreMLConfig& config,
                       std::vector<float>* beat,
                       std::vector<float>* downbeat,
-                      StreamInferenceTiming*) override {
+                      InferenceTiming*) override {
         if (!beat || !downbeat) {
             return false;
         }
@@ -74,12 +74,12 @@ public:
 
 } // namespace
 
-std::unique_ptr<StreamInferenceBackend> make_stream_inference_backend(
+std::unique_ptr<InferenceBackend> make_inference_backend(
     const CoreMLConfig& config) {
     if (config.backend == CoreMLConfig::Backend::Torch) {
-        return make_torch_stream_inference_backend();
+        return make_torch_inference_backend();
     }
-    return std::make_unique<CoreMLStreamInferenceBackend>();
+    return std::make_unique<CoreMLInferenceBackend>();
 }
 
 } // namespace detail

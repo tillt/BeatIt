@@ -1,12 +1,12 @@
 //
-//  stream_sparse.cpp
+//  sparse_probe.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
 //
 
-#include "beatit/stream_sparse.h"
-#include "beatit/stream_sparse_waveform.h"
+#include "beatit/sparse_probe.h"
+#include "beatit/sparse_waveform.h"
 
 #include <algorithm>
 #include <cmath>

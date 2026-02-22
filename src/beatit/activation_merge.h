@@ -1,5 +1,5 @@
 //
-//  stream_activation_accumulator.h
+//  activation_merge.h
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
