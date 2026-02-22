@@ -11,6 +11,9 @@
 #include "beatit/sparse_phase_metrics.h"
 #include "beatit/sparse_waveform.h"
 #include "sparse_refinement_common.h"
+#include "sparse_refinement_edge_adjust.h"
+#include "sparse_refinement_edge_metrics.h"
+#include "sparse_refinement_edge_phase.h"
 
 #include <algorithm>
 #include <cmath>
@@ -22,85 +25,6 @@
 
 namespace beatit {
 namespace detail {
-
-namespace {
-
-struct EdgeOffsetMetrics {
-    double median_ms = std::numeric_limits<double>::infinity();
-    double mad_ms = std::numeric_limits<double>::infinity();
-    std::size_t count = 0;
-};
-
-EdgeOffsetMetrics measure_edge_offsets(const std::vector<unsigned long long>& beats,
-                                       double bpm_hint,
-                                       bool from_end,
-                                       double sample_rate,
-                                       const SparseSampleProvider& provider) {
-    EdgeOffsetMetrics metrics;
-    if (sample_rate <= 0.0 || bpm_hint <= 0.0 || !provider || beats.size() < 16) {
-        return metrics;
-    }
-    const std::size_t probe_beats = std::min<std::size_t>(32, beats.size());
-    std::vector<unsigned long long> edge_beats;
-    edge_beats.reserve(probe_beats);
-    if (from_end) {
-        edge_beats.insert(edge_beats.end(),
-                          beats.end() - static_cast<long>(probe_beats),
-                          beats.end());
-    } else {
-        edge_beats.insert(edge_beats.end(),
-                          beats.begin(),
-                          beats.begin() + static_cast<long>(probe_beats));
-    }
-    if (edge_beats.empty()) {
-        return metrics;
-    }
-
-    const std::size_t radius = sparse_waveform_radius(sample_rate, bpm_hint);
-    if (radius == 0) {
-        return metrics;
-    }
-    const std::size_t margin = radius + static_cast<std::size_t>(std::llround(sample_rate * 1.5));
-    const std::size_t first_frame = static_cast<std::size_t>(edge_beats.front());
-    const std::size_t last_frame = static_cast<std::size_t>(edge_beats.back());
-    const std::size_t segment_start = first_frame > margin ? first_frame - margin : 0;
-    const std::size_t segment_end = last_frame + margin;
-    const double segment_start_s = static_cast<double>(segment_start) / sample_rate;
-    const double segment_duration_s =
-        static_cast<double>(std::max<std::size_t>(1, segment_end - segment_start)) / sample_rate;
-
-    std::vector<float> samples;
-    if (!sparse_load_samples(provider, segment_start_s, segment_duration_s, &samples)) {
-        return metrics;
-    }
-
-    std::vector<double> offsets_ms;
-    offsets_ms.reserve(edge_beats.size());
-    sparse_collect_offsets(edge_beats,
-                           0,
-                           edge_beats.size(),
-                           segment_start,
-                           samples,
-                           radius,
-                           SparsePeakMode::ThresholdedLocalMax,
-                           sample_rate,
-                           &offsets_ms,
-                           nullptr);
-    if (offsets_ms.size() < 8) {
-        return metrics;
-    }
-    metrics.count = offsets_ms.size();
-    metrics.median_ms = sparse_median_inplace(&offsets_ms);
-    std::vector<double> abs_dev;
-    abs_dev.reserve(offsets_ms.size());
-    for (double v : offsets_ms) {
-        abs_dev.push_back(std::fabs(v - metrics.median_ms));
-    }
-    metrics.mad_ms = sparse_median_inplace(&abs_dev);
-    return metrics;
-}
-
-} // namespace
 
 void apply_sparse_waveform_edge_refit(AnalysisResult* result,
                                       const SparseWaveformRefitParams& params) {
@@ -220,25 +144,6 @@ void apply_sparse_waveform_edge_refit(AnalysisResult* result,
             measure_edge_offsets(first_window_beats, bpm_hint, false, sample_rate, provider),
             measure_edge_offsets(last_window_beats, bpm_hint, true, sample_rate, provider)};
     };
-    auto measure_window_phase_pair = [&](const std::vector<unsigned long long>& beats,
-                                         double first_window_start_s,
-                                         double last_window_start_s) {
-        AnalysisResult tmp;
-        tmp.coreml_beat_projected_sample_frames = beats;
-        return std::pair<SparseWindowPhaseMetrics, SparseWindowPhaseMetrics>{
-            measure_sparse_window_phase(tmp,
-                                        bpm_hint,
-                                        first_window_start_s,
-                                        probe_duration,
-                                        sample_rate,
-                                        provider),
-            measure_sparse_window_phase(tmp,
-                                        bpm_hint,
-                                        last_window_start_s,
-                                        probe_duration,
-                                        sample_rate,
-                                        provider)};
-    };
     auto window_usable = [](const EdgeOffsetMetrics& m) {
         return m.count >= 10 &&
                std::isfinite(m.median_ms) &&
@@ -284,46 +189,9 @@ void apply_sparse_waveform_edge_refit(AnalysisResult* result,
         return;
     }
 
-    auto apply_scale = [&](std::vector<unsigned long long>* beats,
-                           double ratio,
-                           double min_ratio,
-                           double max_ratio,
-                           double min_delta) -> double {
-        if (!beats || beats->size() < 2) {
-            return 1.0;
-        }
-        const double clamped_ratio = std::clamp(ratio, min_ratio, max_ratio);
-        if (std::abs(clamped_ratio - 1.0) < min_delta) {
-            return 1.0;
-        }
-        const long long anchor = static_cast<long long>(beats->front());
-        for (std::size_t i = 0; i < beats->size(); ++i) {
-            const long long current = static_cast<long long>((*beats)[i]);
-            const double rel = static_cast<double>(current - anchor);
-            const long long adjusted =
-                anchor + static_cast<long long>(std::llround(rel * clamped_ratio));
-            (*beats)[i] =
-                static_cast<unsigned long long>(std::max<long long>(0, adjusted));
-        }
-        return clamped_ratio;
-    };
-
-    const auto compute_ratio = [&](const std::vector<unsigned long long>& beats,
-                                   const EdgeOffsetMetrics& a,
-                                   const EdgeOffsetMetrics& b) -> double {
-        const double base_step = sparse_median_frame_diff(beats);
-        const double beats_span = static_cast<double>(beats.size() - 1);
-        if (!(base_step > 0.0) || !(beats_span > 0.0)) {
-            return 1.0;
-        }
-        const double err_delta_frames = ((b.median_ms - a.median_ms) * sample_rate) / 1000.0;
-        const double per_beat_adjust = err_delta_frames / beats_span;
-        return 1.0 + (per_beat_adjust / base_step);
-    };
-
-    const double ratio = compute_ratio(*projected, intro, outro);
+    const double ratio = compute_sparse_edge_ratio(*projected, intro, outro, sample_rate);
     const double applied_ratio =
-        apply_scale(projected, ratio, 0.9995, 1.0005, 1e-5);
+        apply_sparse_edge_scale(projected, ratio, 0.9995, 1.0005, 1e-5);
     if (applied_ratio == 1.0) {
         return;
     }
@@ -338,9 +206,10 @@ void apply_sparse_waveform_edge_refit(AnalysisResult* result,
             std::isfinite(post_intro.median_ms) && std::isfinite(post_outro.median_ms)) {
             const double post_delta = std::abs(post_outro.median_ms - post_intro.median_ms);
             std::vector<unsigned long long> candidate = *projected;
-            const double pass2_ratio = compute_ratio(candidate, post_intro, post_outro);
+            const double pass2_ratio =
+                compute_sparse_edge_ratio(candidate, post_intro, post_outro, sample_rate);
             const double pass2_applied =
-                apply_scale(&candidate, pass2_ratio, 0.9997, 1.0003, 1e-6);
+                apply_sparse_edge_scale(&candidate, pass2_ratio, 0.9997, 1.0003, 1e-6);
             if (pass2_applied != 1.0) {
                 auto candidate_measured =
                     measure_window_pair(candidate, first_window_start, last_window_start);
@@ -422,9 +291,9 @@ void apply_sparse_waveform_edge_refit(AnalysisResult* result,
         if (global_delta > 30.0) {
             std::vector<unsigned long long> candidate = *projected;
             const double guard_ratio =
-                compute_ratio(candidate, global_intro, global_outro);
+                compute_sparse_edge_ratio(candidate, global_intro, global_outro, sample_rate);
             const double guard_applied =
-                apply_scale(&candidate, guard_ratio, 0.99985, 1.00015, 1e-6);
+                apply_sparse_edge_scale(&candidate, guard_ratio, 0.99985, 1.00015, 1e-6);
             if (guard_applied != 1.0) {
                 const EdgeOffsetMetrics cand_intro =
                     measure_edge_offsets(candidate, bpm_hint, false, sample_rate, provider);
@@ -453,9 +322,9 @@ void apply_sparse_waveform_edge_refit(AnalysisResult* result,
         if (global_delta > 60.0 && global_delta <= 120.0) {
             std::vector<unsigned long long> candidate = *projected;
             const double guard_ratio =
-                compute_ratio(candidate, global_intro, global_outro);
+                compute_sparse_edge_ratio(candidate, global_intro, global_outro, sample_rate);
             const double guard_applied =
-                apply_scale(&candidate, guard_ratio, 0.9996, 1.0004, 1e-6);
+                apply_sparse_edge_scale(&candidate, guard_ratio, 0.9996, 1.0004, 1e-6);
             if (guard_applied != 1.0) {
                 const EdgeOffsetMetrics cand_intro =
                     measure_edge_offsets(candidate, bpm_hint, false, sample_rate, provider);
@@ -517,158 +386,16 @@ void apply_sparse_waveform_edge_refit(AnalysisResult* result,
         }
     }
 
-    struct PhaseScoreSummary {
-        bool valid = false;
-        double score = std::numeric_limits<double>::infinity();
-        double global_delta_ms = std::numeric_limits<double>::infinity();
-        double intro_abs_ms = std::numeric_limits<double>::infinity();
-        double outro_abs_ms = std::numeric_limits<double>::infinity();
-        double between_abs_ms = std::numeric_limits<double>::infinity();
-        double middle_abs_ms = std::numeric_limits<double>::infinity();
-        double phase_consensus_penalty_ms = std::numeric_limits<double>::infinity();
-        double periodicity_penalty_ms = std::numeric_limits<double>::infinity();
-    };
-    auto score_phase_candidate = [&](const std::vector<unsigned long long>& beats)
-        -> PhaseScoreSummary {
-        PhaseScoreSummary out;
-        if (beats.size() < 64) {
-            return out;
-        }
-        const EdgeOffsetMetrics intro_m = measure_edge_offsets(beats, bpm_hint, false, sample_rate, provider);
-        const EdgeOffsetMetrics outro_m = measure_edge_offsets(beats, bpm_hint, true, sample_rate, provider);
-        const auto middle_pair = measure_middle_windows(beats);
-        const auto edge_phase_pair =
-            measure_window_phase_pair(beats, first_window_start, last_window_start);
-        if (intro_m.count < 8 || outro_m.count < 8 ||
-            middle_pair.first.count < 8 || middle_pair.second.count < 8 ||
-            edge_phase_pair.first.count < 8 || edge_phase_pair.second.count < 8) {
-            return out;
-        }
-        if (!std::isfinite(intro_m.median_ms) || !std::isfinite(outro_m.median_ms) ||
-            !std::isfinite(middle_pair.first.median_abs_ms) ||
-            !std::isfinite(middle_pair.second.median_abs_ms) ||
-            !std::isfinite(middle_pair.first.median_ms) ||
-            !std::isfinite(middle_pair.second.median_ms) ||
-            !std::isfinite(edge_phase_pair.first.median_ms) ||
-            !std::isfinite(edge_phase_pair.second.median_ms)) {
-            return out;
-        }
-
-        out.valid = true;
-        out.intro_abs_ms = std::abs(intro_m.median_ms);
-        out.outro_abs_ms = std::abs(outro_m.median_ms);
-        out.global_delta_ms = std::abs(outro_m.median_ms - intro_m.median_ms);
-        out.between_abs_ms = middle_pair.first.median_abs_ms;
-        out.middle_abs_ms = middle_pair.second.median_abs_ms;
-
-        const double edge_consensus_ms =
-            0.5 * (edge_phase_pair.first.median_ms + edge_phase_pair.second.median_ms);
-        out.phase_consensus_penalty_ms =
-            std::abs(middle_pair.first.median_ms - edge_consensus_ms) +
-            std::abs(middle_pair.second.median_ms - edge_consensus_ms);
-
-        const auto mismatch_excess = [](double interior, double edge, double slack) {
-            if (!std::isfinite(interior) || !std::isfinite(edge)) {
-                return 0.0;
-            }
-            return std::max(0.0, interior - edge - slack);
-        };
-        const double edge_abs_ratio =
-            0.5 * (edge_phase_pair.first.abs_limit_exceed_ratio +
-                   edge_phase_pair.second.abs_limit_exceed_ratio);
-        const double edge_signed_ratio =
-            0.5 * (edge_phase_pair.first.signed_limit_exceed_ratio +
-                   edge_phase_pair.second.signed_limit_exceed_ratio);
-        const double interior_abs_ratio = std::max(middle_pair.first.abs_limit_exceed_ratio,
-                                                   middle_pair.second.abs_limit_exceed_ratio);
-        const double interior_signed_ratio = std::max(
-            middle_pair.first.signed_limit_exceed_ratio,
-            middle_pair.second.signed_limit_exceed_ratio);
-        const double edge_odd_even_ms =
-            0.5 * (edge_phase_pair.first.odd_even_gap_ms +
-                   edge_phase_pair.second.odd_even_gap_ms);
-        const double interior_odd_even_ms =
-            std::max(middle_pair.first.odd_even_gap_ms, middle_pair.second.odd_even_gap_ms);
-        const double ratio_penalty =
-            (220.0 * mismatch_excess(interior_abs_ratio, edge_abs_ratio, 0.10)) +
-            (180.0 * mismatch_excess(interior_signed_ratio, edge_signed_ratio, 0.10));
-        const double odd_even_penalty =
-            0.75 * mismatch_excess(interior_odd_even_ms, edge_odd_even_ms, 15.0);
-        out.periodicity_penalty_ms = ratio_penalty + odd_even_penalty;
-
-        out.score = (0.60 * out.global_delta_ms) +
-                    (0.35 * (out.intro_abs_ms + out.outro_abs_ms)) +
-                    out.between_abs_ms +
-                    out.middle_abs_ms +
-                    (0.55 * out.phase_consensus_penalty_ms) +
-                    out.periodicity_penalty_ms;
-        return out;
-    };
-
-    auto apply_ratio_candidate = [&](const std::vector<unsigned long long>& beats,
-                                     double ratio_value) {
-        std::vector<unsigned long long> candidate = beats;
-        if (candidate.size() < 2 || !(ratio_value > 0.0)) {
-            return candidate;
-        }
-        const long long anchor = static_cast<long long>(candidate.front());
-        for (std::size_t i = 0; i < candidate.size(); ++i) {
-            const long long current = static_cast<long long>(candidate[i]);
-            const double rel = static_cast<double>(current - anchor);
-            const long long adjusted =
-                anchor + static_cast<long long>(std::llround(rel * ratio_value));
-            candidate[i] =
-                static_cast<unsigned long long>(std::max<long long>(0, adjusted));
-        }
-        return candidate;
-    };
-
-    double phase_try_base_score = std::numeric_limits<double>::infinity();
-    double phase_try_minus_score = std::numeric_limits<double>::infinity();
-    double phase_try_plus_score = std::numeric_limits<double>::infinity();
-    int phase_try_selected = 0;
-    bool phase_try_applied = false;
-    {
-        const auto base_score = score_phase_candidate(*projected);
-        phase_try_base_score = base_score.score;
-        if (base_score.valid && projected->size() >= 128) {
-            const double intervals = static_cast<double>(projected->size() - 1);
-            const double minus_intervals = intervals - 1.0;
-            const double plus_intervals = intervals + 1.0;
-            const double minus_ratio =
-                (minus_intervals > 0.0) ? (intervals / minus_intervals) : 1.0;
-            const double plus_ratio =
-                (plus_intervals > 0.0) ? (intervals / plus_intervals) : 1.0;
-
-            const std::vector<unsigned long long> minus_candidate =
-                apply_ratio_candidate(*projected, minus_ratio);
-            const std::vector<unsigned long long> plus_candidate =
-                apply_ratio_candidate(*projected, plus_ratio);
-            const auto minus_score = score_phase_candidate(minus_candidate);
-            const auto plus_score = score_phase_candidate(plus_candidate);
-            phase_try_minus_score = minus_score.score;
-            phase_try_plus_score = plus_score.score;
-
-            double best_score = base_score.score;
-            std::vector<unsigned long long> best_beats = *projected;
-            int best_choice = 0;
-            if (minus_score.valid && minus_score.score < (best_score - 2.0)) {
-                best_score = minus_score.score;
-                best_beats = minus_candidate;
-                best_choice = -1;
-            }
-            if (plus_score.valid && plus_score.score < (best_score - 2.0)) {
-                best_score = plus_score.score;
-                best_beats = plus_candidate;
-                best_choice = 1;
-            }
-            if (best_choice != 0) {
-                *projected = std::move(best_beats);
-                phase_try_selected = best_choice;
-                phase_try_applied = true;
-            }
-        }
-    }
+    const SparseEdgePhaseTryResult phase_try = apply_sparse_edge_phase_try(
+        projected,
+        bpm_hint,
+        provider,
+        sample_rate,
+        probe_duration,
+        params.between_probe_start,
+        params.middle_probe_start,
+        first_window_start,
+        last_window_start);
 
     const EdgeOffsetMetrics pre_global_intro =
         measure_edge_offsets(projected_before_refit, bpm_hint, false, sample_rate, provider);
@@ -727,11 +454,11 @@ void apply_sparse_waveform_edge_refit(AnalysisResult* result,
                   << " post_middle_abs_ms=" << post_middle_abs_ms
                   << " pre_phase_score=" << pre_phase_score
                   << " post_phase_score=" << post_phase_score
-                  << " phase_try_base_score=" << phase_try_base_score
-                  << " phase_try_minus_score=" << phase_try_minus_score
-                  << " phase_try_plus_score=" << phase_try_plus_score
-                  << " phase_try_selected=" << phase_try_selected
-                  << " phase_try_applied=" << (phase_try_applied ? 1 : 0)
+                  << " phase_try_base_score=" << phase_try.base_score
+                  << " phase_try_minus_score=" << phase_try.minus_score
+                  << " phase_try_plus_score=" << phase_try.plus_score
+                  << " phase_try_selected=" << phase_try.selected
+                  << " phase_try_applied=" << (phase_try.applied ? 1 : 0)
                   << " global_ratio_applied=" << global_guard_ratio
                   << " delta_frames=" << err_delta_frames
                   << " ratio=" << ratio
