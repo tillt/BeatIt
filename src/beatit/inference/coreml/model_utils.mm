@@ -1,5 +1,5 @@
 //
-//  coreml_model_utils.mm
+//  model_utils.mm
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
@@ -9,7 +9,7 @@
 #import <CoreML/CoreML.h>
 #import <Foundation/Foundation.h>
 
-#include "coreml_model_utils.h"
+#include "model_utils.h"
 
 #include <algorithm>
 #include <string>

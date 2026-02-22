@@ -1,5 +1,5 @@
 //
-//  coreml_model_utils.h
+//  model_utils.h
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.

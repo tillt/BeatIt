@@ -1,5 +1,5 @@
 //
-//  coreml_inference.mm
+//  inference.mm
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
@@ -12,8 +12,8 @@
 #include "beatit/coreml.h"
 #include "beatit/logging.hpp"
 
-#include "audio_dsp.h"
-#include "coreml_model_utils.h"
+#include "beatit/audio_dsp.h"
+#include "model_utils.h"
 
 #include <algorithm>
 #include <chrono>

@@ -1,5 +1,5 @@
 //
-//  coreml_metadata.mm
+//  metadata.mm
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
@@ -11,7 +11,7 @@
 
 #include "beatit/coreml.h"
 
-#include "coreml_model_utils.h"
+#include "model_utils.h"
 
 #include <string>
 

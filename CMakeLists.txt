@@ -93,9 +93,9 @@ set(BEATIT_LIB_SOURCES
     src/beatit/audio_features.cpp
     src/beatit/logging.cpp
     src/beatit/version.cpp
-    src/beatit/coreml_inference.mm
-    src/beatit/coreml_model_utils.mm
-    src/beatit/coreml_metadata.mm
+    src/beatit/inference/coreml/inference.mm
+    src/beatit/inference/coreml/model_utils.mm
+    src/beatit/inference/coreml/metadata.mm
     src/beatit/post/pipeline.cpp
     src/beatit/post/helpers.cpp
     src/beatit/post/dbn.cpp
@@ -108,7 +108,7 @@ set(BEATIT_LIB_SOURCES
     src/beatit/post/result_ops.cpp
     src/beatit/post/tempo_fit.cpp
     src/beatit/post/window.cpp
-    src/beatit/coreml_preset.cpp
+    src/beatit/coreml/preset.cpp
     src/beatit/dbn/calmdad.cpp
     src/beatit/dbn/calmdad_sparse.cpp
     src/beatit/dbn/beatit.cpp
@@ -216,9 +216,9 @@ if(APPLE)
         src/beatit/audio_features.cpp
         src/beatit/logging.cpp
         src/beatit/version.cpp
-        src/beatit/coreml_inference.mm
-        src/beatit/coreml_model_utils.mm
-        src/beatit/coreml_metadata.mm
+        src/beatit/inference/coreml/inference.mm
+        src/beatit/inference/coreml/model_utils.mm
+        src/beatit/inference/coreml/metadata.mm
         src/beatit/post/pipeline.cpp
         src/beatit/post/helpers.cpp
         src/beatit/post/dbn.cpp
@@ -231,7 +231,7 @@ if(APPLE)
         src/beatit/post/result_ops.cpp
         src/beatit/post/tempo_fit.cpp
         src/beatit/post/window.cpp
-        src/beatit/coreml_preset.cpp
+        src/beatit/coreml/preset.cpp
         src/beatit/dbn/calmdad.cpp
         src/beatit/dbn/calmdad_sparse.cpp
         src/beatit/dbn/beatit.cpp
