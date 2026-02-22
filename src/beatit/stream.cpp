@@ -462,13 +462,11 @@ void BeatitStream::reset_state() {
 
 bool BeatitStream::request_analysis_window(double* start_seconds,
                                            double* duration_seconds) const {
-    if (coreml_config_.max_analysis_seconds <= 0.0) {
-        const bool sparse_dynamic =
-            coreml_config_.sparse_probe_mode &&
-            coreml_config_.dbn_window_seconds > 0.0;
-        if (!sparse_dynamic) {
-            return false;
-        }
+    const bool sparse_dynamic =
+        coreml_config_.sparse_probe_mode &&
+        coreml_config_.dbn_window_seconds > 0.0;
+    if (sparse_dynamic) {
+        // Sparse mode always operates on probe-sized windows.
         if (start_seconds) {
             *start_seconds = 0.0;
         }
@@ -476,6 +474,10 @@ bool BeatitStream::request_analysis_window(double* start_seconds,
             *duration_seconds = std::max(20.0, coreml_config_.dbn_window_seconds);
         }
         return true;
+    }
+
+    if (coreml_config_.max_analysis_seconds <= 0.0) {
+        return false;
     }
 
     const double start =
@@ -1206,45 +1208,6 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
         double score_margin = 0.0;
         bool low_confidence = true;
         std::string mode;
-    };
-    [[maybe_unused]] auto decide_legacy = [&]() {
-        DecisionOutcome out;
-        out.mode = "legacy";
-        double best_mode_error = std::numeric_limits<double>::infinity();
-        for (double e : probe_mode_errors) {
-            best_mode_error = std::min(best_mode_error, e);
-        }
-        const double mode_slack = 0.005;
-        double second_best = std::numeric_limits<double>::infinity();
-        for (std::size_t i = 0; i < probes.size(); ++i) {
-            if (probe_mode_errors[i] > best_mode_error + mode_slack) {
-                continue;
-            }
-            const double start_penalty = std::abs(probes[i].start - anchor_start) /
-                std::max(1.0, probe_duration);
-            const auto& intro = probe_intro_metrics[i];
-            const double phase_penalty =
-                std::isfinite(intro.median_abs_ms) ? (intro.median_abs_ms / 40.0) : 10.0;
-            const double confidence_penalty = 1.0 / std::max(1e-6, probes[i].conf);
-            const double score = confidence_penalty + (start_penalty * 0.25) + phase_penalty;
-            if (score < out.selected_score) {
-                second_best = out.selected_score;
-                out.selected_score = score;
-                out.selected_index = i;
-            } else if (score < second_best) {
-                second_best = score;
-            }
-        }
-        out.score_margin = std::isfinite(second_best)
-            ? std::max(0.0, second_best - out.selected_score)
-            : 0.0;
-        const auto& intro = probe_intro_metrics[out.selected_index];
-        out.low_confidence =
-            (probe_mode_errors[out.selected_index] > 0.015) ||
-            (probes[out.selected_index].conf < 0.70) ||
-            (std::isfinite(intro.median_abs_ms) && intro.median_abs_ms > 90.0) ||
-            (std::isfinite(intro.odd_even_gap_ms) && intro.odd_even_gap_ms > 180.0);
-        return out;
     };
     auto decide_unified = [&]() {
         DecisionOutcome out;

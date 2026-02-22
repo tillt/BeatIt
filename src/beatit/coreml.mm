@@ -4550,13 +4550,13 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                 };
                 const double bpm_from_fit = bpm_from_linear_fit(filtered_beats);
                 double bpm_from_global_fit = 0.0;
-                if (true && used_frames > 0 && fps > 0.0) {
+                if (used_frames > 0 && fps > 0.0) {
                     const std::size_t requested_window_frames = static_cast<std::size_t>(
                         std::round(config.dbn_window_seconds * fps));
                     const std::size_t min_window_frames = static_cast<std::size_t>(std::round(15.0 * fps));
                     const std::size_t window_frames = std::min<std::size_t>(
                         used_frames, std::max<std::size_t>(requested_window_frames, min_window_frames));
-                    if (window_frames > 0 && used_frames >= window_frames) {
+                    if (window_frames > 0) {
                         const std::size_t max_start = used_frames - window_frames;
                         const std::size_t intro_start = std::min<std::size_t>(
                             static_cast<std::size_t>(
@@ -4612,8 +4612,12 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                             }
                             return beats;
                         };
-                        const std::vector<std::size_t> intro_beats = decode_window_beats(intro);
-                        const std::vector<std::size_t> outro_beats = decode_window_beats(outro);
+                        std::vector<std::size_t> intro_beats;
+                        std::vector<std::size_t> outro_beats;
+                        if (anchors_separated) {
+                            intro_beats = decode_window_beats(intro);
+                            outro_beats = decode_window_beats(outro);
+                        }
                         const bool intro_valid = intro_beats.size() >= 8;
                         const bool outro_valid = outro_beats.size() >= 8;
                         if (config.dbn_trace) {
