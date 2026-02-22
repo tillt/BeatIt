@@ -20,13 +20,13 @@ constexpr double kTargetBpm = 126.0;
 constexpr double kMaxBpmError = 2.0;
 constexpr std::size_t kMinBeatCount = 100;
 constexpr std::size_t kMinDownbeatCount = 20;
-constexpr double kMaxOffsetSlopeMsPerBeat = 0.05;
-constexpr double kMaxStartEndDeltaMs = 80.0;
-constexpr double kMaxStartEndDeltaBeats = 0.12;
-constexpr double kMaxOddEvenMedianGapMs = 40.0;
-constexpr double kMaxIntroMedianAbsOffsetMs = 85.0;
+constexpr double kMaxOffsetSlopeMsPerBeat = 0.04;
+constexpr double kMaxStartEndDeltaMs = 45.0;
+constexpr double kMaxStartEndDeltaBeats = 0.08;
+constexpr double kMaxOddEvenMedianGapMs = 15.0;
+constexpr double kMaxIntroMedianAbsOffsetMs = 25.0;
 constexpr std::size_t kTempoEdgeIntervals = 64;
-constexpr double kMaxTempoEdgeBpmDelta = 0.05;
+constexpr double kMaxTempoEdgeBpmDelta = 0.01;
 
 std::string compile_model_if_needed(const std::string& path, std::string* error) {
     NSString* ns_path = [NSString stringWithUTF8String:path.c_str()];

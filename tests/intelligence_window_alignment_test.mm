@@ -19,16 +19,16 @@ namespace {
 constexpr std::size_t kEdgeWindowBeats = 64;
 constexpr std::size_t kAlternationWindowBeats = 24;
 constexpr double kTargetBpm = 126.0;
-constexpr double kMaxBpmError = 3.0;
+constexpr double kMaxBpmError = 2.0;
 constexpr std::size_t kMinBeatCount = 100;
 constexpr std::size_t kMinDownbeatCount = 20;
-constexpr double kMaxOffsetSlopeMsPerBeat = 0.07;
-constexpr double kMaxStartEndDeltaMs = 90.0;
-constexpr double kMaxStartEndDeltaBeats = 0.16;
-constexpr double kMaxOddEvenMedianGapMs = 40.0;
-constexpr double kMaxIntroMedianAbsOffsetMs = 85.0;
+constexpr double kMaxOffsetSlopeMsPerBeat = 0.04;
+constexpr double kMaxStartEndDeltaMs = 45.0;
+constexpr double kMaxStartEndDeltaBeats = 0.08;
+constexpr double kMaxOddEvenMedianGapMs = 15.0;
+constexpr double kMaxIntroMedianAbsOffsetMs = 25.0;
 constexpr std::size_t kTempoEdgeIntervals = 64;
-constexpr double kMaxTempoEdgeBpmDelta = 0.05;
+constexpr double kMaxTempoEdgeBpmDelta = 0.01;
 constexpr std::size_t kDriftProbeCount = 24;
 constexpr std::size_t kEventProbeCount = 16;
 
