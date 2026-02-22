@@ -115,7 +115,7 @@ set(BEATIT_LIB_SOURCES
     src/beatit/refiner/core.cpp
     src/beatit/refiner/constant.cpp
     src/beatit/refiner/constant_regions.cpp
-    src/beatit/activation_merge.cpp
+    src/beatit/inference/window_merge.cpp
     src/beatit/stream_finalize.cpp
     src/beatit/inference/backend_coreml.cpp
     src/beatit/sparse/probe.cpp
@@ -238,7 +238,7 @@ if(APPLE)
         src/beatit/refiner/core.cpp
         src/beatit/refiner/constant.cpp
         src/beatit/refiner/constant_regions.cpp
-        src/beatit/activation_merge.cpp
+        src/beatit/inference/window_merge.cpp
         src/beatit/stream_finalize.cpp
         src/beatit/inference/backend_coreml.cpp
         src/beatit/sparse/probe.cpp

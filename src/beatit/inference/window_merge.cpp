@@ -1,12 +1,12 @@
 //
-//  activation_merge.cpp
+//  window_merge.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "beatit/activation_merge.h"
+#include "beatit/inference/window_merge.h"
 
 #include <algorithm>
 

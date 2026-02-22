@@ -1,5 +1,5 @@
 //
-//  activation_merge.h
+//  window_merge.h
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.

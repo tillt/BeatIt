@@ -8,7 +8,7 @@
 
 #include "beatit/analysis/internal.h"
 #include "beatit/stream.h"
-#include "beatit/activation_merge.h"
+#include "beatit/inference/window_merge.h"
 #include "beatit/inference/backend.h"
 #include "beatit/logging.hpp"
 
