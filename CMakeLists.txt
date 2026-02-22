@@ -41,6 +41,8 @@ set(BEATIT_LIB_SOURCES
     src/beatit/postprocess_helpers.cpp
     src/beatit/postprocess_dbn.cpp
     src/beatit/postprocess_dbn_decoded.cpp
+    src/beatit/postprocess_dbn_grid_anchor.cpp
+    src/beatit/postprocess_dbn_grid_stages.cpp
     src/beatit/postprocess_dbn_tempo_decision.cpp
     src/beatit/postprocess_logits.cpp
     src/beatit/postprocess_grid_fill.cpp
@@ -149,6 +151,8 @@ if(APPLE)
         src/beatit/postprocess_helpers.cpp
         src/beatit/postprocess_dbn.cpp
         src/beatit/postprocess_dbn_decoded.cpp
+        src/beatit/postprocess_dbn_grid_anchor.cpp
+        src/beatit/postprocess_dbn_grid_stages.cpp
         src/beatit/postprocess_dbn_tempo_decision.cpp
         src/beatit/postprocess_logits.cpp
         src/beatit/postprocess_grid_fill.cpp
