@@ -81,11 +81,19 @@ set_property(DIRECTORY APPEND PROPERTY
     ADDITIONAL_CLEAN_FILES "${BEATIT_GENERATED_DIR}")
 
 if(BEATIT_USE_TORCH AND BEATIT_TORCH_ROOT STREQUAL "")
-    if(EXISTS "/opt/homebrew/opt/libtorch/share/cmake/Torch")
-        set(BEATIT_TORCH_ROOT "/opt/homebrew/opt/libtorch" CACHE PATH "Path to LibTorch root" FORCE)
-    elseif(EXISTS "/usr/local/opt/libtorch/share/cmake/Torch")
-        set(BEATIT_TORCH_ROOT "/usr/local/opt/libtorch" CACHE PATH "Path to LibTorch root" FORCE)
-    endif()
+    set(_beatit_torch_candidates
+        "/opt/homebrew/opt/pytorch"
+        "/usr/local/opt/pytorch"
+        "/opt/homebrew/opt/libtorch"
+        "/usr/local/opt/libtorch")
+    foreach(_cand IN LISTS _beatit_torch_candidates)
+        if(EXISTS "${_cand}/share/cmake/Torch" OR
+           EXISTS "${_cand}/torch/share/cmake/Torch" OR
+           EXISTS "${_cand}/libtorch/share/cmake/Torch")
+            set(BEATIT_TORCH_ROOT "${_cand}" CACHE PATH "Path to LibTorch root" FORCE)
+            break()
+        endif()
+    endforeach()
 endif()
 
 set(BEATIT_LIB_SOURCES
@@ -165,7 +173,23 @@ function(beatit_link_torch target)
     if(BEATIT_TORCH_ROOT STREQUAL "")
         message(FATAL_ERROR "BEATIT_TORCH_ROOT must be set when BEATIT_USE_TORCH=ON")
     endif()
-    set(Torch_DIR "${BEATIT_TORCH_ROOT}/torch/share/cmake/Torch")
+    set(_beatit_torch_cmake_dir "")
+    set(_beatit_torch_lib_dir "")
+    if(EXISTS "${BEATIT_TORCH_ROOT}/share/cmake/Torch")
+        set(_beatit_torch_cmake_dir "${BEATIT_TORCH_ROOT}/share/cmake/Torch")
+        set(_beatit_torch_lib_dir "${BEATIT_TORCH_ROOT}/lib")
+    elseif(EXISTS "${BEATIT_TORCH_ROOT}/torch/share/cmake/Torch")
+        set(_beatit_torch_cmake_dir "${BEATIT_TORCH_ROOT}/torch/share/cmake/Torch")
+        set(_beatit_torch_lib_dir "${BEATIT_TORCH_ROOT}/torch/lib")
+    elseif(EXISTS "${BEATIT_TORCH_ROOT}/libtorch/share/cmake/Torch")
+        set(_beatit_torch_cmake_dir "${BEATIT_TORCH_ROOT}/libtorch/share/cmake/Torch")
+        set(_beatit_torch_lib_dir "${BEATIT_TORCH_ROOT}/libtorch/lib")
+    else()
+        message(FATAL_ERROR
+            "Could not locate Torch CMake config under BEATIT_TORCH_ROOT='${BEATIT_TORCH_ROOT}'. "
+            "Checked: share/cmake/Torch, torch/share/cmake/Torch, libtorch/share/cmake/Torch")
+    endif()
+    set(Torch_DIR "${_beatit_torch_cmake_dir}")
     find_package(Torch REQUIRED)
     target_include_directories(${target} PRIVATE ${TORCH_INCLUDE_DIRS})
     set(BEATIT_TORCH_LIBS
@@ -175,7 +199,7 @@ function(beatit_link_torch target)
     )
     find_library(TORCH_GLOBAL_DEPS_LIB
         NAMES torch_global_deps
-        PATHS "${BEATIT_TORCH_ROOT}/torch/lib"
+        PATHS "${_beatit_torch_lib_dir}"
         NO_DEFAULT_PATH
     )
     if(TORCH_GLOBAL_DEPS_LIB)
@@ -184,7 +208,7 @@ function(beatit_link_torch target)
     target_link_libraries(${target} PRIVATE ${BEATIT_TORCH_LIBS})
     target_compile_definitions(${target} PRIVATE BEATIT_USE_TORCH=1)
     set_target_properties(${target} PROPERTIES
-        BUILD_RPATH "${BEATIT_TORCH_ROOT}/torch/lib"
+        BUILD_RPATH "${_beatit_torch_lib_dir}"
     )
 endfunction()
 
