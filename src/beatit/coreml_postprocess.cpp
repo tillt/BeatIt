@@ -36,6 +36,7 @@ using detail::IntervalStats;
 using detail::fill_peaks_with_gaps;
 using detail::fill_peaks_with_grid;
 using detail::filter_short_intervals;
+using detail::guard_projected_downbeat_phase;
 using detail::interval_stats_frames;
 using detail::interval_stats_interpolated;
 using detail::median_interval_frames;
@@ -2332,66 +2333,11 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                     projected_bpb = std::max<std::size_t>(1, inferred.first);
                     projected_phase = inferred.second % projected_bpb;
                 }
-                if (!projected_frames.empty() &&
-                    projected_bpb >= 2 &&
-                    !result.downbeat_activation.empty()) {
-                    auto phase_score = [&](std::size_t phase) {
-                        double sum = 0.0;
-                        double weight = 0.0;
-                        std::size_t picks = 0;
-                        std::size_t ordinal = 0;
-                        for (std::size_t i = phase;
-                             i < projected_frames.size() && picks < 24;
-                             i += projected_bpb, ++ordinal) {
-                            const std::size_t frame = projected_frames[i];
-                            if (frame >= result.downbeat_activation.size()) {
-                                continue;
-                            }
-                            float value = result.downbeat_activation[frame];
-                            if (frame > 0) {
-                                value = std::max(value, result.downbeat_activation[frame - 1]);
-                            }
-                            if (frame + 1 < result.downbeat_activation.size()) {
-                                value = std::max(value, result.downbeat_activation[frame + 1]);
-                            }
-                            const double w = std::exp(-0.12 * static_cast<double>(ordinal));
-                            sum += static_cast<double>(value) * w;
-                            weight += w;
-                            picks += 1;
-                        }
-                        return weight > 0.0 ? (sum / weight) : 0.0;
-                    };
-
-                    const std::size_t inferred_phase = projected_phase % projected_bpb;
-                    std::size_t best_phase = inferred_phase;
-                    double best_score = -1.0;
-                    std::vector<double> scores(projected_bpb, 0.0);
-                    for (std::size_t phase = 0; phase < projected_bpb; ++phase) {
-                        const double score = phase_score(phase);
-                        scores[phase] = score;
-                        if (score > best_score) {
-                            best_score = score;
-                            best_phase = phase;
-                        }
-                    }
-
-                    const double inferred_score = scores[inferred_phase];
-                    const double phase0_score = scores[0];
-                    const bool inferred_strong =
-                        inferred_score > (phase0_score + 0.06) &&
-                        inferred_score > (phase0_score * 1.15);
-                    if (best_phase == 0 && inferred_phase != 0 && !inferred_strong) {
-                        projected_phase = 0;
-                        if (config.verbose) {
-                            std::cerr << "DBN projected phase guard: inferred_phase="
-                                      << inferred_phase
-                                      << " inferred_score=" << inferred_score
-                                      << " phase0_score=" << phase0_score
-                                      << " selected_phase=0"
-                                      << "\n";
-                        }
-                    }
-                }
+                projected_phase = guard_projected_downbeat_phase(projected_frames,
+                                                                 result.downbeat_activation,
+                                                                 projected_bpb,
+                                                                 projected_phase,
+                                                                 config.verbose);
                 // Preserve DBN-selected bar phase on the projected beat grid.
                 // Nearest-neighbor remapping can flip bars by one beat when
                 // projection tempo differs slightly from the decoded beat list.

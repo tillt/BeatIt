@@ -62,6 +62,12 @@ std::vector<std::size_t> project_downbeats_from_beats(const std::vector<std::siz
                                                       std::size_t bpb,
                                                       std::size_t phase);
 
+std::size_t guard_projected_downbeat_phase(const std::vector<std::size_t>& projected_frames,
+                                           const std::vector<float>& downbeat_activation,
+                                           std::size_t projected_bpb,
+                                           std::size_t inferred_phase,
+                                           bool verbose);
+
 WindowSummary summarize_window(const std::vector<float>& activation,
                               std::size_t start,
                               std::size_t end,

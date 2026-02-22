@@ -391,6 +391,77 @@ std::vector<std::size_t> project_downbeats_from_beats(const std::vector<std::siz
     return downbeats;
 }
 
+std::size_t guard_projected_downbeat_phase(const std::vector<std::size_t>& projected_frames,
+                                           const std::vector<float>& downbeat_activation,
+                                           std::size_t projected_bpb,
+                                           std::size_t inferred_phase,
+                                           bool verbose) {
+    if (projected_frames.empty() ||
+        projected_bpb < 2 ||
+        downbeat_activation.empty()) {
+        return inferred_phase;
+    }
+
+    auto phase_score = [&](std::size_t phase) {
+        double sum = 0.0;
+        double weight = 0.0;
+        std::size_t picks = 0;
+        std::size_t ordinal = 0;
+        for (std::size_t i = phase;
+             i < projected_frames.size() && picks < 24;
+             i += projected_bpb, ++ordinal) {
+            const std::size_t frame = projected_frames[i];
+            if (frame >= downbeat_activation.size()) {
+                continue;
+            }
+            float value = downbeat_activation[frame];
+            if (frame > 0) {
+                value = std::max(value, downbeat_activation[frame - 1]);
+            }
+            if (frame + 1 < downbeat_activation.size()) {
+                value = std::max(value, downbeat_activation[frame + 1]);
+            }
+            const double w = std::exp(-0.12 * static_cast<double>(ordinal));
+            sum += static_cast<double>(value) * w;
+            weight += w;
+            picks += 1;
+        }
+        return weight > 0.0 ? (sum / weight) : 0.0;
+    };
+
+    const std::size_t normalized_inferred_phase = inferred_phase % projected_bpb;
+    std::size_t best_phase = normalized_inferred_phase;
+    double best_score = -1.0;
+    std::vector<double> scores(projected_bpb, 0.0);
+    for (std::size_t phase = 0; phase < projected_bpb; ++phase) {
+        const double score = phase_score(phase);
+        scores[phase] = score;
+        if (score > best_score) {
+            best_score = score;
+            best_phase = phase;
+        }
+    }
+
+    const double inferred_score = scores[normalized_inferred_phase];
+    const double phase0_score = scores[0];
+    const bool inferred_strong =
+        inferred_score > (phase0_score + 0.06) &&
+        inferred_score > (phase0_score * 1.15);
+    if (best_phase == 0 && normalized_inferred_phase != 0 && !inferred_strong) {
+        if (verbose) {
+            std::cerr << "DBN projected phase guard: inferred_phase="
+                      << normalized_inferred_phase
+                      << " inferred_score=" << inferred_score
+                      << " phase0_score=" << phase0_score
+                      << " selected_phase=0"
+                      << "\n";
+        }
+        return 0;
+    }
+
+    return normalized_inferred_phase;
+}
+
 WindowSummary summarize_window(const std::vector<float>& activation,
                               std::size_t start,
                               std::size_t end,
