@@ -1,5 +1,5 @@
 //
-//  coreml_postprocess_window.h
+//  postprocess_window.h
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.

@@ -1,13 +1,13 @@
 //
-//  coreml_postprocess_dbn_decoded.h
+//  postprocess_dbn_decoded.h
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#ifndef BEATIT_COREML_POSTPROCESS_DBN_DECODED_H
-#define BEATIT_COREML_POSTPROCESS_DBN_DECODED_H
+#ifndef BEATIT_POSTPROCESS_DBN_DECODED_H
+#define BEATIT_POSTPROCESS_DBN_DECODED_H
 
 #include "beatit/coreml.h"
 #include "beatit/dbn_beatit.h"
@@ -63,4 +63,4 @@ bool run_dbn_decoded_postprocess(CoreMLResult& result,
 
 } // namespace beatit::detail
 
-#endif // BEATIT_COREML_POSTPROCESS_DBN_DECODED_H
+#endif // BEATIT_POSTPROCESS_DBN_DECODED_H

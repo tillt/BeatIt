@@ -1,12 +1,12 @@
 //
-//  coreml_postprocess_tempo_fit.cpp
+//  postprocess_tempo_fit.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "beatit/coreml_postprocess_tempo_fit.h"
+#include "beatit/postprocess_tempo_fit.h"
 
 #include "beatit/dbn_calmdad.h"
 

@@ -1,5 +1,5 @@
 //
-//  coreml_postprocess.cpp
+//  postprocess_pipeline.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
@@ -10,12 +10,12 @@
 #include "beatit/dbn_beatit.h"
 #include "beatit/dbn_calmdad.h"
 
-#include "beatit/coreml_postprocess_helpers.h"
-#include "beatit/coreml_postprocess_dbn.h"
-#include "beatit/coreml_postprocess_result_ops.h"
-#include "beatit/coreml_postprocess_logits.h"
-#include "beatit/coreml_postprocess_tempo_fit.h"
-#include "beatit/coreml_postprocess_window.h"
+#include "beatit/postprocess_helpers.h"
+#include "beatit/postprocess_dbn.h"
+#include "beatit/postprocess_result_ops.h"
+#include "beatit/postprocess_logits.h"
+#include "beatit/postprocess_tempo_fit.h"
+#include "beatit/postprocess_window.h"
 #include <algorithm>
 #include <array>
 #include <chrono>

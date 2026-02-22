@@ -1,16 +1,16 @@
 //
-//  coreml_postprocess_logits.cpp
+//  postprocess_logits.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "beatit/coreml_postprocess_logits.h"
+#include "beatit/postprocess_logits.h"
 
-#include "beatit/coreml_postprocess_helpers.h"
-#include "beatit/coreml_postprocess_result_ops.h"
-#include "beatit/coreml_postprocess_window.h"
+#include "beatit/postprocess_helpers.h"
+#include "beatit/postprocess_result_ops.h"
+#include "beatit/postprocess_window.h"
 
 #include <algorithm>
 #include <cmath>

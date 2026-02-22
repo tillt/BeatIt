@@ -1,5 +1,5 @@
 //
-//  coreml_postprocess_tempo_fit.h
+//  postprocess_tempo_fit.h
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.

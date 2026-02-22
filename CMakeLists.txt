@@ -37,16 +37,16 @@ set(BEATIT_LIB_SOURCES
     src/beatit/coreml_inference.mm
     src/beatit/coreml_model_utils.mm
     src/beatit/coreml_metadata.mm
-    src/beatit/coreml_postprocess.cpp
-    src/beatit/coreml_postprocess_helpers.cpp
-    src/beatit/coreml_postprocess_dbn.cpp
-    src/beatit/coreml_postprocess_dbn_decoded.cpp
-    src/beatit/coreml_postprocess_dbn_tempo_decision.cpp
-    src/beatit/coreml_postprocess_logits.cpp
-    src/beatit/coreml_postprocess_grid_fill.cpp
-    src/beatit/coreml_postprocess_result_ops.cpp
-    src/beatit/coreml_postprocess_tempo_fit.cpp
-    src/beatit/coreml_postprocess_window.cpp
+    src/beatit/postprocess_pipeline.cpp
+    src/beatit/postprocess_helpers.cpp
+    src/beatit/postprocess_dbn.cpp
+    src/beatit/postprocess_dbn_decoded.cpp
+    src/beatit/postprocess_dbn_tempo_decision.cpp
+    src/beatit/postprocess_logits.cpp
+    src/beatit/postprocess_grid_fill.cpp
+    src/beatit/postprocess_result_ops.cpp
+    src/beatit/postprocess_tempo_fit.cpp
+    src/beatit/postprocess_window.cpp
     src/beatit/coreml_preset.cpp
     src/beatit/dbn_calmdad.cpp
     src/beatit/dbn_calmdad_sparse.cpp
@@ -145,16 +145,16 @@ if(APPLE)
         src/beatit/coreml_inference.mm
         src/beatit/coreml_model_utils.mm
         src/beatit/coreml_metadata.mm
-        src/beatit/coreml_postprocess.cpp
-        src/beatit/coreml_postprocess_helpers.cpp
-        src/beatit/coreml_postprocess_dbn.cpp
-        src/beatit/coreml_postprocess_dbn_decoded.cpp
-        src/beatit/coreml_postprocess_dbn_tempo_decision.cpp
-        src/beatit/coreml_postprocess_logits.cpp
-        src/beatit/coreml_postprocess_grid_fill.cpp
-        src/beatit/coreml_postprocess_result_ops.cpp
-        src/beatit/coreml_postprocess_tempo_fit.cpp
-        src/beatit/coreml_postprocess_window.cpp
+        src/beatit/postprocess_pipeline.cpp
+        src/beatit/postprocess_helpers.cpp
+        src/beatit/postprocess_dbn.cpp
+        src/beatit/postprocess_dbn_decoded.cpp
+        src/beatit/postprocess_dbn_tempo_decision.cpp
+        src/beatit/postprocess_logits.cpp
+        src/beatit/postprocess_grid_fill.cpp
+        src/beatit/postprocess_result_ops.cpp
+        src/beatit/postprocess_tempo_fit.cpp
+        src/beatit/postprocess_window.cpp
         src/beatit/coreml_preset.cpp
         src/beatit/dbn_calmdad.cpp
         src/beatit/dbn_calmdad_sparse.cpp

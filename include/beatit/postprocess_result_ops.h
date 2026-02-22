@@ -1,5 +1,5 @@
 //
-//  coreml_postprocess_result_ops.h
+//  postprocess_result_ops.h
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.

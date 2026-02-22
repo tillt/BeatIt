@@ -1,5 +1,5 @@
 //
-//  coreml_postprocess_helpers.h
+//  postprocess_helpers.h
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.

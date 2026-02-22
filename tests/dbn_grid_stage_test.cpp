@@ -6,7 +6,7 @@
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "coreml_postprocess_dbn_grid_stages.h"
+#include "postprocess_dbn_grid_stages.h"
 
 #include <cmath>
 #include <iostream>

@@ -1,12 +1,12 @@
 //
-//  coreml_postprocess_result_ops.cpp
+//  postprocess_result_ops.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "beatit/coreml_postprocess_result_ops.h"
+#include "beatit/postprocess_result_ops.h"
 
 #include <algorithm>
 #include <cmath>

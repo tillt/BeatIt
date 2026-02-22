@@ -1,15 +1,15 @@
 //
-//  coreml_postprocess_dbn_tempo_decision.cpp
+//  postprocess_dbn_tempo_decision.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "coreml_postprocess_dbn_tempo_decision.h"
+#include "postprocess_dbn_tempo_decision.h"
 
-#include "beatit/coreml_postprocess_tempo_fit.h"
-#include "beatit/coreml_postprocess_window.h"
+#include "beatit/postprocess_tempo_fit.h"
+#include "beatit/postprocess_window.h"
 
 #include <algorithm>
 #include <cmath>

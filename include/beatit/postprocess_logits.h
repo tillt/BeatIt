@@ -1,5 +1,5 @@
 //
-//  coreml_postprocess_logits.h
+//  postprocess_logits.h
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.

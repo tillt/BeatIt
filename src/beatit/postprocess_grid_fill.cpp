@@ -1,12 +1,12 @@
 //
-//  coreml_postprocess_grid_fill.cpp
+//  postprocess_grid_fill.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "beatit/coreml_postprocess_helpers.h"
+#include "beatit/postprocess_helpers.h"
 
 #include <algorithm>
 #include <cmath>

@@ -1,5 +1,5 @@
 //
-//  coreml_postprocess_dbn.h
+//  postprocess_dbn.h
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.

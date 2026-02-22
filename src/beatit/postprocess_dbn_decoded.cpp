@@ -1,19 +1,19 @@
 //
-//  coreml_postprocess_dbn_decoded.cpp
+//  postprocess_dbn_decoded.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "beatit/coreml_postprocess_dbn_decoded.h"
+#include "beatit/postprocess_dbn_decoded.h"
 
-#include "beatit/coreml_postprocess_helpers.h"
-#include "coreml_postprocess_dbn_grid_stages.h"
-#include "coreml_postprocess_dbn_tempo_decision.h"
-#include "beatit/coreml_postprocess_result_ops.h"
-#include "beatit/coreml_postprocess_tempo_fit.h"
-#include "beatit/coreml_postprocess_window.h"
+#include "beatit/postprocess_helpers.h"
+#include "postprocess_dbn_grid_stages.h"
+#include "postprocess_dbn_tempo_decision.h"
+#include "beatit/postprocess_result_ops.h"
+#include "beatit/postprocess_tempo_fit.h"
+#include "beatit/postprocess_window.h"
 
 #include <algorithm>
 #include <array>

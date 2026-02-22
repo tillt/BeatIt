@@ -1,16 +1,16 @@
 //
-//  coreml_postprocess_dbn_tempo_decision.h
+//  postprocess_dbn_tempo_decision.h
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#ifndef BEATIT_INTERNAL_COREML_POSTPROCESS_DBN_TEMPO_DECISION_H
-#define BEATIT_INTERNAL_COREML_POSTPROCESS_DBN_TEMPO_DECISION_H
+#ifndef BEATIT_INTERNAL_POSTPROCESS_DBN_TEMPO_DECISION_H
+#define BEATIT_INTERNAL_POSTPROCESS_DBN_TEMPO_DECISION_H
 
 #include "beatit/coreml.h"
-#include "beatit/coreml_postprocess_helpers.h"
+#include "beatit/postprocess_helpers.h"
 #include "beatit/dbn_calmdad.h"
 #include "dbn_beatit.h"
 
@@ -97,4 +97,4 @@ void log_grid_tempo_decision(const GridTempoDecision& decision,
 
 } // namespace beatit::detail
 
-#endif // BEATIT_INTERNAL_COREML_POSTPROCESS_DBN_TEMPO_DECISION_H
+#endif // BEATIT_INTERNAL_POSTPROCESS_DBN_TEMPO_DECISION_H
