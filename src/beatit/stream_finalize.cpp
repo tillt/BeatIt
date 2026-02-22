@@ -244,12 +244,11 @@ AnalysisResult BeatitStream::finalize() {
     result.coreml_downbeat_projected_feature_frames =
         std::move(final_result.downbeat_projected_feature_frames);
     result.coreml_phase_energy = std::move(coreml_phase_energy_);
-    const auto& bpm_frames = result.coreml_beat_projected_sample_frames.empty()
-        ? result.coreml_beat_sample_frames
-        : result.coreml_beat_projected_sample_frames;
     // Keep reported BPM consistent with the returned beat grid.
     float estimated_bpm =
-        normalize_bpm_to_range(estimate_bpm_from_beats(bpm_frames, sample_rate_), bpm_min, bpm_max);
+        normalize_bpm_to_range(estimate_bpm_from_beats(output_beat_sample_frames(result), sample_rate_),
+                               bpm_min,
+                               bpm_max);
     if (!(estimated_bpm > 0.0f)) {
         const float anchored_bpm = normalize_bpm_to_range(reference_bpm, bpm_min, bpm_max);
         if (anchored_bpm > 0.0f) {
@@ -324,23 +323,7 @@ AnalysisResult BeatitStream::finalize() {
         result.coreml_downbeat_projected_feature_frames = std::move(projected_downbeats);
     }
     const auto marker_start = std::chrono::steady_clock::now();
-    const auto& marker_feature_frames = result.coreml_beat_projected_feature_frames.empty()
-        ? result.coreml_beat_feature_frames
-        : result.coreml_beat_projected_feature_frames;
-    const auto& marker_sample_frames = result.coreml_beat_projected_sample_frames.empty()
-        ? result.coreml_beat_sample_frames
-        : result.coreml_beat_projected_sample_frames;
-    const auto& marker_downbeats = result.coreml_downbeat_projected_feature_frames.empty()
-        ? result.coreml_downbeat_feature_frames
-        : result.coreml_downbeat_projected_feature_frames;
-    result.coreml_beat_events =
-        build_shakespear_markers(marker_feature_frames,
-                                 marker_sample_frames,
-                                 marker_downbeats,
-                                 &result.coreml_beat_activation,
-                                 result.estimated_bpm,
-                                 sample_rate_,
-                                 coreml_config_);
+    rebuild_output_beat_events(&result, sample_rate_, coreml_config_);
     const auto marker_end = std::chrono::steady_clock::now();
     perf_.marker_ms +=
         std::chrono::duration<double, std::milli>(marker_end - marker_start).count();

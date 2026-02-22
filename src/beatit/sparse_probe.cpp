@@ -74,11 +74,8 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
 
     {
         // Keep reported BPM consistent with the returned beat grid.
-        const auto& bpm_frames = !result.coreml_beat_projected_sample_frames.empty()
-            ? result.coreml_beat_projected_sample_frames
-            : result.coreml_beat_sample_frames;
         const float grid_bpm = normalize_bpm_to_range_local(
-            estimate_bpm_from_beats_local(bpm_frames, sample_rate),
+            estimate_bpm_from_beats_local(output_beat_sample_frames(result), sample_rate),
             std::max(1.0f, original_config.min_bpm),
             std::max(std::max(1.0f, original_config.min_bpm) + 1.0f, original_config.max_bpm));
         if (grid_bpm > 0.0f) {
@@ -87,25 +84,7 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
             result.estimated_bpm = static_cast<float>(selected.consensus_bpm);
         }
     }
-    {
-        const auto& marker_feature_frames = result.coreml_beat_projected_feature_frames.empty()
-            ? result.coreml_beat_feature_frames
-            : result.coreml_beat_projected_feature_frames;
-        const auto& marker_sample_frames = result.coreml_beat_projected_sample_frames.empty()
-            ? result.coreml_beat_sample_frames
-            : result.coreml_beat_projected_sample_frames;
-        const auto& marker_downbeats = result.coreml_downbeat_projected_feature_frames.empty()
-            ? result.coreml_downbeat_feature_frames
-            : result.coreml_downbeat_projected_feature_frames;
-        result.coreml_beat_events =
-            build_shakespear_markers(marker_feature_frames,
-                                     marker_sample_frames,
-                                     marker_downbeats,
-                                     &result.coreml_beat_activation,
-                                     result.estimated_bpm,
-                                     sample_rate,
-                                     original_config);
-    }
+    rebuild_output_beat_events(&result, sample_rate, original_config);
 
     return result;
 }

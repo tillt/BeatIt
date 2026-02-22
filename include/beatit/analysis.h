@@ -57,4 +57,14 @@ float estimate_bpm_from_beats(const std::vector<unsigned long long>& beat_sample
                               double sample_rate);
 float normalize_bpm_to_range(float bpm, float min_bpm, float max_bpm);
 
+const std::vector<unsigned long long>& output_beat_feature_frames(const AnalysisResult& result);
+
+const std::vector<unsigned long long>& output_beat_sample_frames(const AnalysisResult& result);
+
+const std::vector<unsigned long long>& output_downbeat_feature_frames(const AnalysisResult& result);
+
+void rebuild_output_beat_events(AnalysisResult* result,
+                                double sample_rate,
+                                const CoreMLConfig& config);
+
 } // namespace beatit

@@ -6,6 +6,7 @@
 //
 
 #include "beatit/sparse_probe_selection.h"
+#include "beatit/sparse_phase_metrics.h"
 #include "beatit/sparse_waveform.h"
 
 #include <algorithm>
@@ -24,17 +25,6 @@ namespace {
 struct IntroPhaseMetrics {
     double median_abs_ms = std::numeric_limits<double>::infinity();
     double odd_even_gap_ms = std::numeric_limits<double>::infinity();
-    std::size_t count = 0;
-};
-
-struct WindowPhaseMetrics {
-    double median_ms = std::numeric_limits<double>::infinity();
-    double median_abs_ms = std::numeric_limits<double>::infinity();
-    double odd_even_gap_ms = std::numeric_limits<double>::infinity();
-    double abs_p90_ms = std::numeric_limits<double>::infinity();
-    double abs_p95_ms = std::numeric_limits<double>::infinity();
-    double abs_limit_exceed_ratio = std::numeric_limits<double>::infinity();
-    double signed_limit_exceed_ratio = std::numeric_limits<double>::infinity();
     std::size_t count = 0;
 };
 
@@ -413,126 +403,6 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
         }
         return metrics;
     };
-    auto measure_window_phase = [&](const AnalysisResult& r,
-                                    double bpm_hint,
-                                    double window_start_s) -> WindowPhaseMetrics {
-        WindowPhaseMetrics metrics;
-        if (sample_rate_ <= 0.0 || bpm_hint <= 0.0 || !provider) {
-            return metrics;
-        }
-        const auto& beats = sparse_select_beats(r);
-        if (beats.size() < 12) {
-            return metrics;
-        }
-
-        const unsigned long long window_start_frame = static_cast<unsigned long long>(
-            std::llround(std::max(0.0, window_start_s) * sample_rate_));
-        const unsigned long long window_end_frame = static_cast<unsigned long long>(
-            std::llround(std::max(0.0, window_start_s + probe_duration) * sample_rate_));
-        auto begin_it = std::lower_bound(beats.begin(), beats.end(), window_start_frame);
-        auto end_it = std::upper_bound(beats.begin(), beats.end(), window_end_frame);
-        if (begin_it == end_it || std::distance(begin_it, end_it) < 8) {
-            return metrics;
-        }
-
-        const std::size_t radius = sparse_waveform_radius(sample_rate_, bpm_hint);
-        if (radius == 0) {
-            return metrics;
-        }
-
-        const std::size_t margin = radius + static_cast<std::size_t>(std::llround(sample_rate_ * 1.5));
-        const std::size_t first_frame = static_cast<std::size_t>(*begin_it);
-        const std::size_t last_frame = static_cast<std::size_t>(*(end_it - 1));
-        const std::size_t segment_start = first_frame > margin ? first_frame - margin : 0;
-        const std::size_t segment_end = last_frame + margin;
-        const double segment_start_s = static_cast<double>(segment_start) / sample_rate_;
-        const double segment_duration_s =
-            static_cast<double>(std::max<std::size_t>(1, segment_end - segment_start)) / sample_rate_;
-
-        std::vector<float> samples;
-        if (!sparse_load_samples(provider, segment_start_s, segment_duration_s, &samples)) {
-            return metrics;
-        }
-
-        std::vector<double> signed_offsets_ms;
-        std::vector<double> abs_offsets_ms;
-        signed_offsets_ms.reserve(static_cast<std::size_t>(std::distance(begin_it, end_it)));
-        abs_offsets_ms.reserve(static_cast<std::size_t>(std::distance(begin_it, end_it)));
-        const std::size_t begin_idx =
-            static_cast<std::size_t>(std::distance(beats.begin(), begin_it));
-        const std::size_t end_idx =
-            static_cast<std::size_t>(std::distance(beats.begin(), end_it));
-        sparse_collect_offsets(beats,
-                               begin_idx,
-                               end_idx,
-                               segment_start,
-                               samples,
-                               radius,
-                               SparsePeakMode::ThresholdedLocalMax,
-                               sample_rate_,
-                               &signed_offsets_ms,
-                               &abs_offsets_ms);
-
-        if (abs_offsets_ms.size() < 8) {
-            return metrics;
-        }
-        metrics.count = abs_offsets_ms.size();
-        metrics.median_ms = sparse_median_inplace(&signed_offsets_ms);
-        metrics.median_abs_ms = sparse_median_inplace(&abs_offsets_ms);
-        const double beat_ms = bpm_hint > 0.0 ? (60000.0 / bpm_hint) : 500.0;
-        const double signed_limit_ms = std::max(30.0, beat_ms * 0.12);
-        const double abs_limit_ms = std::max(45.0, beat_ms * 0.18);
-        std::size_t abs_exceed_count = 0;
-        std::size_t signed_exceed_count = 0;
-        for (double v : abs_offsets_ms) {
-            if (v > abs_limit_ms) {
-                ++abs_exceed_count;
-            }
-        }
-        for (double v : signed_offsets_ms) {
-            if (std::fabs(v) > signed_limit_ms) {
-                ++signed_exceed_count;
-            }
-        }
-        metrics.abs_limit_exceed_ratio =
-            static_cast<double>(abs_exceed_count) / static_cast<double>(abs_offsets_ms.size());
-        metrics.signed_limit_exceed_ratio =
-            static_cast<double>(signed_exceed_count) / static_cast<double>(signed_offsets_ms.size());
-        auto quantile = [](std::vector<double> values, double q) {
-            if (values.empty()) {
-                return std::numeric_limits<double>::infinity();
-            }
-            q = std::clamp(q, 0.0, 1.0);
-            const std::size_t index = static_cast<std::size_t>(
-                std::llround(q * static_cast<double>(values.size() - 1)));
-            std::nth_element(values.begin(),
-                             values.begin() + static_cast<long>(index),
-                             values.end());
-            return values[index];
-        };
-        metrics.abs_p90_ms = quantile(abs_offsets_ms, 0.90);
-        metrics.abs_p95_ms = quantile(abs_offsets_ms, 0.95);
-
-        std::vector<double> odd;
-        std::vector<double> even;
-        odd.reserve(signed_offsets_ms.size() / 2);
-        even.reserve((signed_offsets_ms.size() + 1) / 2);
-        for (std::size_t i = 0; i < signed_offsets_ms.size(); ++i) {
-            if ((i % 2) == 0) {
-                even.push_back(signed_offsets_ms[i]);
-            } else {
-                odd.push_back(signed_offsets_ms[i]);
-            }
-        }
-        if (!odd.empty() && !even.empty()) {
-            metrics.odd_even_gap_ms = std::fabs(
-                sparse_median_inplace(&even) - sparse_median_inplace(&odd));
-        } else {
-            metrics.odd_even_gap_ms = 0.0;
-        }
-        return metrics;
-    };
-
     auto probe_start_extents = [&]() -> std::pair<double, double> {
         if (probes.empty()) {
             return {min_allowed_start, max_allowed_start};
@@ -565,7 +435,7 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
     bool have_consensus = false;
     std::vector<double> probe_mode_errors;
     std::vector<IntroPhaseMetrics> probe_intro_metrics;
-    std::vector<WindowPhaseMetrics> probe_middle_metrics;
+    std::vector<SparseWindowPhaseMetrics> probe_middle_metrics;
     double left_probe_start = min_allowed_start;
     double right_probe_start = max_allowed_start;
     double middle_probe_start = clamp_start(total * 0.5 - probe_duration * 0.5);
@@ -596,12 +466,16 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
         between_probe_start = clamp_start(0.5 * (probe_extents.first + middle_probe_start));
 
         probe_intro_metrics.assign(probes.size(), IntroPhaseMetrics{});
-        probe_middle_metrics.assign(probes.size(), WindowPhaseMetrics{});
+        probe_middle_metrics.assign(probes.size(), SparseWindowPhaseMetrics{});
         for (std::size_t i = 0; i < probes.size(); ++i) {
             const double bpm_hint = have_consensus ? consensus_bpm : probes[i].bpm;
             probe_intro_metrics[i] = measure_intro_phase(probes[i].analysis, bpm_hint);
-            probe_middle_metrics[i] = measure_window_phase(
-                probes[i].analysis, bpm_hint, middle_probe_start);
+            probe_middle_metrics[i] = measure_sparse_window_phase(probes[i].analysis,
+                                                                  bpm_hint,
+                                                                  middle_probe_start,
+                                                                  probe_duration,
+                                                                  sample_rate_,
+                                                                  provider);
         }
     };
 
@@ -651,7 +525,7 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
             (std::isfinite(intro.odd_even_gap_ms) && intro.odd_even_gap_ms > 220.0);
         return decision;
     };
-    auto evaluate_window_phase_gate = [&](const WindowPhaseMetrics& metrics,
+    auto evaluate_window_phase_gate = [&](const SparseWindowPhaseMetrics& metrics,
                                           double bpm_hint) -> WindowPhaseGate {
         WindowPhaseGate gate;
         gate.has_data = metrics.count >= 10 &&
@@ -661,8 +535,8 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
             return gate;
         }
         gate.beat_ms = bpm_hint > 0.0 ? (60000.0 / bpm_hint) : 500.0;
-        gate.signed_limit_ms = std::max(30.0, gate.beat_ms * 0.12);
-        gate.abs_limit_ms = std::max(45.0, gate.beat_ms * 0.18);
+        gate.signed_limit_ms = sparse_signed_phase_limit_ms(bpm_hint);
+        gate.abs_limit_ms = sparse_abs_phase_limit_ms(bpm_hint);
         gate.signed_exceeds = std::fabs(metrics.median_ms) > gate.signed_limit_ms;
         gate.abs_exceeds = metrics.median_abs_ms > gate.abs_limit_ms;
         gate.unstable_and = gate.signed_exceeds && gate.abs_exceeds;
@@ -676,10 +550,10 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
     double score_margin = decision.score_margin;
     bool low_confidence = decision.low_confidence;
     IntroPhaseMetrics selected_intro_metrics = probe_intro_metrics[selected_index];
-    WindowPhaseMetrics selected_middle_metrics = probe_middle_metrics[selected_index];
-    WindowPhaseMetrics selected_between_metrics;
-    WindowPhaseMetrics selected_left_window_metrics;
-    WindowPhaseMetrics selected_right_window_metrics;
+    SparseWindowPhaseMetrics selected_middle_metrics = probe_middle_metrics[selected_index];
+    SparseWindowPhaseMetrics selected_between_metrics;
+    SparseWindowPhaseMetrics selected_left_window_metrics;
+    SparseWindowPhaseMetrics selected_right_window_metrics;
     WindowPhaseGate selected_middle_gate;
     WindowPhaseGate selected_between_gate;
     WindowPhaseGate selected_left_gate;
@@ -695,13 +569,25 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
         const double selected_bpm_hint = have_consensus ? consensus_bpm : probes[selected_index].bpm;
         selected_middle_metrics = probe_middle_metrics[selected_index];
         selected_middle_gate = evaluate_window_phase_gate(selected_middle_metrics, selected_bpm_hint);
-        selected_between_metrics = measure_window_phase(
-            probes[selected_index].analysis, selected_bpm_hint, between_probe_start);
+        selected_between_metrics = measure_sparse_window_phase(probes[selected_index].analysis,
+                                                               selected_bpm_hint,
+                                                               between_probe_start,
+                                                               probe_duration,
+                                                               sample_rate_,
+                                                               provider);
         selected_between_gate = evaluate_window_phase_gate(selected_between_metrics, selected_bpm_hint);
-        selected_left_window_metrics = measure_window_phase(
-            probes[selected_index].analysis, selected_bpm_hint, left_probe_start);
-        selected_right_window_metrics = measure_window_phase(
-            probes[selected_index].analysis, selected_bpm_hint, right_probe_start);
+        selected_left_window_metrics = measure_sparse_window_phase(probes[selected_index].analysis,
+                                                                   selected_bpm_hint,
+                                                                   left_probe_start,
+                                                                   probe_duration,
+                                                                   sample_rate_,
+                                                                   provider);
+        selected_right_window_metrics = measure_sparse_window_phase(probes[selected_index].analysis,
+                                                                    selected_bpm_hint,
+                                                                    right_probe_start,
+                                                                    probe_duration,
+                                                                    sample_rate_,
+                                                                    provider);
         selected_left_gate = evaluate_window_phase_gate(
             selected_left_window_metrics, selected_bpm_hint);
         selected_right_gate = evaluate_window_phase_gate(
@@ -714,14 +600,16 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
         constexpr double kCalmAbsRatio = 0.20;
         constexpr double kCalmSignedRatio = 0.25;
 
-        const auto window_hot = [&](const WindowPhaseMetrics& metrics, const WindowPhaseGate& gate) {
+        const auto window_hot = [&](const SparseWindowPhaseMetrics& metrics,
+                                    const WindowPhaseGate& gate) {
             return gate.has_data &&
                    std::isfinite(metrics.abs_limit_exceed_ratio) &&
                    std::isfinite(metrics.signed_limit_exceed_ratio) &&
                    metrics.abs_limit_exceed_ratio >= kHotAbsRatio &&
                    metrics.signed_limit_exceed_ratio >= kHotSignedRatio;
         };
-        const auto window_calm = [&](const WindowPhaseMetrics& metrics, const WindowPhaseGate& gate) {
+        const auto window_calm = [&](const SparseWindowPhaseMetrics& metrics,
+                                     const WindowPhaseGate& gate) {
             return gate.has_data &&
                    std::isfinite(metrics.abs_limit_exceed_ratio) &&
                    std::isfinite(metrics.signed_limit_exceed_ratio) &&

@@ -146,6 +146,40 @@ float normalize_bpm_to_range(float bpm, float min_bpm, float max_bpm) {
     return bpm;
 }
 
+const std::vector<unsigned long long>& output_beat_feature_frames(const AnalysisResult& result) {
+    return result.coreml_beat_projected_feature_frames.empty()
+        ? result.coreml_beat_feature_frames
+        : result.coreml_beat_projected_feature_frames;
+}
+
+const std::vector<unsigned long long>& output_beat_sample_frames(const AnalysisResult& result) {
+    return result.coreml_beat_projected_sample_frames.empty()
+        ? result.coreml_beat_sample_frames
+        : result.coreml_beat_projected_sample_frames;
+}
+
+const std::vector<unsigned long long>& output_downbeat_feature_frames(const AnalysisResult& result) {
+    return result.coreml_downbeat_projected_feature_frames.empty()
+        ? result.coreml_downbeat_feature_frames
+        : result.coreml_downbeat_projected_feature_frames;
+}
+
+void rebuild_output_beat_events(AnalysisResult* result,
+                                double sample_rate,
+                                const CoreMLConfig& config) {
+    if (!result) {
+        return;
+    }
+    result->coreml_beat_events =
+        build_shakespear_markers(output_beat_feature_frames(*result),
+                                 output_beat_sample_frames(*result),
+                                 output_downbeat_feature_frames(*result),
+                                 &result->coreml_beat_activation,
+                                 result->estimated_bpm,
+                                 sample_rate,
+                                 config);
+}
+
 float estimate_bpm_from_activation(const std::vector<float>& activation,
                                    const CoreMLConfig& config,
                                    double sample_rate) {
@@ -1083,28 +1117,8 @@ AnalysisResult analyze(const std::vector<float>& samples,
         result.coreml_downbeat_feature_frames = std::move(final_result.downbeat_feature_frames);
         result.coreml_downbeat_projected_feature_frames =
             std::move(final_result.downbeat_projected_feature_frames);
-        const auto& bpm_frames = result.coreml_beat_projected_sample_frames.empty()
-            ? result.coreml_beat_sample_frames
-            : result.coreml_beat_projected_sample_frames;
-        result.estimated_bpm =
-            estimate_bpm_from_beats(bpm_frames, sample_rate);
-        const auto& marker_feature_frames = result.coreml_beat_projected_feature_frames.empty()
-            ? result.coreml_beat_feature_frames
-            : result.coreml_beat_projected_feature_frames;
-        const auto& marker_sample_frames = result.coreml_beat_projected_sample_frames.empty()
-            ? result.coreml_beat_sample_frames
-            : result.coreml_beat_projected_sample_frames;
-        const auto& marker_downbeats = result.coreml_downbeat_projected_feature_frames.empty()
-            ? result.coreml_downbeat_feature_frames
-            : result.coreml_downbeat_projected_feature_frames;
-        result.coreml_beat_events =
-            build_shakespear_markers(marker_feature_frames,
-                                     marker_sample_frames,
-                                     marker_downbeats,
-                                     &result.coreml_beat_activation,
-                                     result.estimated_bpm,
-                                     sample_rate,
-                                     config);
+        result.estimated_bpm = estimate_bpm_from_beats(output_beat_sample_frames(result), sample_rate);
+        rebuild_output_beat_events(&result, sample_rate, config);
 
         return result;
     }
@@ -1183,27 +1197,8 @@ AnalysisResult analyze(const std::vector<float>& samples,
     result.coreml_downbeat_feature_frames = std::move(final_result.downbeat_feature_frames);
     result.coreml_downbeat_projected_feature_frames =
         std::move(final_result.downbeat_projected_feature_frames);
-    const auto& bpm_frames = result.coreml_beat_projected_sample_frames.empty()
-        ? result.coreml_beat_sample_frames
-        : result.coreml_beat_projected_sample_frames;
-    result.estimated_bpm = estimate_bpm_from_beats(bpm_frames, sample_rate);
-    const auto& marker_feature_frames = result.coreml_beat_projected_feature_frames.empty()
-        ? result.coreml_beat_feature_frames
-        : result.coreml_beat_projected_feature_frames;
-    const auto& marker_sample_frames = result.coreml_beat_projected_sample_frames.empty()
-        ? result.coreml_beat_sample_frames
-        : result.coreml_beat_projected_sample_frames;
-    const auto& marker_downbeats = result.coreml_downbeat_projected_feature_frames.empty()
-        ? result.coreml_downbeat_feature_frames
-        : result.coreml_downbeat_projected_feature_frames;
-    result.coreml_beat_events =
-        build_shakespear_markers(marker_feature_frames,
-                                 marker_sample_frames,
-                                 marker_downbeats,
-                                 &result.coreml_beat_activation,
-                                 result.estimated_bpm,
-                                 sample_rate,
-                                 config);
+    result.estimated_bpm = estimate_bpm_from_beats(output_beat_sample_frames(result), sample_rate);
+    rebuild_output_beat_events(&result, sample_rate, config);
 
     return result;
 }
