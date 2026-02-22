@@ -570,7 +570,6 @@ bool run_dbn_postprocess(CoreMLResult& result,
                                                 used_frames);
                 const bool quality_low =
                     quality_valid && (quality_qkur < 3.6);
-                const bool drop_global = false;
                 const bool drop_fit = quality_low && bpm_from_fit > 0.0;
                 const std::size_t downbeat_count = downbeat_stats.count;
                 const double downbeat_cv = (downbeat_count > 0 && downbeat_stats.mean_interval > 0.0)
@@ -682,7 +681,6 @@ bool run_dbn_postprocess(CoreMLResult& result,
                 if (config.dbn_trace) {
                     std::cerr << "DBN quality gate: low=" << (quality_low ? 1 : 0)
                               << " drop_ref=" << (drop_ref ? 1 : 0)
-                              << " drop_global=" << (drop_global ? 1 : 0)
                               << " drop_fit=" << (drop_fit ? 1 : 0)
                               << " downbeat_ok=" << (downbeat_override_ok ? 1 : 0)
                               << " downbeat_cv=" << downbeat_cv
@@ -1038,7 +1036,6 @@ bool run_dbn_postprocess(CoreMLResult& result,
                     std::size_t hits = 0;
                     double mean = 0.0;
                     const char* source = "none";
-                    bool score_set = false;
 
                     if (phase_window_frames > 0 && !allow_downbeat_phase) {
                         if (has_phase_peaks) {
@@ -1091,7 +1088,7 @@ bool run_dbn_postprocess(CoreMLResult& result,
                                 source = "beat_threshold";
                             }
                         }
-                    } else if (!score_set && phase_window_frames > 0 && allow_downbeat_phase) {
+                    } else if (phase_window_frames > 0 && allow_downbeat_phase) {
                         double sum = 0.0;
                         double weight = 0.0;
                         const float threshold = max_downbeat > 0.0f
@@ -1118,10 +1115,9 @@ bool run_dbn_postprocess(CoreMLResult& result,
                             hits = static_cast<std::size_t>(weight + 0.5);
                             mean = score;
                             source = "downbeat_window_decay";
-                            score_set = true;
                         }
                     }
-                    if (!score_set && !std::isfinite(score)) {
+                    if (!std::isfinite(score)) {
                         const std::size_t max_checks = std::min<std::size_t>(phase_frames.size(), 3);
                         double sum = 0.0;
                         if (allow_downbeat_phase) {
@@ -1162,33 +1158,9 @@ bool run_dbn_postprocess(CoreMLResult& result,
                         mean = (max_checks > 0) ? (sum / static_cast<double>(max_checks)) : 0.0;
                         source = allow_downbeat_phase ? "fallback_downbeat" : "fallback_beat";
                     }
-                    if (!score_set && !std::isfinite(score) && allow_downbeat_phase) {
-                        const std::size_t early_limit = std::min<std::size_t>(
-                            phase_window_end,
-                            static_cast<std::size_t>(std::max(1.0, local_frame_rate * 2.0)));
-                        double sum = 0.0;
-                        std::size_t count = 0;
-                        for (std::size_t i = 0; i < phase_frames.size(); ++i) {
-                            const std::size_t frame = phase_frames[i];
-                            if (frame >= early_limit) {
-                                break;
-                            }
-                            if (frame < result.downbeat_activation.size()) {
-                                sum += result.downbeat_activation[frame];
-                                count += 1;
-                            }
-                        }
-                        if (count > 0) {
-                            score = sum / static_cast<double>(count);
-                            hits = count;
-                            mean = score;
-                            source = "downbeat_early_energy";
-                            score_set = true;
-                        }
-                    }
                     double delay_penalty = 0.0;
                     if (max_delay_frames > 0 && phase_frames.front() > max_delay_frames &&
-                        source != nullptr && std::strncmp(source, "fallback", 8) != 0 &&
+                        std::strncmp(source, "fallback", 8) != 0 &&
                         !(quality_low &&
                           (std::strncmp(source, "beat_peak_mask", 14) == 0 ||
                            std::strncmp(source, "beat_threshold", 14) == 0))) {
