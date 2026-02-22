@@ -979,6 +979,168 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
         return metrics;
     };
 
+    struct WindowPhaseMetrics {
+        double median_ms = std::numeric_limits<double>::infinity();
+        double median_abs_ms = std::numeric_limits<double>::infinity();
+        double odd_even_gap_ms = std::numeric_limits<double>::infinity();
+        std::size_t count = 0;
+    };
+    auto measure_window_phase = [&](const AnalysisResult& r,
+                                    double bpm_hint,
+                                    double window_start_s) -> WindowPhaseMetrics {
+        WindowPhaseMetrics metrics;
+        if (sample_rate_ <= 0.0 || bpm_hint <= 0.0 || !provider) {
+            return metrics;
+        }
+        const auto& beats = !r.coreml_beat_projected_sample_frames.empty()
+            ? r.coreml_beat_projected_sample_frames
+            : r.coreml_beat_sample_frames;
+        if (beats.size() < 12) {
+            return metrics;
+        }
+
+        const unsigned long long window_start_frame = static_cast<unsigned long long>(
+            std::llround(std::max(0.0, window_start_s) * sample_rate_));
+        const unsigned long long window_end_frame = static_cast<unsigned long long>(
+            std::llround(std::max(0.0, window_start_s + probe_duration) * sample_rate_));
+        auto begin_it = std::lower_bound(beats.begin(), beats.end(), window_start_frame);
+        auto end_it = std::upper_bound(beats.begin(), beats.end(), window_end_frame);
+        if (begin_it == end_it || std::distance(begin_it, end_it) < 8) {
+            return metrics;
+        }
+
+        const std::size_t radius = static_cast<std::size_t>(
+            std::llround(sample_rate_ * (60.0 / bpm_hint) * 0.6));
+        if (radius == 0) {
+            return metrics;
+        }
+
+        const std::size_t margin = radius + static_cast<std::size_t>(std::llround(sample_rate_ * 1.5));
+        const std::size_t first_frame = static_cast<std::size_t>(*begin_it);
+        const std::size_t last_frame = static_cast<std::size_t>(*(end_it - 1));
+        const std::size_t segment_start = first_frame > margin ? first_frame - margin : 0;
+        const std::size_t segment_end = last_frame + margin;
+        const double segment_start_s = static_cast<double>(segment_start) / sample_rate_;
+        const double segment_duration_s =
+            static_cast<double>(std::max<std::size_t>(1, segment_end - segment_start)) / sample_rate_;
+
+        std::vector<float> samples;
+        const std::size_t received = provider(segment_start_s, segment_duration_s, &samples);
+        if (received == 0 || samples.empty()) {
+            return metrics;
+        }
+        if (samples.size() > received) {
+            samples.resize(received);
+        }
+
+        std::vector<double> signed_offsets_ms;
+        std::vector<double> abs_offsets_ms;
+        signed_offsets_ms.reserve(static_cast<std::size_t>(std::distance(begin_it, end_it)));
+        abs_offsets_ms.reserve(static_cast<std::size_t>(std::distance(begin_it, end_it)));
+
+        for (auto it = begin_it; it != end_it; ++it) {
+            const std::size_t beat_frame = static_cast<std::size_t>(*it);
+            if (beat_frame < segment_start) {
+                continue;
+            }
+            const std::size_t local_center =
+                std::min<std::size_t>(samples.size() - 1, beat_frame - segment_start);
+            const std::size_t start = local_center > radius ? local_center - radius : 0;
+            const std::size_t end = std::min(samples.size() - 1, local_center + radius);
+            if (end <= start + 2) {
+                continue;
+            }
+
+            float window_max = 0.0f;
+            for (std::size_t p = start; p <= end; ++p) {
+                window_max = std::max(window_max, std::fabs(samples[p]));
+            }
+            const float threshold = window_max * 0.6f;
+
+            std::size_t best_peak = local_center;
+            float best_value = 0.0f;
+            for (std::size_t p = start + 1; p < end; ++p) {
+                const float left = std::fabs(samples[p - 1]);
+                const float value = std::fabs(samples[p]);
+                const float right = std::fabs(samples[p + 1]);
+                if (value < threshold) {
+                    continue;
+                }
+                if (value >= left && value > right && value > best_value) {
+                    best_value = value;
+                    best_peak = p;
+                }
+            }
+            if (best_value <= 0.0f) {
+                float max_value = 0.0f;
+                for (std::size_t p = start; p <= end; ++p) {
+                    const float value = std::fabs(samples[p]);
+                    if (value > max_value) {
+                        max_value = value;
+                        best_peak = p;
+                    }
+                }
+            }
+
+            const double delta_frames = static_cast<double>(
+                static_cast<long long>(best_peak) - static_cast<long long>(local_center));
+            const double offset_ms = (delta_frames * 1000.0) / sample_rate_;
+            signed_offsets_ms.push_back(offset_ms);
+            abs_offsets_ms.push_back(std::fabs(offset_ms));
+        }
+
+        if (abs_offsets_ms.size() < 8) {
+            return metrics;
+        }
+        metrics.count = abs_offsets_ms.size();
+        auto signed_mid = signed_offsets_ms.begin() + static_cast<long>(signed_offsets_ms.size() / 2);
+        std::nth_element(signed_offsets_ms.begin(), signed_mid, signed_offsets_ms.end());
+        metrics.median_ms = *signed_mid;
+        auto abs_mid = abs_offsets_ms.begin() + static_cast<long>(abs_offsets_ms.size() / 2);
+        std::nth_element(abs_offsets_ms.begin(), abs_mid, abs_offsets_ms.end());
+        metrics.median_abs_ms = *abs_mid;
+
+        auto median_inplace = [](std::vector<double>& values) -> double {
+            if (values.empty()) {
+                return 0.0;
+            }
+            auto m = values.begin() + static_cast<long>(values.size() / 2);
+            std::nth_element(values.begin(), m, values.end());
+            return *m;
+        };
+
+        std::vector<double> odd;
+        std::vector<double> even;
+        odd.reserve(signed_offsets_ms.size() / 2);
+        even.reserve((signed_offsets_ms.size() + 1) / 2);
+        for (std::size_t i = 0; i < signed_offsets_ms.size(); ++i) {
+            if ((i % 2) == 0) {
+                even.push_back(signed_offsets_ms[i]);
+            } else {
+                odd.push_back(signed_offsets_ms[i]);
+            }
+        }
+        if (!odd.empty() && !even.empty()) {
+            metrics.odd_even_gap_ms = std::fabs(median_inplace(even) - median_inplace(odd));
+        } else {
+            metrics.odd_even_gap_ms = 0.0;
+        }
+        return metrics;
+    };
+
+    auto probe_start_extents = [&]() -> std::pair<double, double> {
+        if (probes.empty()) {
+            return {min_allowed_start, max_allowed_start};
+        }
+        double min_start = probes.front().start;
+        double max_start = probes.front().start;
+        for (const auto& p : probes) {
+            min_start = std::min(min_start, p.start);
+            max_start = std::max(max_start, p.start);
+        }
+        return {min_start, max_start};
+    };
+
     double consensus_bpm = consensus_from_probes(probes);
     if (probes.size() >= 2 && consensus_bpm > 0.0) {
         double max_err = 0.0;
@@ -991,38 +1153,52 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
             max_err = std::max(max_err, best_local);
         }
         if (max_err > 0.025 && probes.size() == 2) {
-            ProbeResult p;
-            p.start = clamp_start(total * 0.5 - probe_duration * 0.5);
-            p.analysis = run_probe(p.start, probe_duration);
-            p.bpm = p.analysis.estimated_bpm;
-            p.conf = estimate_probe_confidence(p.analysis);
-            probes.push_back(std::move(p));
-            consensus_bpm = consensus_from_probes(probes);
+            push_unique_probe(run_probe_result(clamp_start(total * 0.5 - probe_duration * 0.5)));
         }
     }
 
-    std::vector<double> probe_mode_errors(probes.size(), 1.0);
-    bool have_consensus = consensus_bpm > 0.0;
-    for (std::size_t i = 0; i < probes.size(); ++i) {
-        if (!have_consensus) {
-            probe_mode_errors[i] = 0.0;
-            continue;
+    bool have_consensus = false;
+    std::vector<double> probe_mode_errors;
+    std::vector<IntroPhaseMetrics> probe_intro_metrics;
+    std::vector<WindowPhaseMetrics> probe_middle_metrics;
+    double middle_probe_start = clamp_start(total * 0.5 - probe_duration * 0.5);
+    double between_probe_start = clamp_start(0.5 * (min_allowed_start + middle_probe_start));
+
+    auto recompute_probe_scores = [&]() {
+        consensus_bpm = consensus_from_probes(probes);
+        have_consensus = consensus_bpm > 0.0;
+
+        probe_mode_errors.assign(probes.size(), 1.0);
+        for (std::size_t i = 0; i < probes.size(); ++i) {
+            if (!have_consensus) {
+                probe_mode_errors[i] = 0.0;
+                continue;
+            }
+            const auto modes = expand_modes(probes[i].bpm, probes[i].conf);
+            double mode_error = 1.0;
+            for (const auto& m : modes) {
+                mode_error = std::min(mode_error, relative_diff(consensus_bpm, m.bpm) * m.penalty);
+            }
+            probe_mode_errors[i] = mode_error;
         }
-        const auto modes = expand_modes(probes[i].bpm, probes[i].conf);
-        double mode_error = 1.0;
-        for (const auto& m : modes) {
-            mode_error = std::min(mode_error, relative_diff(consensus_bpm, m.bpm) * m.penalty);
+
+        const auto probe_extents = probe_start_extents();
+        middle_probe_start = clamp_start(0.5 * (probe_extents.first + probe_extents.second));
+        between_probe_start = clamp_start(0.5 * (probe_extents.first + middle_probe_start));
+
+        probe_intro_metrics.assign(probes.size(), IntroPhaseMetrics{});
+        probe_middle_metrics.assign(probes.size(), WindowPhaseMetrics{});
+        for (std::size_t i = 0; i < probes.size(); ++i) {
+            const double bpm_hint = have_consensus ? consensus_bpm : probes[i].bpm;
+            probe_intro_metrics[i] = measure_intro_phase(probes[i].analysis, bpm_hint);
+            probe_middle_metrics[i] = measure_window_phase(
+                probes[i].analysis, bpm_hint, middle_probe_start);
         }
-        probe_mode_errors[i] = mode_error;
-    }
+    };
+
+    recompute_probe_scores();
 
     const double anchor_start = left_anchor_start;
-    std::vector<IntroPhaseMetrics> probe_intro_metrics(probes.size());
-    for (std::size_t i = 0; i < probes.size(); ++i) {
-        probe_intro_metrics[i] = measure_intro_phase(
-            probes[i].analysis,
-            have_consensus ? consensus_bpm : probes[i].bpm);
-    }
 
     struct DecisionOutcome {
         std::size_t selected_index = 0;
@@ -1106,7 +1282,6 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
             intro.median_abs_ms > 170.0 &&
             probes[out.selected_index].conf < 0.80;
         out.low_confidence =
-            (out.score_margin < 0.06) ||
             (probes[out.selected_index].conf < 0.55) ||
             (probe_mode_errors[out.selected_index] > 0.03) ||
             severe_intro_miss ||
@@ -1114,13 +1289,43 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
             (std::isfinite(intro.odd_even_gap_ms) && intro.odd_even_gap_ms > 220.0);
         return out;
     };
-    const DecisionOutcome decision = decide_unified();
+    auto window_phase_unstable = [&](const WindowPhaseMetrics& metrics, double bpm_hint) {
+        if (metrics.count < 10 ||
+            !std::isfinite(metrics.median_ms) ||
+            !std::isfinite(metrics.median_abs_ms)) {
+            return false;
+        }
+        const double beat_ms = bpm_hint > 0.0 ? (60000.0 / bpm_hint) : 500.0;
+        const double signed_limit = std::max(30.0, beat_ms * 0.12);
+        const double abs_limit = std::max(45.0, beat_ms * 0.18);
+        return (std::fabs(metrics.median_ms) > signed_limit) &&
+               (metrics.median_abs_ms > abs_limit);
+    };
 
-    const std::size_t selected_index = decision.selected_index;
-    const double selected_score = decision.selected_score;
-    const double score_margin = decision.score_margin;
-    const bool low_confidence = decision.low_confidence;
-    const IntroPhaseMetrics selected_intro_metrics = probe_intro_metrics[selected_index];
+    DecisionOutcome decision = decide_unified();
+    std::size_t selected_index = decision.selected_index;
+    double selected_score = decision.selected_score;
+    double score_margin = decision.score_margin;
+    bool low_confidence = decision.low_confidence;
+    IntroPhaseMetrics selected_intro_metrics = probe_intro_metrics[selected_index];
+    WindowPhaseMetrics selected_middle_metrics = probe_middle_metrics[selected_index];
+    bool interior_probe_added = false;
+
+    if (probes.size() == 2) {
+        const double selected_bpm_hint = have_consensus ? consensus_bpm : probes[selected_index].bpm;
+        if (window_phase_unstable(selected_middle_metrics, selected_bpm_hint)) {
+            push_unique_probe(run_probe_result(between_probe_start));
+            recompute_probe_scores();
+            decision = decide_unified();
+            selected_index = decision.selected_index;
+            selected_score = decision.selected_score;
+            score_margin = decision.score_margin;
+            low_confidence = decision.low_confidence;
+            selected_intro_metrics = probe_intro_metrics[selected_index];
+            selected_middle_metrics = probe_middle_metrics[selected_index];
+            interior_probe_added = true;
+        }
+    }
 
     // Sparse mode returns directly from the best probe to avoid an extra anchor pass.
     result = probes[selected_index].analysis;
@@ -1953,6 +2158,12 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
                   << " selected_conf=" << probes[selected_index].conf
                   << " selected_intro_abs_ms=" << selected_intro_metrics.median_abs_ms
                   << " selected_odd_even_gap_ms=" << selected_intro_metrics.odd_even_gap_ms
+                  << " selected_middle_ms=" << selected_middle_metrics.median_ms
+                  << " selected_middle_abs_ms=" << selected_middle_metrics.median_abs_ms
+                  << " selected_middle_odd_even_gap_ms=" << selected_middle_metrics.odd_even_gap_ms
+                  << " middle_probe_start_s=" << middle_probe_start
+                  << " between_probe_start_s=" << between_probe_start
+                  << " interior_probe_added=" << (interior_probe_added ? 1 : 0)
                   << " repair=" << (low_confidence ? 1 : 0)
                   << "\n";
     }
