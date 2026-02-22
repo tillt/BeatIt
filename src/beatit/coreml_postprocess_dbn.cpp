@@ -391,8 +391,10 @@ bool run_dbn_postprocess(CoreMLResult& result,
                 } else {
                     bpb_candidates = {config.dbn_beats_per_bar};
                 }
-                const auto [bpb, phase] =
+                const auto inferred_bpb_phase =
                     infer_bpb_phase(filtered_beats, aligned_downbeats, bpb_candidates);
+                const std::size_t bpb = inferred_bpb_phase.first;
+                const std::size_t phase = inferred_bpb_phase.second;
                 const double base_interval = median_interval_frames(filtered_beats);
                 const std::vector<float>& tempo_activation =
                     use_window ? beat_slice : result.beat_activation;
@@ -833,31 +835,34 @@ bool run_dbn_postprocess(CoreMLResult& result,
 
                 std::size_t best_phase = phase;
                 double best_score = -std::numeric_limits<double>::infinity();
-                const double local_frame_rate =
-                    config.hop_size > 0 ? static_cast<double>(config.sample_rate) /
-                        static_cast<double>(config.hop_size) : 0.0;
-                const std::size_t phase_window_frames =
-                    (config.dbn_downbeat_phase_window_seconds > 0.0 && local_frame_rate > 0.0)
-                        ? static_cast<std::size_t>(std::llround(
-                            config.dbn_downbeat_phase_window_seconds * local_frame_rate))
-                        : 0;
-                const std::size_t phase_window_start = use_window ? window_start : 0;
-                const std::size_t phase_window_end =
-                    (phase_window_frames > 0)
-                        ? std::min(used_frames, phase_window_start + phase_window_frames)
-                        : phase_window_start;
-                const bool allow_downbeat_phase =
-                    !result.downbeat_activation.empty() && !quality_low && downbeat_override_ok;
-                const std::size_t max_delay_frames =
-                    (config.dbn_downbeat_phase_max_delay_seconds > 0.0 && local_frame_rate > 0.0)
-                        ? static_cast<std::size_t>(std::llround(
-                            config.dbn_downbeat_phase_max_delay_seconds * local_frame_rate))
-                        : 0;
-                const float onset_ratio = 0.35f;
-                const std::size_t onset_max_back =
-                    max_delay_frames > 0 ? max_delay_frames : 8;
-                auto onset_from_peak = [&](const std::vector<float>& activation,
-                                           std::size_t peak_frame) -> std::size_t {
+                float max_downbeat = 0.0f;
+
+                auto select_downbeat_phase = [&] {
+                    const double local_frame_rate =
+                        config.hop_size > 0 ? static_cast<double>(config.sample_rate) /
+                            static_cast<double>(config.hop_size) : 0.0;
+                    const std::size_t phase_window_frames =
+                        (config.dbn_downbeat_phase_window_seconds > 0.0 && local_frame_rate > 0.0)
+                            ? static_cast<std::size_t>(std::llround(
+                                config.dbn_downbeat_phase_window_seconds * local_frame_rate))
+                            : 0;
+                    const std::size_t phase_window_start = use_window ? window_start : 0;
+                    const std::size_t phase_window_end =
+                        (phase_window_frames > 0)
+                            ? std::min(used_frames, phase_window_start + phase_window_frames)
+                            : phase_window_start;
+                    const bool allow_downbeat_phase =
+                        !result.downbeat_activation.empty() && !quality_low && downbeat_override_ok;
+                    const std::size_t max_delay_frames =
+                        (config.dbn_downbeat_phase_max_delay_seconds > 0.0 && local_frame_rate > 0.0)
+                            ? static_cast<std::size_t>(std::llround(
+                                config.dbn_downbeat_phase_max_delay_seconds * local_frame_rate))
+                            : 0;
+                    const float onset_ratio = 0.35f;
+                    const std::size_t onset_max_back =
+                        max_delay_frames > 0 ? max_delay_frames : 8;
+                    auto onset_from_peak = [&](const std::vector<float>& activation,
+                                               std::size_t peak_frame) -> std::size_t {
                     if (activation.empty() || peak_frame >= activation.size()) {
                         return peak_frame;
                     }
@@ -888,7 +893,6 @@ bool run_dbn_postprocess(CoreMLResult& result,
                     return out;
                 };
 
-                float max_downbeat = 0.0f;
                 float max_beat = 0.0f;
                 std::vector<uint8_t> phase_peak_mask;
                 bool has_phase_peaks = false;
@@ -1254,8 +1258,11 @@ bool run_dbn_postprocess(CoreMLResult& result,
                                   << "\n";
                     }
                 }
-                // Force a uniform grid so projection yields evenly spaced beats.
-                if (decoded.beat_frames.size() >= 2 && step_frames > 1.0) {
+                };
+
+                auto synthesize_uniform_grid = [&] {
+                    // Force a uniform grid so projection yields evenly spaced beats.
+                    if (decoded.beat_frames.size() >= 2 && step_frames > 1.0) {
                     if (config.dbn_grid_global_fit && decoded.beat_frames.size() >= 8) {
                         const double n = static_cast<double>(decoded.beat_frames.size());
                         double sx = 0.0;
@@ -1524,7 +1531,11 @@ bool run_dbn_postprocess(CoreMLResult& result,
                                   << " advance_s=" << config.dbn_grid_start_advance_seconds
                                   << "\n";
                     }
-                }
+                    }
+                };
+
+                select_downbeat_phase();
+                synthesize_uniform_grid();
         };
 
         auto emit_projected_grid_outputs = [&] {
