@@ -31,6 +31,14 @@ using SparseEstimateBpm =
 using SparseNormalizeBpm =
     std::function<float(float bpm, float min_bpm, float max_bpm)>;
 
+struct SparseProbeObservation {
+    double start = 0.0;
+    AnalysisResult analysis;
+    double bpm = 0.0;
+    double conf = 0.0;
+    double phase_abs_ms = 0.0;
+};
+
 AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
                                            double sample_rate,
                                            double total_duration_seconds,

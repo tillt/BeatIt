@@ -16,14 +16,6 @@
 namespace beatit {
 namespace detail {
 
-struct SparseProbeObservation {
-    double start = 0.0;
-    AnalysisResult analysis;
-    double bpm = 0.0;
-    double conf = 0.0;
-    double phase_abs_ms = 0.0;
-};
-
 void apply_sparse_bounded_grid_refit(AnalysisResult* result, double sample_rate);
 
 void apply_sparse_anchor_state_refit(AnalysisResult* result,

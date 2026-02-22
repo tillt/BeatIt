@@ -37,6 +37,7 @@ set(BEATIT_LIB_SOURCES
     src/beatit/stream_finalize.cpp
     src/beatit/inference_backend_coreml.cpp
     src/beatit/sparse_probe.cpp
+    src/beatit/sparse_probe_selection.cpp
     src/beatit/sparse_refinement.cpp
     src/beatit/sparse_waveform.cpp
     src/beatit/stream.cpp
@@ -124,6 +125,7 @@ if(APPLE)
         src/beatit/stream_finalize.cpp
         src/beatit/inference_backend_coreml.cpp
         src/beatit/sparse_probe.cpp
+        src/beatit/sparse_probe_selection.cpp
         src/beatit/sparse_refinement.cpp
         src/beatit/sparse_waveform.cpp
         src/beatit/stream.cpp
