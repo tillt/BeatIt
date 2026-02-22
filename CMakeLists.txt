@@ -40,6 +40,7 @@ set(BEATIT_LIB_SOURCES
     src/beatit/coreml_postprocess.cpp
     src/beatit/coreml_postprocess_helpers.cpp
     src/beatit/coreml_postprocess_dbn.cpp
+    src/beatit/coreml_postprocess_dbn_decoded.cpp
     src/beatit/coreml_postprocess_logits.cpp
     src/beatit/coreml_postprocess_grid_fill.cpp
     src/beatit/coreml_postprocess_result_ops.cpp
@@ -146,6 +147,7 @@ if(APPLE)
         src/beatit/coreml_postprocess.cpp
         src/beatit/coreml_postprocess_helpers.cpp
         src/beatit/coreml_postprocess_dbn.cpp
+        src/beatit/coreml_postprocess_dbn_decoded.cpp
         src/beatit/coreml_postprocess_logits.cpp
         src/beatit/coreml_postprocess_grid_fill.cpp
         src/beatit/coreml_postprocess_result_ops.cpp
@@ -281,6 +283,27 @@ if(APPLE)
 endif()
 
 add_test(NAME beatit_dbn_tests COMMAND beatit_dbn_tests)
+
+add_executable(beatit_dbn_grid_stage_tests
+    tests/dbn_grid_stage_test.cpp
+)
+
+target_link_libraries(beatit_dbn_grid_stage_tests
+    PRIVATE
+        beatit_lib
+)
+
+target_include_directories(beatit_dbn_grid_stage_tests
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/beatit
+)
+
+if(APPLE)
+    target_compile_options(beatit_dbn_grid_stage_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
+endif()
+
+add_test(NAME beatit_dbn_grid_stage_tests COMMAND beatit_dbn_grid_stage_tests)
 
 add_executable(beatit_dbn_purelove_tests
     tests/dbn_purelove_test.mm
