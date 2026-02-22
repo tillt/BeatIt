@@ -1,0 +1,374 @@
+//
+//  stream_finalize.cpp
+//  BeatIt
+//
+//  Created by Till Toenshoff on 2026-02-22.
+//
+
+#include "beatit/stream.h"
+#include "beatit/stream_activation_accumulator.h"
+#include "beatit/stream_bpm_utils.h"
+#include "beatit/stream_inference_backend.h"
+
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <iostream>
+#include <string>
+#include <vector>
+
+namespace beatit {
+
+AnalysisResult BeatitStream::finalize() {
+    AnalysisResult result;
+
+    const auto finalize_start = std::chrono::steady_clock::now();
+    if (!coreml_enabled_) {
+        return result;
+    }
+
+    if (coreml_config_.fixed_frames > 0 && coreml_config_.pad_final_window) {
+        const std::size_t window_samples =
+            coreml_config_.frame_size + (coreml_config_.fixed_frames - 1) * coreml_config_.hop_size;
+        const std::size_t available =
+            resampled_buffer_.size() > resampled_offset_
+                ? resampled_buffer_.size() - resampled_offset_
+                : 0;
+        if (available > 0 && window_samples > 0) {
+            std::vector<float> window(window_samples, 0.0f);
+            const float* start_ptr = resampled_buffer_.data() + resampled_offset_;
+            std::copy(start_ptr, start_ptr + std::min(available, window_samples), window.begin());
+
+            CoreMLConfig local_config = coreml_config_;
+            local_config.tempo_window_percent = 0.0f;
+            local_config.prefer_double_time = false;
+
+            const auto infer_start = std::chrono::steady_clock::now();
+            std::vector<float> beat_activation;
+            std::vector<float> downbeat_activation;
+            detail::StreamInferenceTiming timing;
+            const bool ok = inference_backend_ &&
+                inference_backend_->infer_window(window,
+                                                 local_config,
+                                                 &beat_activation,
+                                                 &downbeat_activation,
+                                                 &timing);
+            const auto infer_end = std::chrono::steady_clock::now();
+            perf_.mel_ms += timing.mel_ms;
+            perf_.torch_forward_ms += timing.torch_forward_ms;
+            perf_.finalize_infer_ms +=
+                std::chrono::duration<double, std::milli>(infer_end - infer_start).count();
+            if (!ok) {
+                return result;
+            }
+            detail::trim_activation_to_frames(&beat_activation, local_config.fixed_frames);
+            detail::trim_activation_to_frames(&downbeat_activation, local_config.fixed_frames);
+            detail::merge_window_activations(&coreml_beat_activation_,
+                                             &coreml_downbeat_activation_,
+                                             coreml_frame_offset_,
+                                             local_config.fixed_frames,
+                                             beat_activation,
+                                             downbeat_activation,
+                                             0);
+        }
+    }
+
+    if (coreml_beat_activation_.empty()) {
+        return result;
+    }
+
+    CoreMLConfig base_config = coreml_config_;
+    base_config.tempo_window_percent = 0.0f;
+    base_config.prefer_double_time = false;
+    base_config.synthetic_fill = false;
+    base_config.dbn_window_seconds = 0.0;
+
+    std::size_t last_active_frame = 0;
+    std::size_t full_frame_count = 0;
+    if (coreml_config_.hop_size > 0 && sample_rate_ > 0.0) {
+        const double ratio = coreml_config_.sample_rate / sample_rate_;
+        const double total_pos = static_cast<double>(total_seen_samples_) * ratio;
+        full_frame_count =
+            static_cast<std::size_t>(std::llround(total_pos / coreml_config_.hop_size));
+        if (coreml_config_.disable_silence_trimming) {
+            last_active_frame = full_frame_count;
+        } else if (has_active_sample_) {
+            const double sample_pos = static_cast<double>(last_active_sample_) * ratio;
+            last_active_frame =
+                static_cast<std::size_t>(std::llround(sample_pos / coreml_config_.hop_size));
+        }
+    }
+
+    const auto postprocess_start = std::chrono::steady_clock::now();
+    CoreMLResult base = postprocess_coreml_activations(coreml_beat_activation_,
+                                                      coreml_downbeat_activation_,
+                                                      &coreml_phase_energy_,
+                                                      base_config,
+                                                      sample_rate_,
+                                                      0.0f,
+                                                      last_active_frame,
+                                                      full_frame_count);
+    const float bpm_min = std::max(1.0f, coreml_config_.min_bpm);
+    const float bpm_max = std::max(bpm_min + 1.0f, coreml_config_.max_bpm);
+    const float peaks_bpm_raw = detail::estimate_bpm_from_activation_peaks_local(
+        coreml_beat_activation_, coreml_config_, sample_rate_);
+    const float autocorr_bpm_raw = detail::estimate_bpm_from_activation_autocorr_local(
+        coreml_beat_activation_, coreml_config_, sample_rate_);
+    const float comb_bpm_raw =
+        estimate_bpm_from_activation_comb(coreml_beat_activation_, coreml_config_, sample_rate_);
+    const float beats_bpm_raw =
+        detail::estimate_bpm_from_beats_local(base.beat_sample_frames, sample_rate_);
+    const float peaks_bpm = detail::normalize_bpm_to_range_local(peaks_bpm_raw, bpm_min, bpm_max);
+    const float autocorr_bpm =
+        detail::normalize_bpm_to_range_local(autocorr_bpm_raw, bpm_min, bpm_max);
+    const float comb_bpm = detail::normalize_bpm_to_range_local(comb_bpm_raw, bpm_min, bpm_max);
+    const float beats_bpm = detail::normalize_bpm_to_range_local(beats_bpm_raw, bpm_min, bpm_max);
+    const auto choose_candidate_bpm = [&](float peaks,
+                                          float autocorr,
+                                          float comb,
+                                          float beats) {
+        const float tol = 0.02f;
+        auto near = [&](float a, float b) {
+            if (a <= 0.0f || b <= 0.0f) {
+                return false;
+            }
+            return (std::abs(a - b) / std::max(a, 1e-6f)) <= tol;
+        };
+        if (near(peaks, comb)) {
+            return 0.5f * (peaks + comb);
+        }
+        if (near(peaks, autocorr)) {
+            return 0.5f * (peaks + autocorr);
+        }
+        if (near(comb, autocorr)) {
+            return 0.5f * (comb + autocorr);
+        }
+        if (peaks > 0.0f) {
+            return peaks;
+        }
+        if (comb > 0.0f) {
+            return comb;
+        }
+        if (autocorr > 0.0f) {
+            return autocorr;
+        }
+        return beats;
+    };
+
+    const float candidate_bpm = choose_candidate_bpm(peaks_bpm, autocorr_bpm, comb_bpm, beats_bpm);
+    const double prior_bpm = tempo_reference_valid_ ? tempo_reference_bpm_ : 0.0;
+    float reference_bpm = candidate_bpm;
+    std::string tempo_state = "init";
+    float consensus_ratio = 0.0f;
+    float prior_ratio = 0.0f;
+
+    if (candidate_bpm > 0.0f) {
+        std::vector<float> anchors;
+        anchors.reserve(4);
+        if (peaks_bpm > 0.0f) {
+            anchors.push_back(peaks_bpm);
+        }
+        if (autocorr_bpm > 0.0f) {
+            anchors.push_back(autocorr_bpm);
+        }
+        if (comb_bpm > 0.0f) {
+            anchors.push_back(comb_bpm);
+        }
+        if (beats_bpm > 0.0f) {
+            anchors.push_back(beats_bpm);
+        }
+        const float consensus_tol = 0.02f;
+        std::size_t consensus = 0;
+        for (float value : anchors) {
+            if (std::abs(value - candidate_bpm) / std::max(candidate_bpm, 1e-6f) <= consensus_tol) {
+                ++consensus;
+            }
+        }
+        consensus_ratio = static_cast<float>(consensus) / std::max<std::size_t>(1, anchors.size());
+
+        if (tempo_reference_valid_ && prior_bpm > 0.0) {
+            prior_ratio =
+                static_cast<float>(std::abs(candidate_bpm - prior_bpm) / prior_bpm);
+            const float hold_tol = 0.02f;
+            const float switch_tol = std::max(hold_tol, coreml_config_.dbn_interval_tolerance);
+            if (prior_ratio <= hold_tol) {
+                reference_bpm =
+                    static_cast<float>(0.7 * prior_bpm + 0.3 * candidate_bpm);
+                tempo_state = "blend";
+            } else if (prior_ratio <= switch_tol || consensus >= 2) {
+                reference_bpm = candidate_bpm;
+                tempo_state = "switch";
+            } else {
+                reference_bpm = static_cast<float>(prior_bpm);
+                tempo_state = "hold";
+            }
+        }
+    }
+
+    if (reference_bpm > 0.0f) {
+        tempo_reference_bpm_ = reference_bpm;
+        tempo_reference_valid_ = true;
+    }
+    if (coreml_config_.verbose) {
+        std::cerr << "Tempo anchor: peaks=" << peaks_bpm
+                  << " autocorr=" << autocorr_bpm
+                  << " comb=" << comb_bpm
+                  << " beats=" << beats_bpm
+                  << " chosen=" << reference_bpm
+                  << " prior=" << prior_bpm
+                  << " state=" << tempo_state
+                  << " ratio=" << prior_ratio
+                  << " consensus=" << consensus_ratio
+                  << "\n";
+    }
+
+    CoreMLResult final_result = postprocess_coreml_activations(coreml_beat_activation_,
+                                                              coreml_downbeat_activation_,
+                                                              &coreml_phase_energy_,
+                                                              coreml_config_,
+                                                              sample_rate_,
+                                                              reference_bpm,
+                                                              last_active_frame,
+                                                              full_frame_count);
+    const auto postprocess_end = std::chrono::steady_clock::now();
+    perf_.postprocess_ms +=
+        std::chrono::duration<double, std::milli>(postprocess_end - postprocess_start).count();
+
+    result.coreml_beat_activation = std::move(final_result.beat_activation);
+    result.coreml_downbeat_activation = std::move(final_result.downbeat_activation);
+    result.coreml_beat_feature_frames = std::move(final_result.beat_feature_frames);
+    result.coreml_beat_sample_frames = std::move(final_result.beat_sample_frames);
+    result.coreml_beat_projected_feature_frames =
+        std::move(final_result.beat_projected_feature_frames);
+    result.coreml_beat_projected_sample_frames =
+        std::move(final_result.beat_projected_sample_frames);
+    result.coreml_beat_strengths = std::move(final_result.beat_strengths);
+    result.coreml_downbeat_feature_frames = std::move(final_result.downbeat_feature_frames);
+    result.coreml_downbeat_projected_feature_frames =
+        std::move(final_result.downbeat_projected_feature_frames);
+    result.coreml_phase_energy = std::move(coreml_phase_energy_);
+    const auto& bpm_frames = result.coreml_beat_projected_sample_frames.empty()
+        ? result.coreml_beat_sample_frames
+        : result.coreml_beat_projected_sample_frames;
+    // Keep reported BPM consistent with the returned beat grid.
+    float estimated_bpm =
+        detail::normalize_bpm_to_range_local(
+            detail::estimate_bpm_from_beats_local(bpm_frames, sample_rate_), bpm_min, bpm_max);
+    if (!(estimated_bpm > 0.0f)) {
+        const float anchored_bpm =
+            detail::normalize_bpm_to_range_local(reference_bpm, bpm_min, bpm_max);
+        if (anchored_bpm > 0.0f) {
+            estimated_bpm = anchored_bpm;
+        }
+    }
+    result.estimated_bpm = estimated_bpm;
+
+    if (prepend_samples_ > 0) {
+        for (auto& frame : result.coreml_beat_sample_frames) {
+            frame = frame > prepend_samples_ ? frame - prepend_samples_ : 0;
+        }
+        for (auto& frame : result.coreml_beat_projected_sample_frames) {
+            frame = frame > prepend_samples_ ? frame - prepend_samples_ : 0;
+        }
+    }
+
+    auto dedupe_monotonic = [](std::vector<unsigned long long>& samples,
+                               std::vector<unsigned long long>* feature_frames,
+                               std::vector<float>* strengths) {
+        if (samples.empty()) {
+            return;
+        }
+        std::size_t write = 1;
+        unsigned long long last = samples[0];
+        for (std::size_t i = 1; i < samples.size(); ++i) {
+            const unsigned long long current = samples[i];
+            if (current <= last) {
+                continue;
+            }
+            samples[write] = current;
+            if (feature_frames && i < feature_frames->size()) {
+                (*feature_frames)[write] = (*feature_frames)[i];
+            }
+            if (strengths && i < strengths->size()) {
+                (*strengths)[write] = (*strengths)[i];
+            }
+            last = current;
+            ++write;
+        }
+        samples.resize(write);
+        if (feature_frames && feature_frames->size() >= write) {
+            feature_frames->resize(write);
+        }
+        if (strengths && strengths->size() >= write) {
+            strengths->resize(write);
+        }
+    };
+
+    dedupe_monotonic(result.coreml_beat_sample_frames,
+                     &result.coreml_beat_feature_frames,
+                     &result.coreml_beat_strengths);
+    dedupe_monotonic(result.coreml_beat_projected_sample_frames,
+                     &result.coreml_beat_projected_feature_frames,
+                     nullptr);
+
+    if (!result.coreml_beat_projected_feature_frames.empty() &&
+        result.coreml_beat_projected_feature_frames.size() >= 2) {
+        std::vector<unsigned long long> projected_downbeats;
+        projected_downbeats.reserve(result.coreml_downbeat_projected_feature_frames.size());
+        std::size_t down_idx = 0;
+        for (unsigned long long frame : result.coreml_downbeat_projected_feature_frames) {
+            while (down_idx < result.coreml_beat_projected_feature_frames.size() &&
+                   result.coreml_beat_projected_feature_frames[down_idx] < frame) {
+                ++down_idx;
+            }
+            if (down_idx < result.coreml_beat_projected_feature_frames.size() &&
+                result.coreml_beat_projected_feature_frames[down_idx] == frame) {
+                projected_downbeats.push_back(frame);
+            }
+        }
+        result.coreml_downbeat_projected_feature_frames = std::move(projected_downbeats);
+    }
+    const auto marker_start = std::chrono::steady_clock::now();
+    const auto& marker_feature_frames = result.coreml_beat_projected_feature_frames.empty()
+        ? result.coreml_beat_feature_frames
+        : result.coreml_beat_projected_feature_frames;
+    const auto& marker_sample_frames = result.coreml_beat_projected_sample_frames.empty()
+        ? result.coreml_beat_sample_frames
+        : result.coreml_beat_projected_sample_frames;
+    const auto& marker_downbeats = result.coreml_downbeat_projected_feature_frames.empty()
+        ? result.coreml_downbeat_feature_frames
+        : result.coreml_downbeat_projected_feature_frames;
+    result.coreml_beat_events =
+        build_shakespear_markers(marker_feature_frames,
+                                 marker_sample_frames,
+                                 marker_downbeats,
+                                 &result.coreml_beat_activation,
+                                 result.estimated_bpm,
+                                 sample_rate_,
+                                 coreml_config_);
+    const auto marker_end = std::chrono::steady_clock::now();
+    perf_.marker_ms +=
+        std::chrono::duration<double, std::milli>(marker_end - marker_start).count();
+
+    const auto finalize_end = std::chrono::steady_clock::now();
+    perf_.finalize_ms =
+        std::chrono::duration<double, std::milli>(finalize_end - finalize_start).count();
+
+    if (coreml_config_.profile) {
+        std::cerr << "Timing(stream): resample=" << perf_.resample_ms
+                  << "ms process=" << perf_.process_ms
+                  << "ms mel=" << perf_.mel_ms
+                  << "ms torch=" << perf_.torch_forward_ms
+                  << "ms window_infer=" << perf_.window_infer_ms
+                  << "ms windows=" << perf_.window_count
+                  << " finalize_infer=" << perf_.finalize_infer_ms
+                  << "ms postprocess=" << perf_.postprocess_ms
+                  << "ms markers=" << perf_.marker_ms
+                  << "ms total_finalize=" << perf_.finalize_ms
+                  << "ms\n";
+    }
+
+    return result;
+}
+
+} // namespace beatit
