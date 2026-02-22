@@ -76,6 +76,10 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(BEATIT_USE_TORCH "Enable Torch backend" ON)
 set(BEATIT_TORCH_ROOT "" CACHE PATH "Path to LibTorch root")
 
+set(BEATIT_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
+set_property(DIRECTORY APPEND PROPERTY
+    ADDITIONAL_CLEAN_FILES "${BEATIT_GENERATED_DIR}")
+
 if(BEATIT_USE_TORCH AND BEATIT_TORCH_ROOT STREQUAL "")
     if(EXISTS "/opt/homebrew/opt/libtorch/share/cmake/Torch")
         set(BEATIT_TORCH_ROOT "/opt/homebrew/opt/libtorch" CACHE PATH "Path to LibTorch root" FORCE)
@@ -434,6 +438,7 @@ target_link_libraries(beatit_sparse_tempo_grid_consistency_tests
 target_compile_definitions(beatit_sparse_tempo_grid_consistency_tests PRIVATE
     BEATIT_TEST_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/models/beatit.mlpackage"
     BEATIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+    BEATIT_TEST_GENERATED_DIR="${BEATIT_GENERATED_DIR}"
 )
 
 if(APPLE)

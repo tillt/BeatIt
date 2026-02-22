@@ -475,8 +475,14 @@ int main() {
         scenarios.push_back({"real_" + stem, description.str(), std::move(real_audio_samples)});
     }
 
+    const std::filesystem::path generated_root =
+#ifdef BEATIT_TEST_GENERATED_DIR
+        std::filesystem::path(BEATIT_TEST_GENERATED_DIR);
+#else
+        std::filesystem::current_path() / "generated";
+#endif
     const std::filesystem::path synth_dir =
-        std::filesystem::current_path() / "logs" / "sparse_tempo_without_grid";
+        generated_root / "sparse_tempo_without_grid";
     std::error_code synth_dir_ec;
     std::filesystem::create_directories(synth_dir, synth_dir_ec);
     const std::filesystem::path nonrhythmic_wav =
@@ -607,7 +613,7 @@ int main() {
 
     if (found_mismatch) {
         const std::filesystem::path dump_dir =
-            std::filesystem::current_path() / "logs" / "sparse_tempo_without_grid";
+            generated_root / "sparse_tempo_without_grid";
         std::error_code ec;
         std::filesystem::create_directories(dump_dir, ec);
         const std::filesystem::path wav_path = dump_dir / (failing_name + ".wav");
