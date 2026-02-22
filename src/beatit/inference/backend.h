@@ -1,5 +1,5 @@
 //
-//  inference_backend.h
+//  backend.h
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.

@@ -117,7 +117,7 @@ set(BEATIT_LIB_SOURCES
     src/beatit/refiner/constant_regions.cpp
     src/beatit/activation_merge.cpp
     src/beatit/stream_finalize.cpp
-    src/beatit/inference_backend_coreml.cpp
+    src/beatit/inference/backend_coreml.cpp
     src/beatit/sparse_probe.cpp
     src/beatit/sparse_probe_pick.cpp
     src/beatit/sparse_probe_score.cpp
@@ -133,13 +133,13 @@ set(BEATIT_LIB_SOURCES
 if(BEATIT_USE_TORCH)
     list(APPEND BEATIT_LIB_SOURCES
         src/beatit/analysis/torch.cpp
-        src/beatit/inference_backend_torch.cpp
+        src/beatit/inference/backend_torch.cpp
         src/beatit/torch_mel.cpp
     )
 else()
     list(APPEND BEATIT_LIB_SOURCES
         src/beatit/analysis/torch_stub.cpp
-        src/beatit/inference_backend_torch_stub.cpp
+        src/beatit/inference/backend_torch_stub.cpp
     )
 endif()
 
@@ -240,7 +240,7 @@ if(APPLE)
         src/beatit/refiner/constant_regions.cpp
         src/beatit/activation_merge.cpp
         src/beatit/stream_finalize.cpp
-        src/beatit/inference_backend_coreml.cpp
+        src/beatit/inference/backend_coreml.cpp
         src/beatit/sparse_probe.cpp
         src/beatit/sparse_probe_pick.cpp
         src/beatit/sparse_probe_score.cpp
@@ -257,13 +257,13 @@ if(APPLE)
     if(BEATIT_USE_TORCH)
         list(APPEND BEATIT_FRAMEWORK_SOURCES
             src/beatit/analysis/torch.cpp
-            src/beatit/inference_backend_torch.cpp
+            src/beatit/inference/backend_torch.cpp
             src/beatit/torch_mel.cpp
         )
     else()
         list(APPEND BEATIT_FRAMEWORK_SOURCES
             src/beatit/analysis/torch_stub.cpp
-            src/beatit/inference_backend_torch_stub.cpp
+            src/beatit/inference/backend_torch_stub.cpp
         )
     endif()
 

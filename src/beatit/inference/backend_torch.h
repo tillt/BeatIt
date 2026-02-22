@@ -1,5 +1,5 @@
 //
-//  inference_backend_torch.h
+//  backend_torch.h
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include "beatit/inference_backend.h"
+#include "beatit/inference/backend.h"
 
 #include <memory>
 

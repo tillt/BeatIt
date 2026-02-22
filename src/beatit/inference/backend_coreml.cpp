@@ -1,13 +1,13 @@
 //
-//  inference_backend_coreml.cpp
+//  backend_coreml.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "beatit/inference_backend.h"
-#include "beatit/inference_backend_torch.h"
+#include "beatit/inference/backend.h"
+#include "beatit/inference/backend_torch.h"
 
 #include <algorithm>
 

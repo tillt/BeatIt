@@ -1,12 +1,12 @@
 //
-//  inference_backend_torch_stub.cpp
+//  backend_torch_stub.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "beatit/inference_backend_torch.h"
+#include "beatit/inference/backend_torch.h"
 #include "beatit/logging.hpp"
 
 #include <algorithm>
