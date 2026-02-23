@@ -13,7 +13,15 @@ def main():
     parser.add_argument("--frames", type=int, default=3000, help="Example frame count for tracing")
     parser.add_argument("--origin", default="BeatTrack (mhrice/BeatTrack)",
                         help="Model origin label for metadata")
-    parser.add_argument("--license", default="MIT", help="License label for metadata")
+    parser.add_argument("--author", default="",
+                        help="Author label for metadata")
+    parser.add_argument("--description", default="",
+                        help="Short description for metadata")
+    parser.add_argument("--license", default="", help="License label for metadata")
+    parser.add_argument("--version", default="", help="Version string for metadata")
+    parser.add_argument("--dataset", default="", help="Training dataset label for metadata")
+    parser.add_argument("--source", default="",
+                        help="Source label for metadata")
     args = parser.parse_args()
 
     sys.path.append("third_party/BeatTrack")
@@ -59,15 +67,20 @@ def main():
         outputs=[ct.TensorType(name="beat"), ct.TensorType(name="downbeat")],
     )
 
-    mlmodel.author = "Till Toenshoff"
-    mlmodel.short_description = "BeatTrack TCN beat/downbeat model for BeatIt"
-    mlmodel.license = args.license
-    mlmodel.version = "1"
-    mlmodel.user_defined_metadata = {
-        "beatit:model_origin": args.origin,
-        "beatit:training_dataset": "Ballroom",
-        "beatit:source": "BeatTrack TCN-based Joint Beat and Downbeat Tracking",
-    }
+    if args.author:
+        mlmodel.author = args.author
+    if args.description:
+        mlmodel.short_description = args.description
+    if args.license:
+        mlmodel.license = args.license
+    if args.version:
+        mlmodel.version = args.version
+    user_defined = {"beatit:model_origin": args.origin}
+    if args.dataset:
+        user_defined["beatit:training_dataset"] = args.dataset
+    if args.source:
+        user_defined["beatit:source"] = args.source
+    mlmodel.user_defined_metadata = user_defined
 
     mlmodel.save(args.out)
     print(f"Saved {args.out}")

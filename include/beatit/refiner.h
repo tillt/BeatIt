@@ -53,12 +53,37 @@ struct BeatEvent {
 // CSV helpers for debug output.
 std::string beat_event_csv_header();
 std::string beat_event_to_csv(const BeatEvent& event);
-std::string beat_event_csv_preamble(std::size_t downbeat_phase, long long phase_shift_frames);
+std::string beat_event_csv_preamble(std::size_t downbeat_phase,
+                                    long long phase_shift_frames,
+                                    bool used_model_downbeat,
+                                    double downbeat_coverage,
+                                    std::size_t active_start_frame,
+                                    std::size_t active_end_frame,
+                                    std::size_t found_count,
+                                    std::size_t total_count,
+                                    std::size_t max_missing_run,
+                                    double avg_missing_run);
 void write_beat_events_csv(std::ostream& out,
                            const std::vector<BeatEvent>& events,
                            bool include_header = true,
                            std::size_t downbeat_phase = 0,
-                           long long phase_shift_frames = 0);
+                           long long phase_shift_frames = 0,
+                           bool used_model_downbeat = false,
+                           double downbeat_coverage = 0.0,
+                           std::size_t active_start_frame = 0,
+                           std::size_t active_end_frame = 0,
+                           std::size_t found_count = 0,
+                           std::size_t total_count = 0,
+                           std::size_t max_missing_run = 0,
+                           double avg_missing_run = 0.0);
+
+std::vector<BeatEvent> build_shakespear_markers(const std::vector<unsigned long long>& beat_feature_frames,
+                                                const std::vector<unsigned long long>& beat_sample_frames,
+                                                const std::vector<unsigned long long>& downbeat_feature_frames,
+                                                const std::vector<float>* beat_activation,
+                                                double bpm,
+                                                double sample_rate,
+                                                const CoreMLConfig& config);
 
 struct ConstantBeatRefinerConfig {
     double max_phase_error_seconds = 0.025;
@@ -68,6 +93,12 @@ struct ConstantBeatRefinerConfig {
     bool use_downbeat_anchor = false;
     bool use_half_beat_correction = false;
     double half_beat_score_margin = 0.05;
+    bool auto_active_trim = true;
+    bool auto_downbeat_fallback = true;
+    double downbeat_min_coverage = 0.2;
+    double downbeat_min_strength_ratio = 0.3;
+    // Weight applied to low-frequency (phase) energy when selecting bar phase.
+    double low_freq_weight = 0.5;
     // Ratio of peak energy used to detect the last active frame.
     double active_energy_ratio = 0.01;
 };
@@ -86,6 +117,15 @@ struct ConstantBeatResult {
     long long first_beat_feature_frame = 0;
     std::size_t downbeat_phase = 0;
     long long phase_shift_frames = 0;
+    bool used_model_downbeat = false;
+    double downbeat_coverage = 0.0;
+    std::size_t active_start_frame = 0;
+    std::size_t active_end_frame = 0;
+    std::size_t found_count = 0;
+    std::size_t total_count = 0;
+    std::size_t max_missing_run = 0;
+    double found_ratio = 0.0;
+    double avg_missing_run = 0.0;
 };
 
 ConstantBeatResult refine_constant_beats(const std::vector<unsigned long long>& beat_feature_frames,

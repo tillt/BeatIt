@@ -1,3 +1,9 @@
 [submodule "third_party/BeatTrack"]
 	path = third_party/BeatTrack
 	url = https://github.com/mhrice/BeatTrack.git
+[submodule "third_party/beat_this"]
+	path = third_party/beat_this
+	url = https://github.com/CPJKU/beat_this
+[submodule "third_party/BeatNet"]
+	path = third_party/BeatNet
+	url = https://github.com/mjhydri/BeatNet.git
