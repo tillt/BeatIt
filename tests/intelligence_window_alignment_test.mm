@@ -27,17 +27,21 @@ namespace {
 
 constexpr std::size_t kEdgeWindowBeats = 64;
 constexpr std::size_t kAlternationWindowBeats = 24;
-constexpr double kTargetBpm = 126.0;
-constexpr double kMaxBpmError = 2.0;
-constexpr std::size_t kMinBeatCount = 100;
-constexpr std::size_t kMinDownbeatCount = 20;
-constexpr double kMaxOffsetSlopeMsPerBeat = 0.04;
-constexpr double kMaxStartEndDeltaMs = 45.0;
-constexpr double kMaxStartEndDeltaBeats = 0.08;
-constexpr double kMaxOddEvenMedianGapMs = 15.0;
-constexpr double kMaxIntroMedianAbsOffsetMs = 25.0;
+constexpr double kTargetBpm = 126.02;
+constexpr double kMaxBpmError = 0.02;
+constexpr std::size_t kExpectedBeatCount = 807;
+constexpr std::size_t kExpectedDownbeatCount = 32;
+constexpr unsigned long long kExpectedFirstDownbeatFeatureFrame = 3ULL;
+constexpr unsigned long long kExpectedFirstDownbeatSampleFrame = 6302ULL;
+constexpr unsigned long long kFirstDownbeatFeatureFrameTolerance = 1ULL;
+constexpr double kFirstDownbeatSampleToleranceMs = 10.0;
+constexpr double kMaxOffsetSlopeMsPerBeat = 0.024;
+constexpr double kMaxStartEndDeltaMs = 8.2;
+constexpr double kMaxStartEndDeltaBeats = 0.017;
+constexpr double kMaxOddEvenMedianGapMs = 1.0;
+constexpr double kMaxIntroMedianAbsOffsetMs = 15.0;
 constexpr std::size_t kTempoEdgeIntervals = 64;
-constexpr double kMaxTempoEdgeBpmDelta = 0.01;
+constexpr double kMaxTempoEdgeBpmDelta = 0.0005;
 constexpr std::size_t kDriftProbeCount = 24;
 constexpr std::size_t kEventProbeCount = 16;
 
@@ -138,9 +142,9 @@ int main() {
                   << result.coreml_beat_events.size() << "\n";
         return 1;
     }
-    if (result.coreml_beat_events.size() < kMinBeatCount) {
+    if (result.coreml_beat_events.size() != kExpectedBeatCount) {
         std::cerr << "Intelligence alignment test failed: beat event count "
-                  << result.coreml_beat_events.size() << " < " << kMinBeatCount << ".\n";
+                  << result.coreml_beat_events.size() << " != " << kExpectedBeatCount << ".\n";
         return 1;
     }
     if (!first_bar_is_complete_four_four(result)) {
@@ -175,17 +179,61 @@ int main() {
         std::cerr << "Intelligence alignment test failed: missing downbeat feature frames.\n";
         return 1;
     }
-    if (result.coreml_downbeat_feature_frames.size() < kMinDownbeatCount) {
+    if (result.coreml_downbeat_feature_frames.size() != kExpectedDownbeatCount) {
         std::cerr << "Intelligence alignment test failed: downbeat count "
-                  << result.coreml_downbeat_feature_frames.size() << " < "
-                  << kMinDownbeatCount << ".\n";
+                  << result.coreml_downbeat_feature_frames.size() << " != "
+                  << kExpectedDownbeatCount << ".\n";
+        return 1;
+    }
+    unsigned long long first_downbeat_feature_ff = 0;
+    if (!first_downbeat_feature_frame(result, &first_downbeat_feature_ff)) {
+        std::cerr << "Intelligence alignment test failed: missing first downbeat feature frame.\n";
+        return 1;
+    }
+    const auto downbeat_feature_delta =
+        (first_downbeat_feature_ff > kExpectedFirstDownbeatFeatureFrame)
+            ? (first_downbeat_feature_ff - kExpectedFirstDownbeatFeatureFrame)
+            : (kExpectedFirstDownbeatFeatureFrame - first_downbeat_feature_ff);
+    if (downbeat_feature_delta > kFirstDownbeatFeatureFrameTolerance) {
+        const auto lower_feature_frame =
+            (kExpectedFirstDownbeatFeatureFrame > kFirstDownbeatFeatureFrameTolerance)
+                ? (kExpectedFirstDownbeatFeatureFrame - kFirstDownbeatFeatureFrameTolerance)
+                : 0ULL;
+        std::cerr << "Intelligence alignment test failed: first downbeat feature frame "
+                  << first_downbeat_feature_ff << " outside ["
+                  << lower_feature_frame << ","
+                  << (kExpectedFirstDownbeatFeatureFrame + kFirstDownbeatFeatureFrameTolerance)
+                  << "].\n";
+        return 1;
+    }
+    unsigned long long first_downbeat_sample_sf = 0;
+    if (!first_downbeat_sample_frame(result, &first_downbeat_sample_sf)) {
+        std::cerr << "Intelligence alignment test failed: missing first downbeat sample frame.\n";
+        return 1;
+    }
+    const auto downbeat_sample_tolerance_frames = static_cast<unsigned long long>(
+        std::llround((kFirstDownbeatSampleToleranceMs / 1000.0) * sample_rate));
+    const auto downbeat_sample_delta =
+        (first_downbeat_sample_sf > kExpectedFirstDownbeatSampleFrame)
+            ? (first_downbeat_sample_sf - kExpectedFirstDownbeatSampleFrame)
+            : (kExpectedFirstDownbeatSampleFrame - first_downbeat_sample_sf);
+    if (downbeat_sample_delta > downbeat_sample_tolerance_frames) {
+        const auto lower_sample_frame =
+            (kExpectedFirstDownbeatSampleFrame > downbeat_sample_tolerance_frames)
+                ? (kExpectedFirstDownbeatSampleFrame - downbeat_sample_tolerance_frames)
+                : 0ULL;
+        std::cerr << "Intelligence alignment test failed: first downbeat sample frame "
+                  << first_downbeat_sample_sf << " outside ["
+                  << lower_sample_frame << ","
+                  << (kExpectedFirstDownbeatSampleFrame + downbeat_sample_tolerance_frames)
+                  << "] (±" << kFirstDownbeatSampleToleranceMs << "ms).\n";
         return 1;
     }
     if (!result.coreml_beat_projected_sample_frames.empty() &&
-        result.coreml_beat_projected_sample_frames.size() < kMinBeatCount) {
+        result.coreml_beat_projected_sample_frames.size() != kExpectedBeatCount) {
         std::cerr << "Intelligence alignment test failed: projected beat count "
-                  << result.coreml_beat_projected_sample_frames.size() << " < "
-                  << kMinBeatCount << ".\n";
+                  << result.coreml_beat_projected_sample_frames.size() << " != "
+                  << kExpectedBeatCount << ".\n";
         return 1;
     }
 

@@ -26,16 +26,21 @@ namespace {
 constexpr std::size_t kEdgeWindowBeats = 64;
 constexpr std::size_t kAlternationWindowBeats = 24;
 constexpr double kTargetBpm = 126.0;
-constexpr double kMaxBpmError = 2.0;
-constexpr std::size_t kMinBeatCount = 100;
-constexpr std::size_t kMinDownbeatCount = 20;
-constexpr double kMaxOffsetSlopeMsPerBeat = 0.04;
-constexpr double kMaxStartEndDeltaMs = 45.0;
-constexpr double kMaxStartEndDeltaBeats = 0.08;
-constexpr double kMaxOddEvenMedianGapMs = 15.0;
-constexpr double kMaxIntroMedianAbsOffsetMs = 25.0;
+constexpr double kMaxBpmError = 0.01;
+constexpr std::size_t kExpectedBeatCount = 777;
+constexpr std::size_t kExpectedDownbeatCount = 32;
+constexpr unsigned long long kExpectedFirstDownbeatFeatureFrame = 0ULL;
+constexpr unsigned long long kExpectedFirstDownbeatSampleFrame = 986ULL;
+constexpr unsigned long long kFirstDownbeatFeatureFrameTolerance = 1ULL;
+constexpr double kFirstDownbeatSampleToleranceMs = 10.0;
+constexpr double kMaxOffsetSlopeMsPerBeat = 0.003;
+constexpr double kMaxStartEndDeltaMs = 3.8;
+constexpr double kMaxStartEndDeltaBeats = 0.008;
+constexpr double kMaxOddEvenMedianGapMs = 8.5;
+constexpr double kMaxIntroMedianAbsOffsetMs = 6.5;
 constexpr std::size_t kTempoEdgeIntervals = 64;
-constexpr double kMaxTempoEdgeBpmDelta = 0.01;
+constexpr double kMaxTempoEdgeBpmDelta = 0.0005;
+constexpr std::size_t kEventProbeCount = 16;
 
 using namespace beatit::tests::window_alignment;
 
@@ -134,9 +139,9 @@ int main() {
                   << result.coreml_beat_events.size() << "\n";
         return 1;
     }
-    if (result.coreml_beat_events.size() < kMinBeatCount) {
+    if (result.coreml_beat_events.size() != kExpectedBeatCount) {
         std::cerr << "Enigma alignment test failed: beat event count "
-                  << result.coreml_beat_events.size() << " < " << kMinBeatCount << ".\n";
+                  << result.coreml_beat_events.size() << " != " << kExpectedBeatCount << ".\n";
         return 1;
     }
     if (!first_bar_is_complete_four_four(result)) {
@@ -160,25 +165,72 @@ int main() {
     }
 
     std::vector<unsigned long long> beat_frames;
+    std::vector<unsigned long long> beat_styles;
     beat_frames.reserve(result.coreml_beat_events.size());
+    beat_styles.reserve(result.coreml_beat_events.size());
     for (const auto& event : result.coreml_beat_events) {
         beat_frames.push_back(event.frame);
+        beat_styles.push_back(event.style);
     }
     if (result.coreml_downbeat_feature_frames.empty()) {
         std::cerr << "Enigma alignment test failed: missing downbeat feature frames.\n";
         return 1;
     }
-    if (result.coreml_downbeat_feature_frames.size() < kMinDownbeatCount) {
+    if (result.coreml_downbeat_feature_frames.size() != kExpectedDownbeatCount) {
         std::cerr << "Enigma alignment test failed: downbeat count "
-                  << result.coreml_downbeat_feature_frames.size() << " < "
-                  << kMinDownbeatCount << ".\n";
+                  << result.coreml_downbeat_feature_frames.size() << " != "
+                  << kExpectedDownbeatCount << ".\n";
+        return 1;
+    }
+    unsigned long long first_downbeat_feature_ff = 0;
+    if (!first_downbeat_feature_frame(result, &first_downbeat_feature_ff)) {
+        std::cerr << "Enigma alignment test failed: missing first downbeat feature frame.\n";
+        return 1;
+    }
+    const auto downbeat_feature_delta =
+        (first_downbeat_feature_ff > kExpectedFirstDownbeatFeatureFrame)
+            ? (first_downbeat_feature_ff - kExpectedFirstDownbeatFeatureFrame)
+            : (kExpectedFirstDownbeatFeatureFrame - first_downbeat_feature_ff);
+    if (downbeat_feature_delta > kFirstDownbeatFeatureFrameTolerance) {
+        const auto lower_feature_frame =
+            (kExpectedFirstDownbeatFeatureFrame > kFirstDownbeatFeatureFrameTolerance)
+                ? (kExpectedFirstDownbeatFeatureFrame - kFirstDownbeatFeatureFrameTolerance)
+                : 0ULL;
+        std::cerr << "Enigma alignment test failed: first downbeat feature frame "
+                  << first_downbeat_feature_ff << " outside ["
+                  << lower_feature_frame << ","
+                  << (kExpectedFirstDownbeatFeatureFrame + kFirstDownbeatFeatureFrameTolerance)
+                  << "].\n";
+        return 1;
+    }
+    unsigned long long first_downbeat_sample_sf = 0;
+    if (!first_downbeat_sample_frame(result, &first_downbeat_sample_sf)) {
+        std::cerr << "Enigma alignment test failed: missing first downbeat sample frame.\n";
+        return 1;
+    }
+    const auto downbeat_sample_tolerance_frames = static_cast<unsigned long long>(
+        std::llround((kFirstDownbeatSampleToleranceMs / 1000.0) * sample_rate));
+    const auto downbeat_sample_delta =
+        (first_downbeat_sample_sf > kExpectedFirstDownbeatSampleFrame)
+            ? (first_downbeat_sample_sf - kExpectedFirstDownbeatSampleFrame)
+            : (kExpectedFirstDownbeatSampleFrame - first_downbeat_sample_sf);
+    if (downbeat_sample_delta > downbeat_sample_tolerance_frames) {
+        const auto lower_sample_frame =
+            (kExpectedFirstDownbeatSampleFrame > downbeat_sample_tolerance_frames)
+                ? (kExpectedFirstDownbeatSampleFrame - downbeat_sample_tolerance_frames)
+                : 0ULL;
+        std::cerr << "Enigma alignment test failed: first downbeat sample frame "
+                  << first_downbeat_sample_sf << " outside ["
+                  << lower_sample_frame << ","
+                  << (kExpectedFirstDownbeatSampleFrame + downbeat_sample_tolerance_frames)
+                  << "] (±" << kFirstDownbeatSampleToleranceMs << "ms).\n";
         return 1;
     }
     if (!result.coreml_beat_projected_sample_frames.empty() &&
-        result.coreml_beat_projected_sample_frames.size() < kMinBeatCount) {
+        result.coreml_beat_projected_sample_frames.size() != kExpectedBeatCount) {
         std::cerr << "Enigma alignment test failed: projected beat count "
-                  << result.coreml_beat_projected_sample_frames.size() << " < "
-                  << kMinBeatCount << ".\n";
+                  << result.coreml_beat_projected_sample_frames.size() << " != "
+                  << kExpectedBeatCount << ".\n";
         return 1;
     }
 
@@ -230,6 +282,25 @@ int main() {
     const double early_bpm = early_interval_s > 0.0 ? (60.0 / early_interval_s) : 0.0;
     const double late_bpm = late_interval_s > 0.0 ? (60.0 / late_interval_s) : 0.0;
     const double edge_bpm_delta = std::fabs(early_bpm - late_bpm);
+
+    if (const char* dump = std::getenv("BEATIT_ENIGMA_DUMP_EVENTS")) {
+        if (dump[0] != '\0' && dump[0] != '0') {
+            std::cout << "Enigma event probe: first_frames="
+                      << format_slice(beat_frames, kEventProbeCount, false)
+                      << " first_styles="
+                      << format_slice(beat_styles, kEventProbeCount, false)
+                      << " last_frames="
+                      << format_slice(beat_frames, kEventProbeCount, true)
+                      << " last_styles="
+                      << format_slice(beat_styles, kEventProbeCount, true)
+                      << "\n";
+            std::cout << "Enigma downbeat probe: first="
+                      << format_slice(result.coreml_downbeat_feature_frames, kEventProbeCount, false)
+                      << " last="
+                      << format_slice(result.coreml_downbeat_feature_frames, kEventProbeCount, true)
+                      << "\n";
+        }
+    }
 
     std::cout << "Enigma alignment metrics: bpm=" << result.estimated_bpm
               << " beat_events=" << result.coreml_beat_events.size()

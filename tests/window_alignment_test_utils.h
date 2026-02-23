@@ -364,7 +364,10 @@ inline bool first_bar_is_complete_four_four(const beatit::AnalysisResult& result
     if (bar_indices.size() < 2) {
         return false;
     }
-    return bar_indices[0] == 0 && bar_indices[1] == 4;
+    // Accept a single lead-in beat before the first full 4/4 bar.
+    const bool first_bar_not_too_late = bar_indices[0] <= 1;
+    const bool full_first_bar = (bar_indices[1] - bar_indices[0]) == 4;
+    return first_bar_not_too_late && full_first_bar;
 }
 
 inline bool bars_repeat_every_four_beats(const beatit::AnalysisResult& result) {
@@ -382,6 +385,30 @@ inline bool bars_repeat_every_four_beats(const beatit::AnalysisResult& result) {
         if ((bar_indices[i] - bar_indices[i - 1]) != 4) {
             return false;
         }
+    }
+    return true;
+}
+
+inline bool first_downbeat_sample_frame(const beatit::AnalysisResult& result,
+                                        unsigned long long* out_frame) {
+    for (const auto& event : result.coreml_beat_events) {
+        if (is_bar_event(event)) {
+            if (out_frame) {
+                *out_frame = event.frame;
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+inline bool first_downbeat_feature_frame(const beatit::AnalysisResult& result,
+                                         unsigned long long* out_frame) {
+    if (result.coreml_downbeat_feature_frames.empty()) {
+        return false;
+    }
+    if (out_frame) {
+        *out_frame = result.coreml_downbeat_feature_frames.front();
     }
     return true;
 }

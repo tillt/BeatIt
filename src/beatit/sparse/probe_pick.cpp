@@ -299,7 +299,7 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
 
     if (probes.size() == 2) {
         refresh_selected_window_diagnostics();
-        middle_gate_triggered = selected_middle_gate.unstable_and;
+        middle_gate_triggered = selected_middle_gate.unstable_or;
         consistency_gate_triggered = evaluate_consistency_gate();
         if (middle_gate_triggered || consistency_gate_triggered) {
             push_unique_probe(run_probe_result(between_probe_start));
@@ -311,14 +311,14 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
             low_confidence = decision.low_confidence;
             selected_intro_metrics = probe_intro_metrics[selected_index];
             refresh_selected_window_diagnostics();
-            middle_gate_triggered = selected_middle_gate.unstable_and;
+            middle_gate_triggered = selected_middle_gate.unstable_or;
             consistency_gate_triggered = evaluate_consistency_gate();
             interior_probe_added = true;
         }
     }
     if (original_config.verbose) {
         refresh_selected_window_diagnostics();
-        middle_gate_triggered = selected_middle_gate.unstable_and;
+        middle_gate_triggered = selected_middle_gate.unstable_or;
         consistency_gate_triggered = evaluate_consistency_gate();
     }
 

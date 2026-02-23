@@ -1,8 +1,51 @@
 # eureka.wav
 
 - Path: `training/eureka.wav`
-- Tempo (BPM): ~120 (tentative)
-- First downbeat sample frame: 0 (0.000s @ 44.1 kHz)
-- Downbeat onset: 0.000s
-- Downbeat peak: 0.033s
-- Notes: Tempo not yet confirmed.
+- Tempo (BPM): `120.209` (stable, CPU sparse-window alignment test)
+- Beat events: `719`
+- Downbeat events: `30`
+- Projected beat events: `719`
+- First downbeat feature frame: `0` (`0.000s` @ 50 fps feature timeline)
+- First downbeat sample frame: `241` (`0.005465s` @ 44.1 kHz output grid)
+- 4/4 bar phase: first bar complete, bars repeat every 4 beats
+- Drift probe (CPU baseline):
+  - `start_median_ms=26.2132`
+  - `between_median_ms=-26.2358`
+  - `middle_median_ms=-77.3696`
+  - `end_median_ms=78.5488`
+  - `delta_ms=52.3356`
+  - `delta_beats=0.104853`
+  - `slope_ms_per_beat=0.00289526`
+  - `unwrapped_delta_ms=60.6803`
+  - `unwrapped_delta_beats=0.121571`
+  - `unwrapped_slope_ms_per_beat=-0.0040049`
+  - `odd_even_gap_ms=10.3628`
+  - `early_bpm=120.207`
+  - `late_bpm=120.207`
+  - `edge_bpm_delta=0`
+  - `one_beat_linear_signature=0`
+  - `wrapped_middle_signature=0`
+
+## Decision Path (CPU sparse baseline)
+
+- Probe option set:
+  - left candidate: `start=10s bpm=119.974 conf=0.964013`
+  - right candidate: `start=319.974s bpm=120.037 conf=0.99997`
+- Probe chooser outcome:
+  - `decision=unified`
+  - `selected_start=10`
+  - `selected_mode_err=0`
+  - `score_margin=0.0186163`
+- Optional probe/gate branches:
+  - `middle_gate_triggered=0`
+  - `consistency_gate_triggered=0`
+  - `interior_probe_added=0`
+  - `repair=0`
+- Edge refit path:
+  - `second_pass=1`
+  - `quality_shift_rounds=1`
+  - `phase_try_selected=1`
+  - `phase_try_applied=1`
+  - `global_ratio_applied=0.999816`
+  - `ratio_applied=1.00004`
+  - `delta_frames=667`
