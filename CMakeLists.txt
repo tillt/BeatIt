@@ -147,6 +147,7 @@ set(BEATIT_LIB_SOURCES
     src/beatit/inference/backend_coreml.cpp
     src/beatit/sparse/probe.cpp
     src/beatit/sparse/probe_pick.cpp
+    src/beatit/sparse/probe_pick_helpers.cpp
     src/beatit/sparse/probe_score.cpp
     src/beatit/sparse/phase_metrics.cpp
     src/beatit/sparse/refinement.cpp
