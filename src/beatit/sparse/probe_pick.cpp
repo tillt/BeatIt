@@ -15,11 +15,255 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
-#include <string>
+#include <utility>
 #include <vector>
 
 namespace beatit {
 namespace detail {
+
+namespace {
+
+using ProbeResult = SparseProbeObservation;
+
+struct ProbeWindowStarts {
+    double left = 0.0;
+    double right = 0.0;
+    double middle = 0.0;
+    double between = 0.0;
+};
+
+struct ProbeMetricsSnapshot {
+    bool have_consensus = false;
+    double consensus_bpm = 0.0;
+    std::vector<double> mode_errors;
+    std::vector<IntroPhaseMetrics> intro_metrics;
+    std::vector<SparseWindowPhaseMetrics> middle_metrics;
+    ProbeWindowStarts starts;
+};
+
+struct SelectedProbeDiagnostics {
+    SparseWindowPhaseMetrics middle;
+    SparseWindowPhaseMetrics between;
+    SparseWindowPhaseMetrics left;
+    SparseWindowPhaseMetrics right;
+    WindowPhaseGate middle_gate;
+    WindowPhaseGate between_gate;
+    WindowPhaseGate left_gate;
+    WindowPhaseGate right_gate;
+    bool middle_gate_triggered = false;
+    bool consistency_gate_triggered = false;
+    bool consistency_edges_low_mismatch = false;
+    bool consistency_between_high_mismatch = false;
+    bool consistency_middle_high_mismatch = false;
+};
+
+std::pair<double, double> probe_start_extents(const std::vector<ProbeResult>& probes,
+                                              double fallback_min,
+                                              double fallback_max) {
+    if (probes.empty()) {
+        return {fallback_min, fallback_max};
+    }
+    double min_start = probes.front().start;
+    double max_start = probes.front().start;
+    for (const auto& probe : probes) {
+        min_start = std::min(min_start, probe.start);
+        max_start = std::max(max_start, probe.start);
+    }
+    return {min_start, max_start};
+}
+
+ProbeWindowStarts compute_probe_window_starts(const std::vector<ProbeResult>& probes,
+                                              double min_allowed_start,
+                                              double max_allowed_start) {
+    const auto clamp_start = [min_allowed_start, max_allowed_start](double start_s) {
+        return std::clamp(start_s, min_allowed_start, max_allowed_start);
+    };
+
+    const auto extents = probe_start_extents(probes, min_allowed_start, max_allowed_start);
+    ProbeWindowStarts starts;
+    starts.left = extents.first;
+    starts.right = extents.second;
+    starts.middle = clamp_start(0.5 * (starts.left + starts.right));
+    starts.between = clamp_start(0.5 * (starts.left + starts.middle));
+    return starts;
+}
+
+ProbeMetricsSnapshot recompute_probe_metrics(const std::vector<ProbeResult>& probes,
+                                             const BeatitConfig& config,
+                                             double sample_rate,
+                                             double probe_duration,
+                                             double min_allowed_start,
+                                             double max_allowed_start,
+                                             const SparseSampleProvider& provider) {
+    ProbeMetricsSnapshot snapshot;
+    snapshot.consensus_bpm = sparse_consensus_from_probes(probes, config.min_bpm, config.max_bpm);
+    snapshot.have_consensus = snapshot.consensus_bpm > 0.0;
+    snapshot.mode_errors =
+        sparse_probe_mode_errors(probes, snapshot.consensus_bpm, config.min_bpm, config.max_bpm);
+    snapshot.starts = compute_probe_window_starts(probes, min_allowed_start, max_allowed_start);
+
+    snapshot.intro_metrics.assign(probes.size(), IntroPhaseMetrics{});
+    snapshot.middle_metrics.assign(probes.size(), SparseWindowPhaseMetrics{});
+    for (std::size_t i = 0; i < probes.size(); ++i) {
+        const double bpm_hint = snapshot.have_consensus ? snapshot.consensus_bpm : probes[i].bpm;
+        snapshot.intro_metrics[i] =
+            sparse_measure_intro_phase(probes[i].analysis, bpm_hint, sample_rate, provider);
+        snapshot.middle_metrics[i] = measure_sparse_window_phase(probes[i].analysis,
+                                                                 bpm_hint,
+                                                                 snapshot.starts.middle,
+                                                                 probe_duration,
+                                                                 sample_rate,
+                                                                 provider);
+    }
+
+    return snapshot;
+}
+
+bool window_has_high_mismatch(const SparseWindowPhaseMetrics& metrics, const WindowPhaseGate& gate) {
+    constexpr double kHighMismatchAbsRatio = 0.75;
+    constexpr double kHighMismatchSignedRatio = 0.85;
+    return gate.has_data && std::isfinite(metrics.abs_limit_exceed_ratio) &&
+           std::isfinite(metrics.signed_limit_exceed_ratio) &&
+           metrics.abs_limit_exceed_ratio >= kHighMismatchAbsRatio &&
+           metrics.signed_limit_exceed_ratio >= kHighMismatchSignedRatio;
+}
+
+bool window_has_low_mismatch(const SparseWindowPhaseMetrics& metrics, const WindowPhaseGate& gate) {
+    constexpr double kLowMismatchAbsRatio = 0.20;
+    constexpr double kLowMismatchSignedRatio = 0.25;
+    return gate.has_data && std::isfinite(metrics.abs_limit_exceed_ratio) &&
+           std::isfinite(metrics.signed_limit_exceed_ratio) &&
+           metrics.abs_limit_exceed_ratio <= kLowMismatchAbsRatio &&
+           metrics.signed_limit_exceed_ratio <= kLowMismatchSignedRatio;
+}
+
+SelectedProbeDiagnostics evaluate_selected_probe_diagnostics(const ProbeResult& selected_probe,
+                                                             const SparseWindowPhaseMetrics& middle_metrics,
+                                                             double bpm_hint,
+                                                             const ProbeWindowStarts& starts,
+                                                             double probe_duration,
+                                                             double sample_rate,
+                                                             const SparseSampleProvider& provider) {
+    SelectedProbeDiagnostics diagnostics;
+    diagnostics.middle = middle_metrics;
+    diagnostics.middle_gate = sparse_evaluate_window_phase_gate(diagnostics.middle, bpm_hint);
+    diagnostics.middle_gate_triggered = diagnostics.middle_gate.unstable_or;
+
+    diagnostics.between = measure_sparse_window_phase(selected_probe.analysis,
+                                                      bpm_hint,
+                                                      starts.between,
+                                                      probe_duration,
+                                                      sample_rate,
+                                                      provider);
+    diagnostics.left = measure_sparse_window_phase(selected_probe.analysis,
+                                                   bpm_hint,
+                                                   starts.left,
+                                                   probe_duration,
+                                                   sample_rate,
+                                                   provider);
+    diagnostics.right = measure_sparse_window_phase(selected_probe.analysis,
+                                                    bpm_hint,
+                                                    starts.right,
+                                                    probe_duration,
+                                                    sample_rate,
+                                                    provider);
+
+    diagnostics.between_gate = sparse_evaluate_window_phase_gate(diagnostics.between, bpm_hint);
+    diagnostics.left_gate = sparse_evaluate_window_phase_gate(diagnostics.left, bpm_hint);
+    diagnostics.right_gate = sparse_evaluate_window_phase_gate(diagnostics.right, bpm_hint);
+
+    diagnostics.consistency_between_high_mismatch =
+        window_has_high_mismatch(diagnostics.between, diagnostics.between_gate);
+    diagnostics.consistency_middle_high_mismatch =
+        window_has_high_mismatch(diagnostics.middle, diagnostics.middle_gate);
+    diagnostics.consistency_edges_low_mismatch =
+        window_has_low_mismatch(diagnostics.left, diagnostics.left_gate) &&
+        window_has_low_mismatch(diagnostics.right, diagnostics.right_gate);
+    diagnostics.consistency_gate_triggered =
+        diagnostics.consistency_edges_low_mismatch &&
+        (diagnostics.consistency_between_high_mismatch ||
+         diagnostics.consistency_middle_high_mismatch);
+
+    return diagnostics;
+}
+
+bool read_seed_right_first_override() {
+    const char* value = std::getenv("BEATIT_SPARSE_SEED_ORDER");
+    if (!value || value[0] == '\0') {
+        return false;
+    }
+    return value[0] == 'r' || value[0] == 'R';
+}
+
+template <typename TLogStream>
+void append_probe_debug_line(TLogStream& debug_stream,
+                             const std::vector<ProbeResult>& probes,
+                             const ProbeMetricsSnapshot& snapshot,
+                             const DecisionOutcome& decision,
+                             std::size_t selected_index,
+                             double selected_score,
+                             double score_margin,
+                             double selected_mode_error,
+                             const IntroPhaseMetrics& selected_intro_metrics,
+                             const SelectedProbeDiagnostics& diagnostics,
+                             double anchor_start,
+                             bool interior_probe_added,
+                             bool low_confidence) {
+    debug_stream << "Sparse probes:";
+    for (std::size_t i = 0; i < probes.size(); ++i) {
+        debug_stream << " start=" << probes[i].start
+                     << " bpm=" << probes[i].bpm
+                     << " conf=" << probes[i].conf
+                     << " mode_err=" << snapshot.mode_errors[i];
+    }
+
+    debug_stream << " consensus=" << snapshot.consensus_bpm
+                 << " anchor_start=" << anchor_start
+                 << " left_probe_start_s=" << snapshot.starts.left
+                 << " right_probe_start_s=" << snapshot.starts.right
+                 << " decision=" << decision.mode
+                 << " selected_start=" << probes[selected_index].start
+                 << " selected_score=" << selected_score
+                 << " score_margin=" << score_margin
+                 << " selected_mode_err=" << selected_mode_error
+                 << " selected_conf=" << probes[selected_index].conf
+                 << " selected_intro_abs_ms=" << selected_intro_metrics.median_abs_ms
+                 << " selected_middle_abs_ms=" << diagnostics.middle.median_abs_ms
+                 << " selected_middle_abs_exceed_ratio="
+                 << diagnostics.middle.abs_limit_exceed_ratio
+                 << " selected_middle_signed_exceed_ratio="
+                 << diagnostics.middle.signed_limit_exceed_ratio
+                 << " middle_gate_triggered=" << (diagnostics.middle_gate_triggered ? 1 : 0)
+                 << " consistency_gate_triggered="
+                 << (diagnostics.consistency_gate_triggered ? 1 : 0)
+                 << " consistency_edges_low_mismatch="
+                 << (diagnostics.consistency_edges_low_mismatch ? 1 : 0)
+                 << " consistency_between_high_mismatch="
+                 << (diagnostics.consistency_between_high_mismatch ? 1 : 0)
+                 << " consistency_middle_high_mismatch="
+                 << (diagnostics.consistency_middle_high_mismatch ? 1 : 0)
+                 << " selected_between_abs_ms=" << diagnostics.between.median_abs_ms
+                 << " selected_between_abs_exceed_ratio="
+                 << diagnostics.between.abs_limit_exceed_ratio
+                 << " selected_between_signed_exceed_ratio="
+                 << diagnostics.between.signed_limit_exceed_ratio
+                 << " selected_left_abs_ms=" << diagnostics.left.median_abs_ms
+                 << " selected_left_abs_exceed_ratio="
+                 << diagnostics.left.abs_limit_exceed_ratio
+                 << " selected_left_signed_exceed_ratio="
+                 << diagnostics.left.signed_limit_exceed_ratio
+                 << " selected_right_abs_ms=" << diagnostics.right.median_abs_ms
+                 << " selected_right_abs_exceed_ratio="
+                 << diagnostics.right.abs_limit_exceed_ratio
+                 << " selected_right_signed_exceed_ratio="
+                 << diagnostics.right.signed_limit_exceed_ratio
+                 << " middle_probe_start_s=" << snapshot.starts.middle
+                 << " between_probe_start_s=" << snapshot.starts.between
+                 << " interior_probe_added=" << (interior_probe_added ? 1 : 0)
+                 << " repair=" << (low_confidence ? 1 : 0);
+}
+
+} // namespace
 
 SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelectionParams& params) {
     SparseProbeSelectionResult out;
@@ -55,7 +299,6 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
     const std::size_t max_quality_shifts = 8;
     double left_anchor_start = min_allowed_start;
 
-    using ProbeResult = SparseProbeObservation;
     auto run_probe_result = [&](double start_s) {
         ProbeResult p;
         p.start = clamp_start(start_s);
@@ -99,13 +342,7 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
 
     std::vector<ProbeResult> probes;
     probes.reserve(3);
-    const bool seed_right_first = []() {
-        const char* value = std::getenv("BEATIT_SPARSE_SEED_ORDER");
-        if (!value || value[0] == '\0') {
-            return false;
-        }
-        return value[0] == 'r' || value[0] == 'R';
-    }();
+    const bool seed_right_first = read_seed_right_first_override();
     auto push_unique_probe = [&](ProbeResult&& probe) {
         const double incoming_score = sparse_probe_quality_score(probe);
         for (auto& existing : probes) {
@@ -137,206 +374,88 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
     if (probes.size() < 2 && (max_allowed_start - min_allowed_start) > 1.0) {
         push_unique_probe(run_probe_result(clamp_start(total * 0.5 - probe_duration * 0.5)));
     }
-    auto probe_start_extents = [&]() -> std::pair<double, double> {
-        if (probes.empty()) {
-            return {min_allowed_start, max_allowed_start};
-        }
-        double min_start = probes.front().start;
-        double max_start = probes.front().start;
-        for (const auto& p : probes) {
-            min_start = std::min(min_start, p.start);
-            max_start = std::max(max_start, p.start);
-        }
-        return {min_start, max_start};
-    };
-
-    double consensus_bpm = sparse_consensus_from_probes(probes,
-                                                        original_config.min_bpm,
-                                                        original_config.max_bpm);
-    if (probes.size() >= 2 && consensus_bpm > 0.0) {
-        const std::vector<double> mode_errors =
-            sparse_probe_mode_errors(probes,
-                                     consensus_bpm,
-                                     original_config.min_bpm,
-                                     original_config.max_bpm);
-        const double max_err = mode_errors.empty()
+    ProbeMetricsSnapshot metrics = recompute_probe_metrics(probes,
+                                                           original_config,
+                                                           sample_rate_,
+                                                           probe_duration,
+                                                           min_allowed_start,
+                                                           max_allowed_start,
+                                                           provider);
+    if (probes.size() >= 2 && metrics.consensus_bpm > 0.0) {
+        const double max_err = metrics.mode_errors.empty()
             ? 0.0
-            : *std::max_element(mode_errors.begin(), mode_errors.end());
+            : *std::max_element(metrics.mode_errors.begin(), metrics.mode_errors.end());
         if (max_err > 0.025 && probes.size() == 2) {
             push_unique_probe(run_probe_result(clamp_start(total * 0.5 - probe_duration * 0.5)));
+            metrics = recompute_probe_metrics(probes,
+                                              original_config,
+                                              sample_rate_,
+                                              probe_duration,
+                                              min_allowed_start,
+                                              max_allowed_start,
+                                              provider);
         }
     }
 
-    bool have_consensus = false;
-    std::vector<double> probe_mode_errors;
-    std::vector<IntroPhaseMetrics> probe_intro_metrics;
-    std::vector<SparseWindowPhaseMetrics> probe_middle_metrics;
-    double left_probe_start = min_allowed_start;
-    double right_probe_start = max_allowed_start;
-    double middle_probe_start = clamp_start(total * 0.5 - probe_duration * 0.5);
-    double between_probe_start = clamp_start(0.5 * (min_allowed_start + middle_probe_start));
-
-    auto recompute_probe_scores = [&]() {
-        consensus_bpm = sparse_consensus_from_probes(probes,
-                                                     original_config.min_bpm,
-                                                     original_config.max_bpm);
-        have_consensus = consensus_bpm > 0.0;
-
-        probe_mode_errors = sparse_probe_mode_errors(probes,
-                                                     consensus_bpm,
-                                                     original_config.min_bpm,
-                                                     original_config.max_bpm);
-
-        const auto probe_extents = probe_start_extents();
-        left_probe_start = probe_extents.first;
-        right_probe_start = probe_extents.second;
-        middle_probe_start = clamp_start(0.5 * (probe_extents.first + probe_extents.second));
-        between_probe_start = clamp_start(0.5 * (probe_extents.first + middle_probe_start));
-
-        probe_intro_metrics.assign(probes.size(), IntroPhaseMetrics{});
-        probe_middle_metrics.assign(probes.size(), SparseWindowPhaseMetrics{});
-        for (std::size_t i = 0; i < probes.size(); ++i) {
-            const double bpm_hint = have_consensus ? consensus_bpm : probes[i].bpm;
-            probe_intro_metrics[i] = sparse_measure_intro_phase(probes[i].analysis,
-                                                                bpm_hint,
-                                                                sample_rate_,
-                                                                provider);
-            probe_middle_metrics[i] = measure_sparse_window_phase(probes[i].analysis,
-                                                                  bpm_hint,
-                                                                  middle_probe_start,
-                                                                  probe_duration,
-                                                                  sample_rate_,
-                                                                  provider);
-        }
-    };
-
-    recompute_probe_scores();
-
     const double anchor_start = left_anchor_start;
-    DecisionOutcome decision = sparse_decide_unified(probes,
-                                                     probe_mode_errors,
-                                                     probe_intro_metrics);
+    DecisionOutcome decision =
+        sparse_decide_unified(probes, metrics.mode_errors, metrics.intro_metrics);
     std::size_t selected_index = decision.selected_index;
     double selected_score = decision.selected_score;
     double score_margin = decision.score_margin;
     bool low_confidence = decision.low_confidence;
-    IntroPhaseMetrics selected_intro_metrics = probe_intro_metrics[selected_index];
-    SparseWindowPhaseMetrics selected_middle_metrics = probe_middle_metrics[selected_index];
-    SparseWindowPhaseMetrics selected_between_metrics;
-    SparseWindowPhaseMetrics selected_left_window_metrics;
-    SparseWindowPhaseMetrics selected_right_window_metrics;
-    WindowPhaseGate selected_middle_gate;
-    WindowPhaseGate selected_between_gate;
-    WindowPhaseGate selected_left_gate;
-    WindowPhaseGate selected_right_gate;
-    bool middle_gate_triggered = false;
-    bool consistency_gate_triggered = false;
-    bool consistency_edges_low_mismatch = false;
-    bool consistency_between_high_mismatch = false;
-    bool consistency_middle_high_mismatch = false;
+    IntroPhaseMetrics selected_intro_metrics = metrics.intro_metrics[selected_index];
+    SelectedProbeDiagnostics diagnostics;
     bool interior_probe_added = false;
 
-    auto refresh_selected_window_diagnostics = [&]() {
-        const double selected_bpm_hint = have_consensus ? consensus_bpm : probes[selected_index].bpm;
-        selected_middle_metrics = probe_middle_metrics[selected_index];
-        selected_middle_gate =
-            sparse_evaluate_window_phase_gate(selected_middle_metrics, selected_bpm_hint);
-        selected_between_metrics = measure_sparse_window_phase(probes[selected_index].analysis,
-                                                               selected_bpm_hint,
-                                                               between_probe_start,
-                                                               probe_duration,
-                                                               sample_rate_,
-                                                               provider);
-        selected_between_gate =
-            sparse_evaluate_window_phase_gate(selected_between_metrics, selected_bpm_hint);
-        selected_left_window_metrics = measure_sparse_window_phase(probes[selected_index].analysis,
-                                                                   selected_bpm_hint,
-                                                                   left_probe_start,
-                                                                   probe_duration,
-                                                                   sample_rate_,
-                                                                   provider);
-        selected_right_window_metrics = measure_sparse_window_phase(probes[selected_index].analysis,
-                                                                    selected_bpm_hint,
-                                                                    right_probe_start,
-                                                                    probe_duration,
-                                                                    sample_rate_,
-                                                                    provider);
-        selected_left_gate = sparse_evaluate_window_phase_gate(
-            selected_left_window_metrics, selected_bpm_hint);
-        selected_right_gate = sparse_evaluate_window_phase_gate(
-            selected_right_window_metrics, selected_bpm_hint);
+    const auto refresh_selected = [&]() {
+        const double bpm_hint =
+            metrics.have_consensus ? metrics.consensus_bpm : probes[selected_index].bpm;
+        diagnostics = evaluate_selected_probe_diagnostics(probes[selected_index],
+                                                          metrics.middle_metrics[selected_index],
+                                                          bpm_hint,
+                                                          metrics.starts,
+                                                          probe_duration,
+                                                          sample_rate_,
+                                                          provider);
     };
-
-    auto evaluate_consistency_gate = [&]() {
-        constexpr double kHotAbsRatio = 0.75;
-        constexpr double kHotSignedRatio = 0.85;
-        constexpr double kCalmAbsRatio = 0.20;
-        constexpr double kCalmSignedRatio = 0.25;
-
-        const auto window_high_mismatch = [&](const SparseWindowPhaseMetrics& metrics,
-                                              const WindowPhaseGate& gate) {
-            return gate.has_data &&
-                   std::isfinite(metrics.abs_limit_exceed_ratio) &&
-                   std::isfinite(metrics.signed_limit_exceed_ratio) &&
-                   metrics.abs_limit_exceed_ratio >= kHotAbsRatio &&
-                   metrics.signed_limit_exceed_ratio >= kHotSignedRatio;
-        };
-        const auto window_low_mismatch = [&](const SparseWindowPhaseMetrics& metrics,
-                                             const WindowPhaseGate& gate) {
-            return gate.has_data &&
-                   std::isfinite(metrics.abs_limit_exceed_ratio) &&
-                   std::isfinite(metrics.signed_limit_exceed_ratio) &&
-                   metrics.abs_limit_exceed_ratio <= kCalmAbsRatio &&
-                   metrics.signed_limit_exceed_ratio <= kCalmSignedRatio;
-        };
-
-        consistency_between_high_mismatch =
-            window_high_mismatch(selected_between_metrics, selected_between_gate);
-        consistency_middle_high_mismatch =
-            window_high_mismatch(selected_middle_metrics, selected_middle_gate);
-        consistency_edges_low_mismatch =
-            window_low_mismatch(selected_left_window_metrics, selected_left_gate) &&
-            window_low_mismatch(selected_right_window_metrics, selected_right_gate);
-        return consistency_edges_low_mismatch &&
-               (consistency_between_high_mismatch || consistency_middle_high_mismatch);
-    };
+    refresh_selected();
 
     if (probes.size() == 2) {
-        refresh_selected_window_diagnostics();
-        middle_gate_triggered = selected_middle_gate.unstable_or;
-        consistency_gate_triggered = evaluate_consistency_gate();
-        if (middle_gate_triggered || consistency_gate_triggered) {
-            push_unique_probe(run_probe_result(between_probe_start));
-            recompute_probe_scores();
-            decision = sparse_decide_unified(probes, probe_mode_errors, probe_intro_metrics);
+        if (diagnostics.middle_gate_triggered || diagnostics.consistency_gate_triggered) {
+            push_unique_probe(run_probe_result(metrics.starts.between));
+            metrics = recompute_probe_metrics(probes,
+                                              original_config,
+                                              sample_rate_,
+                                              probe_duration,
+                                              min_allowed_start,
+                                              max_allowed_start,
+                                              provider);
+            decision = sparse_decide_unified(probes, metrics.mode_errors, metrics.intro_metrics);
             selected_index = decision.selected_index;
             selected_score = decision.selected_score;
             score_margin = decision.score_margin;
             low_confidence = decision.low_confidence;
-            selected_intro_metrics = probe_intro_metrics[selected_index];
-            refresh_selected_window_diagnostics();
-            middle_gate_triggered = selected_middle_gate.unstable_or;
-            consistency_gate_triggered = evaluate_consistency_gate();
+            selected_intro_metrics = metrics.intro_metrics[selected_index];
+            refresh_selected();
             interior_probe_added = true;
         }
     }
-    refresh_selected_window_diagnostics();
-    middle_gate_triggered = selected_middle_gate.unstable_or;
-    consistency_gate_triggered = evaluate_consistency_gate();
+    refresh_selected();
 
     AnalysisResult result = probes[selected_index].analysis;
-    const double selected_mode_error = probe_mode_errors[selected_index];
+    const double selected_mode_error = metrics.mode_errors[selected_index];
     if (low_confidence) {
-        const double repair_bpm = have_consensus
-            ? consensus_bpm
+        const double repair_bpm = metrics.have_consensus
+            ? metrics.consensus_bpm
             : (probes[selected_index].bpm > 0.0 ? probes[selected_index].bpm : 0.0);
         double repair_start = anchor_start;
-        if (have_consensus && !probes.empty()) {
+        if (metrics.have_consensus && !probes.empty()) {
             std::size_t best_mode_index = 0;
-            double best_mode_error = probe_mode_errors[0];
+            double best_mode_error = metrics.mode_errors[0];
             for (std::size_t i = 1; i < probes.size(); ++i) {
-                if (probe_mode_errors[i] < best_mode_error) {
-                    best_mode_error = probe_mode_errors[i];
+                if (metrics.mode_errors[i] < best_mode_error) {
+                    best_mode_error = metrics.mode_errors[i];
                     best_mode_index = i;
                 }
             }
@@ -346,102 +465,29 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
     }
 
     auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
-    debug_stream << "Sparse probes:";
-    for (std::size_t i = 0; i < probes.size(); ++i) {
-        const auto& p = probes[i];
-        debug_stream << " start=" << p.start
-                     << " bpm=" << p.bpm
-                     << " conf=" << p.conf
-                     << " mode_err=" << probe_mode_errors[i];
-    }
-    debug_stream << " consensus=" << consensus_bpm
-                 << " anchor_start=" << anchor_start
-                 << " left_probe_start_s=" << left_probe_start
-                 << " right_probe_start_s=" << right_probe_start
-                 << " decision=" << decision.mode
-                 << " selected_start=" << probes[selected_index].start
-                 << " selected_score=" << selected_score
-                 << " score_margin=" << score_margin
-                 << " selected_mode_err=" << selected_mode_error
-                 << " selected_conf=" << probes[selected_index].conf
-                 << " selected_intro_abs_ms=" << selected_intro_metrics.median_abs_ms
-                 << " selected_odd_even_gap_ms=" << selected_intro_metrics.odd_even_gap_ms
-                 << " selected_middle_ms=" << selected_middle_metrics.median_ms
-                 << " selected_middle_abs_ms=" << selected_middle_metrics.median_abs_ms
-                 << " selected_middle_odd_even_gap_ms=" << selected_middle_metrics.odd_even_gap_ms
-                 << " selected_middle_abs_p90_ms=" << selected_middle_metrics.abs_p90_ms
-                 << " selected_middle_abs_p95_ms=" << selected_middle_metrics.abs_p95_ms
-                 << " selected_middle_abs_exceed_ratio=" << selected_middle_metrics.abs_limit_exceed_ratio
-                 << " selected_middle_signed_exceed_ratio="
-                 << selected_middle_metrics.signed_limit_exceed_ratio
-                 << " middle_gate_triggered=" << (middle_gate_triggered ? 1 : 0)
-                 << " consistency_gate_triggered=" << (consistency_gate_triggered ? 1 : 0)
-                 << " consistency_edges_low_mismatch="
-                 << (consistency_edges_low_mismatch ? 1 : 0)
-                 << " consistency_between_high_mismatch="
-                 << (consistency_between_high_mismatch ? 1 : 0)
-                 << " consistency_middle_high_mismatch="
-                 << (consistency_middle_high_mismatch ? 1 : 0)
-                 << " middle_gate_has_data=" << (selected_middle_gate.has_data ? 1 : 0)
-                 << " middle_gate_signed_limit_ms=" << selected_middle_gate.signed_limit_ms
-                 << " middle_gate_abs_limit_ms=" << selected_middle_gate.abs_limit_ms
-                 << " middle_gate_signed_exceeds=" << (selected_middle_gate.signed_exceeds ? 1 : 0)
-                 << " middle_gate_abs_exceeds=" << (selected_middle_gate.abs_exceeds ? 1 : 0)
-                 << " middle_gate_and=" << (selected_middle_gate.unstable_and ? 1 : 0)
-                 << " middle_gate_or=" << (selected_middle_gate.unstable_or ? 1 : 0)
-                 << " selected_between_ms=" << selected_between_metrics.median_ms
-                 << " selected_between_abs_ms=" << selected_between_metrics.median_abs_ms
-                 << " selected_between_odd_even_gap_ms=" << selected_between_metrics.odd_even_gap_ms
-                 << " selected_between_abs_p90_ms=" << selected_between_metrics.abs_p90_ms
-                 << " selected_between_abs_p95_ms=" << selected_between_metrics.abs_p95_ms
-                 << " selected_between_abs_exceed_ratio=" << selected_between_metrics.abs_limit_exceed_ratio
-                 << " selected_between_signed_exceed_ratio="
-                 << selected_between_metrics.signed_limit_exceed_ratio
-                 << " between_gate_has_data=" << (selected_between_gate.has_data ? 1 : 0)
-                 << " between_gate_signed_exceeds=" << (selected_between_gate.signed_exceeds ? 1 : 0)
-                 << " between_gate_abs_exceeds=" << (selected_between_gate.abs_exceeds ? 1 : 0)
-                 << " between_gate_and=" << (selected_between_gate.unstable_and ? 1 : 0)
-                 << " between_gate_or=" << (selected_between_gate.unstable_or ? 1 : 0)
-                 << " selected_left_ms=" << selected_left_window_metrics.median_ms
-                 << " selected_left_abs_ms=" << selected_left_window_metrics.median_abs_ms
-                 << " selected_left_odd_even_gap_ms=" << selected_left_window_metrics.odd_even_gap_ms
-                 << " selected_left_abs_p90_ms=" << selected_left_window_metrics.abs_p90_ms
-                 << " selected_left_abs_p95_ms=" << selected_left_window_metrics.abs_p95_ms
-                 << " selected_left_abs_exceed_ratio=" << selected_left_window_metrics.abs_limit_exceed_ratio
-                 << " selected_left_signed_exceed_ratio="
-                 << selected_left_window_metrics.signed_limit_exceed_ratio
-                 << " left_gate_has_data=" << (selected_left_gate.has_data ? 1 : 0)
-                 << " left_gate_signed_exceeds=" << (selected_left_gate.signed_exceeds ? 1 : 0)
-                 << " left_gate_abs_exceeds=" << (selected_left_gate.abs_exceeds ? 1 : 0)
-                 << " left_gate_and=" << (selected_left_gate.unstable_and ? 1 : 0)
-                 << " left_gate_or=" << (selected_left_gate.unstable_or ? 1 : 0)
-                 << " selected_right_ms=" << selected_right_window_metrics.median_ms
-                 << " selected_right_abs_ms=" << selected_right_window_metrics.median_abs_ms
-                 << " selected_right_odd_even_gap_ms=" << selected_right_window_metrics.odd_even_gap_ms
-                 << " selected_right_abs_p90_ms=" << selected_right_window_metrics.abs_p90_ms
-                 << " selected_right_abs_p95_ms=" << selected_right_window_metrics.abs_p95_ms
-                 << " selected_right_abs_exceed_ratio=" << selected_right_window_metrics.abs_limit_exceed_ratio
-                 << " selected_right_signed_exceed_ratio="
-                 << selected_right_window_metrics.signed_limit_exceed_ratio
-                 << " right_gate_has_data=" << (selected_right_gate.has_data ? 1 : 0)
-                 << " right_gate_signed_exceeds=" << (selected_right_gate.signed_exceeds ? 1 : 0)
-                 << " right_gate_abs_exceeds=" << (selected_right_gate.abs_exceeds ? 1 : 0)
-                 << " right_gate_and=" << (selected_right_gate.unstable_and ? 1 : 0)
-                 << " right_gate_or=" << (selected_right_gate.unstable_or ? 1 : 0)
-                 << " middle_probe_start_s=" << middle_probe_start
-                 << " between_probe_start_s=" << between_probe_start
-                 << " interior_probe_added=" << (interior_probe_added ? 1 : 0)
-                 << " repair=" << (low_confidence ? 1 : 0);
+    append_probe_debug_line(debug_stream,
+                            probes,
+                            metrics,
+                            decision,
+                            selected_index,
+                            selected_score,
+                            score_margin,
+                            selected_mode_error,
+                            selected_intro_metrics,
+                            diagnostics,
+                            anchor_start,
+                            interior_probe_added,
+                            low_confidence);
 
     out.result = std::move(result);
     out.probes = std::move(probes);
     out.probe_duration = probe_duration;
-    out.between_probe_start = between_probe_start;
-    out.middle_probe_start = middle_probe_start;
+    out.between_probe_start = metrics.starts.between;
+    out.middle_probe_start = metrics.starts.middle;
     out.low_confidence = low_confidence;
     out.selected_intro_median_abs_ms = selected_intro_metrics.median_abs_ms;
-    out.have_consensus = have_consensus;
-    out.consensus_bpm = consensus_bpm;
+    out.have_consensus = metrics.have_consensus;
+    out.consensus_bpm = metrics.consensus_bpm;
     return out;
 }
 
