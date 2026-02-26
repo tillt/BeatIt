@@ -31,20 +31,22 @@
 
 namespace beatit::detail {
 
-bool run_dbn_postprocess(CoreMLResult& result,
-                         const std::vector<float>* phase_energy,
-                         const BeatitConfig& config,
-                         double sample_rate,
-                         float reference_bpm,
-                         std::size_t grid_total_frames,
-                         float min_bpm,
-                         float max_bpm,
-                         double fps,
-                         double hop_scale,
-                         std::size_t analysis_latency_frames,
-                         double analysis_latency_frames_f,
-                         double& dbn_ms,
-                         double peaks_ms) {
+bool run_dbn_postprocess(const DBNRunRequest& request) {
+    CoreMLResult& result = request.result;
+    const std::vector<float>* phase_energy = request.phase_energy;
+    const BeatitConfig& config = request.config;
+    const double sample_rate = request.sample_rate;
+    const float reference_bpm = request.reference_bpm;
+    const std::size_t grid_total_frames = request.grid_total_frames;
+    float min_bpm = request.min_bpm;
+    float max_bpm = request.max_bpm;
+    const double fps = request.fps;
+    const double hop_scale = request.hop_scale;
+    const std::size_t analysis_latency_frames = request.analysis_latency_frames;
+    const double analysis_latency_frames_f = request.analysis_latency_frames_f;
+    const double peaks_ms = request.peaks_ms;
+    double& dbn_ms = request.dbn_ms;
+
     const std::size_t used_frames = result.beat_activation.size();
     if (used_frames == 0) {
         return false;
