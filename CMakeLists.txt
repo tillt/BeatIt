@@ -125,7 +125,8 @@ set(BEATIT_LIB_SOURCES
     src/beatit/post/dbn.cpp
     src/beatit/post/dbn_decode.cpp
     src/beatit/post/dbn_anchor.cpp
-    src/beatit/post/dbn_grid.cpp
+    src/beatit/post/dbn_grid_phase.cpp
+    src/beatit/post/dbn_grid_synthesize.cpp
     src/beatit/post/dbn_tempo.cpp
     src/beatit/post/logits.cpp
     src/beatit/post/grid_fill.cpp
