@@ -23,7 +23,7 @@
 namespace {
 
 bool stream_audio_to_beatit(const std::string& path,
-                            const beatit::CoreMLConfig& config,
+                            const beatit::BeatitConfig& config,
                             beatit::AnalysisResult* result,
                             std::string* error) {
     if (!result) {
@@ -169,7 +169,7 @@ bool expect_non_positive(double value, const char* label) {
 }  // namespace
 
 int main() {
-    beatit::CoreMLConfig config;
+    beatit::BeatitConfig config;
 #if !defined(BEATIT_USE_TORCH)
     std::cerr << "SKIP: Torch backend not enabled.\n";
     return 77;
@@ -188,7 +188,7 @@ int main() {
         return 77;
     }
 
-    config.backend = beatit::CoreMLConfig::Backend::Torch;
+    config.backend = beatit::BeatitConfig::Backend::Torch;
     config.torch_model_path = torch_model_path;
     config.window_hop_frames = 2500;
     config.use_dbn = true;
@@ -202,7 +202,7 @@ int main() {
 
     if (const char* force_cpu = std::getenv("BEATIT_TEST_CPU_ONLY")) {
         if (force_cpu[0] != '\0' && force_cpu[0] != '0') {
-            config.compute_units = beatit::CoreMLConfig::ComputeUnits::CPUOnly;
+            config.compute_units = beatit::BeatitConfig::ComputeUnits::CPUOnly;
         }
     }
 

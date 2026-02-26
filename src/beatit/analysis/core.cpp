@@ -23,7 +23,7 @@ namespace beatit {
 
 AnalysisResult analyze(const std::vector<float>& samples,
                        double sample_rate,
-                       const CoreMLConfig& config) {
+                       const BeatitConfig& config) {
     set_log_verbosity_from_config(config);
 
     AnalysisResult result;
@@ -31,7 +31,7 @@ AnalysisResult analyze(const std::vector<float>& samples,
         return result;
     }
 
-    if (config.backend == CoreMLConfig::Backend::BeatThisExternal) {
+    if (config.backend == BeatitConfig::Backend::BeatThisExternal) {
         return analyze_with_beatthis(samples, sample_rate, config);
     }
 
@@ -72,7 +72,7 @@ AnalysisResult analyze(const std::vector<float>& samples,
                                      provider);
     }
 
-    CoreMLConfig base_config = config;
+    BeatitConfig base_config = config;
     base_config.tempo_window_percent = 0.0f;
     base_config.prefer_double_time = false;
     base_config.synthetic_fill = false;
@@ -105,7 +105,7 @@ AnalysisResult analyze(const std::vector<float>& samples,
                                               last_active_frame);
     };
 
-    if (config.backend == CoreMLConfig::Backend::Torch) {
+    if (config.backend == BeatitConfig::Backend::Torch) {
         CoreMLResult raw = analyze_with_torch_activations(samples, sample_rate, base_config);
         CoreMLResult final_result = run_pipeline(raw.beat_activation,
                                                  raw.downbeat_activation,

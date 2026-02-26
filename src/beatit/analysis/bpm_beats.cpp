@@ -148,7 +148,7 @@ const std::vector<unsigned long long>& output_downbeat_feature_frames(const Anal
 
 void rebuild_output_beat_events(AnalysisResult& result,
                                 double sample_rate,
-                                const CoreMLConfig& config) {
+                                const BeatitConfig& config) {
     result.coreml_beat_events =
         build_shakespear_markers(output_beat_feature_frames(result),
                                  output_beat_sample_frames(result),

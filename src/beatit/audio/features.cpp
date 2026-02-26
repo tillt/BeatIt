@@ -41,8 +41,8 @@ std::vector<float> compute_mel(const std::vector<float>& samples,
                                float log_multiplier,
                                float f_min,
                                float f_max,
-                               CoreMLConfig::MelScale mel_scale,
-                               CoreMLConfig::SpectrogramNorm spectrogram_norm,
+                               BeatitConfig::MelScale mel_scale,
+                               BeatitConfig::SpectrogramNorm spectrogram_norm,
                                float power) {
     if (samples.empty() || frame_size == 0 || hop_size == 0 || mel_bins == 0) {
         return {};
@@ -83,7 +83,7 @@ std::vector<float> compute_mel(const std::vector<float>& samples,
         } else {
             vDSP_zvmags(&split, 1, spectrum.data(), 1, fft_bins);
         }
-        if (spectrogram_norm == CoreMLConfig::SpectrogramNorm::FrameLength) {
+        if (spectrogram_norm == BeatitConfig::SpectrogramNorm::FrameLength) {
             const float scale = 1.0f / static_cast<float>(frame_size);
             vDSP_vsmul(spectrum.data(), 1, &scale, spectrum.data(), 1, fft_bins);
         }
@@ -108,7 +108,7 @@ std::vector<float> compute_mel(const std::vector<float>& samples,
 
 std::vector<float> compute_mel_features(const std::vector<float>& samples,
                                         double sample_rate,
-                                        const CoreMLConfig& config,
+                                        const BeatitConfig& config,
                                         std::size_t* out_frames) {
     if (out_frames) {
         *out_frames = 0;

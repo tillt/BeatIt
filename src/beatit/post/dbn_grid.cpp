@@ -26,7 +26,7 @@ namespace beatit::detail {
 void select_downbeat_phase(GridProjectionState& state,
                            DBNDecodeResult& decoded,
                            const CoreMLResult& result,
-                           const CoreMLConfig& config,
+                           const BeatitConfig& config,
                            bool quality_low,
                            bool downbeat_override_ok,
                            bool use_window,
@@ -438,7 +438,7 @@ void select_downbeat_phase(GridProjectionState& state,
 void synthesize_uniform_grid(GridProjectionState& state,
                              DBNDecodeResult& decoded,
                              const CoreMLResult& result,
-                             const CoreMLConfig& config,
+                             const BeatitConfig& config,
                              std::size_t used_frames,
                              double fps) {
     if (decoded.beat_frames.size() < 2 || state.step_frames <= 1.0) {

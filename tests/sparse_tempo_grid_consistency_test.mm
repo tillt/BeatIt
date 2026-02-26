@@ -385,7 +385,7 @@ int main() {
         return 77;
     }
 
-    beatit::CoreMLConfig config;
+    beatit::BeatitConfig config;
     if (auto preset = beatit::make_coreml_preset("beatthis")) {
         preset->apply(config);
     }
@@ -396,7 +396,7 @@ int main() {
     config.prepend_silence_seconds = 0.0;
     if (const char* force_cpu = std::getenv("BEATIT_TEST_CPU_ONLY")) {
         if (force_cpu[0] != '\0' && force_cpu[0] != '0') {
-            config.compute_units = beatit::CoreMLConfig::ComputeUnits::CPUOnly;
+            config.compute_units = beatit::BeatitConfig::ComputeUnits::CPUOnly;
         }
     }
 

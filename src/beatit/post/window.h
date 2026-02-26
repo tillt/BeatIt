@@ -56,7 +56,7 @@ std::vector<std::size_t> align_downbeats_to_beats(const std::vector<std::size_t>
 std::pair<std::size_t, std::size_t> infer_bpb_phase(const std::vector<std::size_t>& beats,
                                                      const std::vector<std::size_t>& downbeats,
                                                      const std::vector<std::size_t>& candidates,
-                                                     const CoreMLConfig& config);
+                                                     const BeatitConfig& config);
 
 std::vector<std::size_t> project_downbeats_from_beats(const std::vector<std::size_t>& beats,
                                                       std::size_t bpb,

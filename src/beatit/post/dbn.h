@@ -17,7 +17,7 @@ namespace beatit::detail {
 
 bool run_dbn_postprocess(CoreMLResult& result,
                          const std::vector<float>* phase_energy,
-                         const CoreMLConfig& config,
+                         const BeatitConfig& config,
                          double sample_rate,
                          float reference_bpm,
                          std::size_t grid_total_frames,

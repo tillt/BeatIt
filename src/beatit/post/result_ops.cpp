@@ -92,7 +92,7 @@ std::vector<std::size_t> apply_latency_to_frames(const std::vector<std::size_t>&
 
 void fill_beats_from_frames(CoreMLResult& result,
                             const std::vector<std::size_t>& frames,
-                            const CoreMLConfig& config,
+                            const BeatitConfig& config,
                             double sample_rate,
                             double hop_scale,
                             std::size_t analysis_latency_frames,
@@ -166,7 +166,7 @@ void fill_beats_from_frames(CoreMLResult& result,
 }
 
 void fill_beats_from_bpm_grid_into(const std::vector<float>& beat_activation,
-                                   const CoreMLConfig& config,
+                                   const BeatitConfig& config,
                                    double sample_rate,
                                    double fps,
                                    double hop_scale,

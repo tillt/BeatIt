@@ -25,7 +25,7 @@ void apply_sparse_anchor_state_refit(AnalysisResult& result,
                                      const std::vector<SparseProbeObservation>& probes);
 
 struct SparseWaveformRefitParams {
-    const CoreMLConfig* config = nullptr;
+    const BeatitConfig* config = nullptr;
     const SparseSampleProvider* provider = nullptr;
     const SparseEstimateBpm* estimate_bpm_from_beats = nullptr;
     const std::vector<SparseProbeObservation>* probes = nullptr;

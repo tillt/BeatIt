@@ -72,7 +72,7 @@ struct GridTempoDecision {
 struct GridTempoDecisionInput {
     const DBNDecodeResult& decoded;
     const CoreMLResult& result;
-    const CoreMLConfig& config;
+    const BeatitConfig& config;
     const CalmdadDecoder& calmdad_decoder;
 
     bool use_window = false;

@@ -17,7 +17,7 @@ namespace beatit {
 namespace detail {
 
 struct SparseProbeSelectionParams {
-    const CoreMLConfig* config = nullptr;
+    const BeatitConfig* config = nullptr;
     double sample_rate = 0.0;
     double total_duration_seconds = 0.0;
     const SparseSampleProvider* provider = nullptr;

@@ -33,7 +33,7 @@ namespace beatit::detail {
 
 bool run_dbn_postprocess(CoreMLResult& result,
                          const std::vector<float>* phase_energy,
-                         const CoreMLConfig& config,
+                         const BeatitConfig& config,
                          double sample_rate,
                          float reference_bpm,
                          std::size_t grid_total_frames,
@@ -216,7 +216,7 @@ bool run_dbn_postprocess(CoreMLResult& result,
     DBNDecodeResult decoded;
     const CalmdadDecoder calmdad_decoder(config);
     auto process_decode = [&] {
-        if (config.dbn_mode == CoreMLConfig::DBNMode::Calmdad) {
+        if (config.dbn_mode == BeatitConfig::DBNMode::Calmdad) {
             if (config.dbn_tempo_prior_weight > 0.0f) {
                 const double tolerance =
                     std::max(0.0, static_cast<double>(config.dbn_interval_tolerance));

@@ -20,7 +20,7 @@ class CoreMLPreset {
 public:
     virtual ~CoreMLPreset() = default;
     virtual const char* name() const = 0;
-    virtual void apply(CoreMLConfig& config) const = 0;
+    virtual void apply(BeatitConfig& config) const = 0;
 };
 
 std::unique_ptr<CoreMLPreset> make_coreml_preset(const std::string& name);

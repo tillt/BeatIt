@@ -19,7 +19,7 @@
 namespace beatit::detail {
 
 struct DBNProcessingContext {
-    const CoreMLConfig& config;
+    const BeatitConfig& config;
     const CalmdadDecoder& calmdad_decoder;
     double sample_rate = 0.0;
     double fps = 0.0;

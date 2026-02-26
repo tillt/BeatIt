@@ -17,7 +17,7 @@ namespace beatit::detail {
 
 void run_logit_consensus_postprocess(CoreMLResult& result,
                                      const std::vector<float>* phase_energy,
-                                     const CoreMLConfig& config,
+                                     const BeatitConfig& config,
                                      double sample_rate,
                                      float min_bpm,
                                      float max_bpm,

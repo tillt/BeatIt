@@ -74,7 +74,7 @@ Use `./build/beatit --help` for the authoritative option list.
 ```cpp
 #include "beatit/stream.h"
 
-beatit::CoreMLConfig cfg;
+beatit::BeatitConfig cfg;
 if (auto preset = beatit::make_coreml_preset("beatthis")) {
     preset->apply(cfg);
 }

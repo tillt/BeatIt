@@ -16,7 +16,7 @@
 
 namespace beatit {
 
-CalmdadDecoder::CalmdadDecoder(const CoreMLConfig& config)
+CalmdadDecoder::CalmdadDecoder(const BeatitConfig& config)
     : config_(config) {}
 
 std::vector<std::size_t> CalmdadDecoder::viterbi_beats(const std::vector<float>& activation,
@@ -94,7 +94,7 @@ DBNPathResult decode_dbn_beats_candidate(const std::vector<double>& beat_log,
                                          bool use_downbeat,
                                          double transition_reward,
                                          double tempo_change_penalty,
-                                         const CoreMLConfig& config) {
+                                         const BeatitConfig& config) {
     DBNPathResult result;
     if (beat_log.empty() || fps <= 0.0) {
         return result;

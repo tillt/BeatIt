@@ -546,13 +546,13 @@ int main(int argc, char** argv) {
         return 1;
     }
     const auto decode_end = std::chrono::steady_clock::now();
-    beatit::CoreMLConfig config;
-    beatit::CoreMLConfig::Backend requested_backend =
-        beatit::CoreMLConfig::Backend::CoreML;
+    beatit::BeatitConfig config;
+    beatit::BeatitConfig::Backend requested_backend =
+        beatit::BeatitConfig::Backend::CoreML;
     if (options.backend == "beatthis") {
-        requested_backend = beatit::CoreMLConfig::Backend::BeatThisExternal;
+        requested_backend = beatit::BeatitConfig::Backend::BeatThisExternal;
     } else if (options.backend == "torch") {
-        requested_backend = beatit::CoreMLConfig::Backend::Torch;
+        requested_backend = beatit::BeatitConfig::Backend::Torch;
     } else if (options.backend != "coreml") {
         std::cerr << "Unknown --backend: " << options.backend << "\n";
         return 1;
@@ -565,7 +565,7 @@ int main(int argc, char** argv) {
             std::cerr << "Unknown CoreML preset: " << options.preset << "\n";
             return 1;
         }
-        if (requested_backend != beatit::CoreMLConfig::Backend::BeatThisExternal) {
+        if (requested_backend != beatit::BeatitConfig::Backend::BeatThisExternal) {
             preset->apply(config);
         }
     }
@@ -624,7 +624,7 @@ int main(int argc, char** argv) {
         }
     }
     if (options.cpu_only) {
-        config.compute_units = beatit::CoreMLConfig::ComputeUnits::CPUOnly;
+        config.compute_units = beatit::BeatitConfig::ComputeUnits::CPUOnly;
     }
     if (options.use_dbn_set) {
         config.use_dbn = options.use_dbn;
@@ -633,7 +633,7 @@ int main(int argc, char** argv) {
         config.use_dbn = false;
         config.dbn_use_downbeat = false;
     }
-    if (options.model_info && config.backend == beatit::CoreMLConfig::Backend::CoreML) {
+    if (options.model_info && config.backend == beatit::BeatitConfig::Backend::CoreML) {
         const beatit::CoreMLMetadata metadata = beatit::load_coreml_metadata(config);
         std::cout << "CoreML metadata:\n";
         if (!metadata.author.empty()) {
@@ -655,7 +655,7 @@ int main(int argc, char** argv) {
             }
         }
     }
-    if (config.backend == beatit::CoreMLConfig::Backend::BeatThisExternal) {
+    if (config.backend == beatit::BeatitConfig::Backend::BeatThisExternal) {
         if (!options.beatthis_python.empty()) {
             config.beatthis_python = options.beatthis_python;
         }
@@ -684,7 +684,7 @@ int main(int argc, char** argv) {
             return 1;
         }
     }
-    if (config.backend == beatit::CoreMLConfig::Backend::Torch) {
+    if (config.backend == beatit::BeatitConfig::Backend::Torch) {
         config.torch_model_path = options.torch_model_path;
         if (!options.torch_device.empty()) {
             config.torch_device = options.torch_device;
@@ -709,9 +709,9 @@ int main(int argc, char** argv) {
     }
 
     if (result.coreml_beat_activation.empty() && result.coreml_downbeat_activation.empty()) {
-        if (config.backend == beatit::CoreMLConfig::Backend::BeatThisExternal) {
+        if (config.backend == beatit::BeatitConfig::Backend::BeatThisExternal) {
             std::cout << "BeatThis: no output (backend missing or incompatible).\n";
-        } else if (config.backend == beatit::CoreMLConfig::Backend::Torch) {
+        } else if (config.backend == beatit::BeatitConfig::Backend::Torch) {
             std::cout << "Torch: no output (backend missing or incompatible).\n";
         } else {
             std::cout << "CoreML: no output (model missing or incompatible).\n";
@@ -766,9 +766,9 @@ int main(int argc, char** argv) {
     };
 
     const char* backend_label = "CoreML";
-    if (config.backend == beatit::CoreMLConfig::Backend::BeatThisExternal) {
+    if (config.backend == beatit::BeatitConfig::Backend::BeatThisExternal) {
         backend_label = "BeatThis";
-    } else if (config.backend == beatit::CoreMLConfig::Backend::Torch) {
+    } else if (config.backend == beatit::BeatitConfig::Backend::Torch) {
         backend_label = "Torch";
     }
 
@@ -856,9 +856,9 @@ int main(int argc, char** argv) {
 
         const unsigned long long downbeat_feature_frame = downbeat_frames.front();
         double fps = 0.0;
-        if (config.backend == beatit::CoreMLConfig::Backend::Torch) {
+        if (config.backend == beatit::BeatitConfig::Backend::Torch) {
             fps = config.torch_fps;
-        } else if (config.backend == beatit::CoreMLConfig::Backend::BeatThisExternal) {
+        } else if (config.backend == beatit::BeatitConfig::Backend::BeatThisExternal) {
             fps = config.beatthis_fps;
         } else if (config.hop_size > 0 && config.sample_rate > 0) {
             fps = static_cast<double>(config.sample_rate) / config.hop_size;

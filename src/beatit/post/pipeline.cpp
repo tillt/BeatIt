@@ -61,7 +61,7 @@ using detail::window_tempo_score;
 CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activation,
                                             const std::vector<float>& downbeat_activation,
                                             const std::vector<float>* phase_energy,
-                                            const CoreMLConfig& config,
+                                            const BeatitConfig& config,
                                             double sample_rate,
                                             float reference_bpm,
                                             std::size_t last_active_frame,
@@ -151,7 +151,7 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
             double beat_prob = beat_raw;
             double downbeat_prob = downbeat_raw;
             double combined = beat_raw;
-            if (config.dbn_mode == CoreMLConfig::DBNMode::Calmdad) {
+            if (config.dbn_mode == BeatitConfig::DBNMode::Calmdad) {
                 beat_prob = static_cast<double>(beat_raw) * (1.0 - epsilon) + floor_value;
                 downbeat_prob = static_cast<double>(downbeat_raw) * (1.0 - epsilon) + floor_value;
                 combined = std::max(floor_value, beat_prob - downbeat_prob);

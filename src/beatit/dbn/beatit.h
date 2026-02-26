@@ -21,7 +21,7 @@ DBNDecodeResult decode_dbn_beats_beatit(const std::vector<float>& beat_activatio
                                         double fps,
                                         float min_bpm,
                                         float max_bpm,
-                                        const CoreMLConfig& config,
+                                        const BeatitConfig& config,
                                         float reference_bpm);
 
 }  // namespace beatit

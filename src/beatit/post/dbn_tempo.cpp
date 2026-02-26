@@ -40,7 +40,7 @@ GridTempoDecision compute_grid_tempo_decision(const GridTempoDecisionInput& inpu
         align_downbeats_to_beats(filtered_beats, input.decoded.downbeat_frames);
 
     std::vector<std::size_t> bpb_candidates;
-    if (input.config.dbn_mode == CoreMLConfig::DBNMode::Calmdad) {
+    if (input.config.dbn_mode == BeatitConfig::DBNMode::Calmdad) {
         bpb_candidates = {3, 4};
     } else {
         bpb_candidates = {input.config.dbn_beats_per_bar};

@@ -19,7 +19,7 @@ DBNDecodeResult decode_dbn_beats_beatit(const std::vector<float>& beat_activatio
                                         double fps,
                                         float min_bpm,
                                         float max_bpm,
-                                        const CoreMLConfig& config,
+                                        const BeatitConfig& config,
                                         float reference_bpm) {
     DBNDecodeResult result;
     if (beat_activation.empty() || fps <= 0.0) {

@@ -26,7 +26,7 @@ namespace beatit::detail {
 bool run_dbn_decoded_postprocess(CoreMLResult& result,
                                  DBNDecodeResult& decoded,
                                  const DBNDecodedPostprocessContext& context) {
-    const CoreMLConfig& config = context.processing.config;
+    const BeatitConfig& config = context.processing.config;
     const CalmdadDecoder& calmdad_decoder = context.processing.calmdad_decoder;
     const double sample_rate = context.processing.sample_rate;
     const double fps = context.processing.fps;

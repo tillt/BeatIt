@@ -44,15 +44,15 @@ std::vector<float> resample_linear_mono(const std::vector<float> &input,
   return output;
 }
 
-float hz_to_mel(float hz, CoreMLConfig::MelScale scale) {
-  if (scale == CoreMLConfig::MelScale::Slaney) {
+float hz_to_mel(float hz, BeatitConfig::MelScale scale) {
+  if (scale == BeatitConfig::MelScale::Slaney) {
     return 1127.01048f * std::log1p(hz / 700.0f);
   }
   return 2595.0f * std::log10(1.0f + hz / 700.0f);
 }
 
-float mel_to_hz(float mel, CoreMLConfig::MelScale scale) {
-  if (scale == CoreMLConfig::MelScale::Slaney) {
+float mel_to_hz(float mel, BeatitConfig::MelScale scale) {
+  if (scale == BeatitConfig::MelScale::Slaney) {
     return 700.0f * (std::exp(mel / 1127.01048f) - 1.0f);
   }
   return 700.0f * (std::pow(10.0f, mel / 2595.0f) - 1.0f);
@@ -62,7 +62,7 @@ std::vector<float> build_mel_filterbank(std::size_t mel_bins,
                                         std::size_t fft_bins,
                                         double sample_rate, float f_min,
                                         float f_max,
-                                        CoreMLConfig::MelScale scale) {
+                                        BeatitConfig::MelScale scale) {
   std::vector<float> filters(mel_bins * fft_bins, 0.0f);
   if (mel_bins == 0 || fft_bins == 0 || sample_rate <= 0.0) {
     return filters;

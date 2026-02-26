@@ -25,7 +25,7 @@ class InferenceBackend;
 class BeatitStream {
 public:
     BeatitStream(double sample_rate,
-                 const CoreMLConfig& coreml_config,
+                 const BeatitConfig& coreml_config,
                  bool enable_coreml = true);
     ~BeatitStream();
 
@@ -58,7 +58,7 @@ private:
     void accumulate_phase_energy(std::size_t begin_sample, std::size_t end_sample);
 
     double sample_rate_ = 0.0;
-    CoreMLConfig coreml_config_;
+    BeatitConfig coreml_config_;
     bool coreml_enabled_ = true;
     std::unique_ptr<detail::InferenceBackend> inference_backend_;
 

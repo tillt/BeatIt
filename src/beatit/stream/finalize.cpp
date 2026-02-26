@@ -40,7 +40,7 @@ AnalysisResult BeatitStream::finalize() {
             const float* start_ptr = resampled_buffer_.data() + resampled_offset_;
             std::copy(start_ptr, start_ptr + std::min(available, window_samples), window.begin());
 
-            CoreMLConfig local_config = coreml_config_;
+            BeatitConfig local_config = coreml_config_;
             local_config.tempo_window_percent = 0.0f;
             local_config.prefer_double_time = false;
 
@@ -81,7 +81,7 @@ AnalysisResult BeatitStream::finalize() {
         return result;
     }
 
-    CoreMLConfig base_config = coreml_config_;
+    BeatitConfig base_config = coreml_config_;
     base_config.tempo_window_percent = 0.0f;
     base_config.prefer_double_time = false;
     base_config.synthetic_fill = false;

@@ -23,7 +23,7 @@ namespace beatit {
 
 CoreMLResult analyze_with_torch_activations(const std::vector<float>& samples,
                                             double sample_rate,
-                                            const CoreMLConfig& config) {
+                                            const BeatitConfig& config) {
     CoreMLResult result;
     if (config.torch_model_path.empty()) {
         BEATIT_LOG_ERROR("Torch backend: missing model path.");
@@ -69,7 +69,7 @@ CoreMLResult analyze_with_torch_activations(const std::vector<float>& samples,
 
     std::size_t frames = 0;
     std::vector<float> features;
-    if (config.mel_backend == CoreMLConfig::MelBackend::Torch) {
+    if (config.mel_backend == BeatitConfig::MelBackend::Torch) {
         std::string mel_error;
         features = compute_mel_features_torch(samples,
                                               sample_rate,
@@ -99,7 +99,7 @@ CoreMLResult analyze_with_torch_activations(const std::vector<float>& samples,
                      << " sample_rate=" << config.sample_rate
                      << " hop_size=" << config.hop_size
                      << " mel_backend="
-                     << (config.mel_backend == CoreMLConfig::MelBackend::Torch ? "torch" : "cpu"));
+                     << (config.mel_backend == BeatitConfig::MelBackend::Torch ? "torch" : "cpu"));
 
     result.beat_activation.assign(frames, -1.0f);
     result.downbeat_activation.assign(frames, -1.0f);

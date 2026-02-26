@@ -22,7 +22,7 @@ namespace beatit::detail {
 double bpm_from_linear_fit(const std::vector<std::size_t>& beats, double fps);
 
 double bpm_from_global_fit(const CoreMLResult& result,
-                           const CoreMLConfig& config,
+                           const BeatitConfig& config,
                            const CalmdadDecoder& calmdad_decoder,
                            double fps,
                            float min_bpm,

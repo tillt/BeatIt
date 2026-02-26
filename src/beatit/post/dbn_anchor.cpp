@@ -20,7 +20,7 @@ namespace beatit::detail {
 
 GridAnchorSeed seed_grid_anchor(DBNDecodeResult& decoded,
                                 const CoreMLResult& result,
-                                const CoreMLConfig& config,
+                                const BeatitConfig& config,
                                 bool use_window,
                                 std::size_t window_start,
                                 std::size_t used_frames,

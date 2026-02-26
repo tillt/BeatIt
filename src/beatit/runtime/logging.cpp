@@ -26,7 +26,7 @@ LogVerbosity get_log_verbosity() {
     return static_cast<LogVerbosity>(g_log_level.load(std::memory_order_relaxed));
 }
 
-void set_log_verbosity_from_config(const CoreMLConfig& config) {
+void set_log_verbosity_from_config(const BeatitConfig& config) {
     LogVerbosity level = config.log_verbosity;
     if (config.profile && static_cast<int>(level) < static_cast<int>(LogVerbosity::Info)) {
         level = LogVerbosity::Info;

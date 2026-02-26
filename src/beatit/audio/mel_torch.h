@@ -20,7 +20,7 @@ namespace beatit {
 
 std::vector<float> compute_mel_features_torch(const std::vector<float>& samples,
                                               double sample_rate,
-                                              const CoreMLConfig& config,
+                                              const BeatitConfig& config,
                                               const torch::Device& device,
                                               std::size_t* out_frames,
                                               std::string* error);

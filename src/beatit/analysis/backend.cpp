@@ -76,7 +76,7 @@ bool parse_beatthis_output(const std::string& output,
 
 bool run_beatthis_external(const std::vector<float>& samples,
                            double sample_rate,
-                           const CoreMLConfig& config,
+                           const BeatitConfig& config,
                            std::vector<double>* beats,
                            std::vector<double>* downbeats,
                            std::string* error) {
@@ -152,7 +152,7 @@ bool run_beatthis_external(const std::vector<float>& samples,
 
 std::vector<float> compute_phase_energy(const std::vector<float>& samples,
                                         double sample_rate,
-                                        const CoreMLConfig& config) {
+                                        const BeatitConfig& config) {
     if (samples.empty() || sample_rate <= 0.0 || config.sample_rate == 0 || config.hop_size == 0) {
         return {};
     }
@@ -191,7 +191,7 @@ std::vector<float> compute_phase_energy(const std::vector<float>& samples,
 
 AnalysisResult analyze_with_beatthis(const std::vector<float>& samples,
                                      double sample_rate,
-                                     const CoreMLConfig& config) {
+                                     const BeatitConfig& config) {
     AnalysisResult result;
     std::vector<double> beat_times;
     std::vector<double> downbeat_times;
@@ -245,7 +245,7 @@ AnalysisResult analyze_with_beatthis(const std::vector<float>& samples,
 
 std::size_t estimate_last_active_frame(const std::vector<float>& samples,
                                        double sample_rate,
-                                       const CoreMLConfig& config) {
+                                       const BeatitConfig& config) {
     if (samples.empty() || sample_rate <= 0.0 || config.hop_size == 0) {
         return 0;
     }
@@ -316,7 +316,7 @@ void assign_coreml_result(AnalysisResult& result,
                           CoreMLResult&& coreml_result,
                           std::vector<float> phase_energy,
                           double sample_rate,
-                          const CoreMLConfig& config) {
+                          const BeatitConfig& config) {
     result.coreml_beat_activation = std::move(coreml_result.beat_activation);
     result.coreml_downbeat_activation = std::move(coreml_result.downbeat_activation);
     result.coreml_phase_energy = std::move(phase_energy);

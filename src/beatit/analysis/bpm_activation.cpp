@@ -18,7 +18,7 @@
 namespace beatit {
 
 float estimate_bpm_from_activation(const std::vector<float>& activation,
-                                   const CoreMLConfig& config,
+                                   const BeatitConfig& config,
                                    double sample_rate) {
     if (activation.size() < 8 || sample_rate <= 0.0 || config.hop_size <= 0) {
         return 0.0f;
@@ -252,7 +252,7 @@ float estimate_bpm_from_activation(const std::vector<float>& activation,
 }
 
 float estimate_bpm_from_activation_autocorr(const std::vector<float>& activation,
-                                            const CoreMLConfig& config,
+                                            const BeatitConfig& config,
                                             double sample_rate) {
     if (activation.size() < 8 || sample_rate <= 0.0 || config.hop_size <= 0) {
         return 0.0f;
@@ -350,7 +350,7 @@ float estimate_bpm_from_activation_autocorr(const std::vector<float>& activation
 }
 
 float estimate_bpm_from_activation_comb(const std::vector<float>& activation,
-                                        const CoreMLConfig& config,
+                                        const BeatitConfig& config,
                                         double sample_rate) {
     if (activation.size() < 8 || sample_rate <= 0.0 || config.hop_size <= 0) {
         return 0.0f;

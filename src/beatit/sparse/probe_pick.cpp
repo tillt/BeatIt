@@ -26,7 +26,7 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
     if (!params.config || !params.provider || !params.run_probe) {
         return out;
     }
-    const CoreMLConfig& original_config = *params.config;
+    const BeatitConfig& original_config = *params.config;
     const SparseSampleProvider& provider = *params.provider;
     const SparseRunProbe& run_probe_fn = *params.run_probe;
     const double sample_rate_ = params.sample_rate;

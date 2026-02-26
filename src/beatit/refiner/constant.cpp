@@ -244,7 +244,7 @@ std::size_t first_active_frame(const std::vector<float>* energy,
 
 ConstantBeatResult refine_constant_beats(const std::vector<unsigned long long>& beat_feature_frames,
                                          std::size_t total_frames,
-                                         const CoreMLConfig& config,
+                                         const BeatitConfig& config,
                                          double sample_rate,
                                          std::size_t initial_silence_frames,
                                          const ConstantBeatRefinerConfig& refiner_config,

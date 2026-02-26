@@ -56,7 +56,7 @@ struct CalmdadSparseDecodeRequest {
 
 class CalmdadDecoder {
 public:
-    explicit CalmdadDecoder(const CoreMLConfig& config);
+    explicit CalmdadDecoder(const BeatitConfig& config);
 
     DBNDecodeResult decode(const CalmdadDecodeRequest& request) const;
     DBNPathResult decode_sparse(const CalmdadSparseDecodeRequest& request) const;
@@ -68,7 +68,7 @@ public:
                                                   float activation_floor);
 
 private:
-    CoreMLConfig config_;
+    BeatitConfig config_;
 };
 
 }  // namespace beatit

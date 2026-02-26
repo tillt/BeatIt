@@ -23,7 +23,7 @@
 namespace {
 
 bool stream_audio_to_beatit(const std::string& path,
-                            const beatit::CoreMLConfig& config,
+                            const beatit::BeatitConfig& config,
                             beatit::AnalysisResult* result,
                             std::string* error) {
     if (!result) {
@@ -151,7 +151,7 @@ int main() {
         return 77;
     }
 
-    beatit::CoreMLConfig base_config;
+    beatit::BeatitConfig base_config;
     if (auto preset = beatit::make_coreml_preset("beatthis")) {
         preset->apply(base_config);
     }
@@ -189,8 +189,8 @@ int main() {
                         beatit::AnalysisResult* result,
                         double* runtime_seconds,
                         std::string* error) -> bool {
-        beatit::CoreMLConfig config = base_config;
-        config.backend = beatit::CoreMLConfig::Backend::Torch;
+        beatit::BeatitConfig config = base_config;
+        config.backend = beatit::BeatitConfig::Backend::Torch;
         config.torch_model_path = (device == "mps") ? mps_model_path : cpu_model_path;
         config.torch_device = device;
         config.log_verbosity = beatit::LogVerbosity::Debug;
@@ -198,7 +198,7 @@ int main() {
         config.use_dbn = true;
         config.dbn_use_downbeat = true;
         if (device == "mps") {
-            config.mel_backend = beatit::CoreMLConfig::MelBackend::Torch;
+            config.mel_backend = beatit::BeatitConfig::MelBackend::Torch;
         }
 
         const auto start = std::chrono::steady_clock::now();

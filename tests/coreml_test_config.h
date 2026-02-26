@@ -19,13 +19,13 @@
 
 namespace beatit::tests {
 
-inline void apply_beatthis_coreml_test_config(CoreMLConfig& config) {
+inline void apply_beatthis_coreml_test_config(BeatitConfig& config) {
     if (auto preset = make_coreml_preset("beatthis")) {
         preset->apply(config);
     }
 
     // Keep explicit values to make tests robust if preset defaults evolve.
-    config.backend = CoreMLConfig::Backend::CoreML;
+    config.backend = BeatitConfig::Backend::CoreML;
     config.sample_rate = 22050;
     config.frame_size = 1024;
     config.hop_size = 441;
@@ -35,7 +35,7 @@ inline void apply_beatthis_coreml_test_config(CoreMLConfig& config) {
     config.f_min = 30.0f;
     config.f_max = 11000.0f;
     config.power = 1.0f;
-    config.input_layout = CoreMLConfig::InputLayout::FramesByMels;
+    config.input_layout = BeatitConfig::InputLayout::FramesByMels;
     config.fixed_frames = 1500;
     config.window_hop_frames = 1488;
     config.window_border_frames = 6;

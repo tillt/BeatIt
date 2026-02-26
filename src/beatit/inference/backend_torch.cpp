@@ -26,7 +26,7 @@ namespace {
 
 bool forward_torch_model(torch::jit::script::Module* module,
                          const std::vector<torch::IValue>& inputs,
-                         const CoreMLConfig& config,
+                         const BeatitConfig& config,
                          InferenceTiming* timing,
                          torch::IValue* output) {
     if (!module || !output) {
@@ -55,7 +55,7 @@ bool forward_torch_model(torch::jit::script::Module* module,
 }
 
 bool extract_torch_output_tensors(const torch::IValue& output,
-                                  const CoreMLConfig& config,
+                                  const BeatitConfig& config,
                                   torch::Tensor* beat_tensor,
                                   torch::Tensor* downbeat_tensor) {
     if (!beat_tensor || !downbeat_tensor) {
@@ -90,16 +90,16 @@ bool extract_torch_output_tensors(const torch::IValue& output,
 
 class TorchInferenceBackend final : public InferenceBackend {
 public:
-    std::size_t max_batch_size(const CoreMLConfig& config) const override {
+    std::size_t max_batch_size(const BeatitConfig& config) const override {
         return std::max<std::size_t>(1, config.torch_batch_size);
     }
 
-    std::size_t border_frames(const CoreMLConfig& config) const override {
+    std::size_t border_frames(const BeatitConfig& config) const override {
         return config.window_border_frames;
     }
 
     bool infer_window(const std::vector<float>& window,
-                      const CoreMLConfig& config,
+                      const BeatitConfig& config,
                       std::vector<float>* beat,
                       std::vector<float>* downbeat,
                       InferenceTiming* timing) override {
@@ -112,7 +112,7 @@ public:
 
         std::size_t frames = 0;
         std::vector<float> features;
-        if (config.mel_backend == CoreMLConfig::MelBackend::Torch) {
+        if (config.mel_backend == BeatitConfig::MelBackend::Torch) {
             std::string mel_error;
             const auto mel_start = std::chrono::steady_clock::now();
             features = compute_mel_features_torch(window,
@@ -192,7 +192,7 @@ public:
     }
 
     bool infer_windows(const std::vector<std::vector<float>>& windows,
-                       const CoreMLConfig& config,
+                       const BeatitConfig& config,
                        std::vector<std::vector<float>>* beats,
                        std::vector<std::vector<float>>* downbeats,
                        InferenceTiming* timing) override {
@@ -214,7 +214,7 @@ public:
         for (std::size_t b = 0; b < batch; ++b) {
             std::size_t frames = 0;
             std::vector<float> features;
-            if (config.mel_backend == CoreMLConfig::MelBackend::Torch) {
+            if (config.mel_backend == BeatitConfig::MelBackend::Torch) {
                 std::string mel_error;
                 const auto mel_start = std::chrono::steady_clock::now();
                 features = compute_mel_features_torch(windows[b],
@@ -348,7 +348,7 @@ private:
         torch::Device device = torch::kCPU;
     };
 
-    bool ensure_state(const CoreMLConfig& config) {
+    bool ensure_state(const BeatitConfig& config) {
         if (torch_state_) {
             return true;
         }
@@ -395,7 +395,7 @@ private:
             }
             BEATIT_LOG_DEBUG("Torch backend: resolved device=" << torch_state_->device.str());
             BEATIT_LOG_DEBUG("Torch backend: mel backend="
-                             << (config.mel_backend == CoreMLConfig::MelBackend::Torch
+                             << (config.mel_backend == BeatitConfig::MelBackend::Torch
                                      ? "torch"
                                      : "cpu"));
         } catch (const c10::Error& err) {

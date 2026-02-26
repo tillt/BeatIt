@@ -47,7 +47,7 @@ static void apply_logits_to_probs(std::vector<float>& values, float temperature)
 
 CoreMLResult analyze_with_coreml(const std::vector<float>& samples,
                                  double sample_rate,
-                                 const CoreMLConfig& config,
+                                 const BeatitConfig& config,
                                  float reference_bpm) {
     CoreMLResult result;
     if (samples.empty() || sample_rate <= 0.0) {
@@ -127,16 +127,16 @@ CoreMLResult analyze_with_coreml(const std::vector<float>& samples,
 
     MLModelConfiguration* model_config = [[MLModelConfiguration alloc] init];
     switch (config.compute_units) {
-        case CoreMLConfig::ComputeUnits::CPUOnly:
+        case BeatitConfig::ComputeUnits::CPUOnly:
             model_config.computeUnits = MLComputeUnitsCPUOnly;
             break;
-        case CoreMLConfig::ComputeUnits::CPUAndGPU:
+        case BeatitConfig::ComputeUnits::CPUAndGPU:
             model_config.computeUnits = MLComputeUnitsCPUAndGPU;
             break;
-        case CoreMLConfig::ComputeUnits::CPUAndNeuralEngine:
+        case BeatitConfig::ComputeUnits::CPUAndNeuralEngine:
             model_config.computeUnits = MLComputeUnitsCPUAndNeuralEngine;
             break;
-        case CoreMLConfig::ComputeUnits::All:
+        case BeatitConfig::ComputeUnits::All:
         default:
             model_config.computeUnits = MLComputeUnitsAll;
             break;
@@ -153,17 +153,17 @@ CoreMLResult analyze_with_coreml(const std::vector<float>& samples,
     }
 
     const auto model_end = std::chrono::steady_clock::now();
-    const CoreMLConfig::InputLayout inferred_input_layout =
+    const BeatitConfig::InputLayout inferred_input_layout =
         detail::infer_model_input_layout(model, config);
 
     auto run_inference = [&](const std::vector<float>& window_features,
                              std::size_t window_frames,
                              std::vector<float>* beat_out,
                              std::vector<float>* downbeat_out) -> bool {
-        auto try_layout = [&](CoreMLConfig::InputLayout layout) -> bool {
+        auto try_layout = [&](BeatitConfig::InputLayout layout) -> bool {
             error = nil;
             MLMultiArray* input_array = nil;
-            if (layout == CoreMLConfig::InputLayout::FramesByMels) {
+            if (layout == BeatitConfig::InputLayout::FramesByMels) {
                 input_array = [[MLMultiArray alloc] initWithShape:@[@(1), @(window_frames), @(config.mel_bins)]
                                                        dataType:MLMultiArrayDataTypeFloat32
                                                           error:&error];
@@ -249,10 +249,10 @@ CoreMLResult analyze_with_coreml(const std::vector<float>& samples,
             return true;
         }
 
-        const CoreMLConfig::InputLayout fallback_layout =
-            (inferred_input_layout == CoreMLConfig::InputLayout::FramesByMels)
-                ? CoreMLConfig::InputLayout::ChannelsFramesMels
-                : CoreMLConfig::InputLayout::FramesByMels;
+        const BeatitConfig::InputLayout fallback_layout =
+            (inferred_input_layout == BeatitConfig::InputLayout::FramesByMels)
+                ? BeatitConfig::InputLayout::ChannelsFramesMels
+                : BeatitConfig::InputLayout::FramesByMels;
         if (fallback_layout != inferred_input_layout) {
             BEATIT_LOG_DEBUG("CoreML retrying inference with alternate input layout.");
             return try_layout(fallback_layout);

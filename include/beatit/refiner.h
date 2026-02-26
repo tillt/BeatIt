@@ -83,7 +83,7 @@ std::vector<BeatEvent> build_shakespear_markers(const std::vector<unsigned long 
                                                 const std::vector<float>* beat_activation,
                                                 double bpm,
                                                 double sample_rate,
-                                                const CoreMLConfig& config);
+                                                const BeatitConfig& config);
 
 struct ConstantBeatRefinerConfig {
     double max_phase_error_seconds = 0.025;
@@ -130,7 +130,7 @@ struct ConstantBeatResult {
 
 ConstantBeatResult refine_constant_beats(const std::vector<unsigned long long>& beat_feature_frames,
                                          std::size_t total_frames,
-                                         const CoreMLConfig& config,
+                                         const BeatitConfig& config,
                                          double sample_rate,
                                          std::size_t initial_silence_frames = 0,
                                          const ConstantBeatRefinerConfig& refiner_config = ConstantBeatRefinerConfig(),

@@ -18,7 +18,7 @@
 namespace beatit {
 namespace detail {
 
-AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
+AnalysisResult analyze_sparse_probe_window(const BeatitConfig& original_config,
                                            double sample_rate,
                                            double total_duration_seconds,
                                            const SparseSampleProvider& provider,

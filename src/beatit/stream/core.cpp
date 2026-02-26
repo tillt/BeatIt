@@ -93,7 +93,7 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
         return result;
     }
 
-    CoreMLConfig original_config = coreml_config_;
+    BeatitConfig original_config = coreml_config_;
     auto run_probe = [&](double probe_start,
                          double probe_duration,
                          double forced_reference_bpm = 0.0) -> AnalysisResult {
@@ -194,7 +194,7 @@ void BeatitStream::LinearResampler::push(const float* input,
 }
 
 BeatitStream::BeatitStream(double sample_rate,
-                           const CoreMLConfig& coreml_config,
+                           const BeatitConfig& coreml_config,
                            bool enable_coreml)
     : sample_rate_(sample_rate),
       coreml_config_(coreml_config),
@@ -276,7 +276,7 @@ void BeatitStream::process_torch_windows() {
     if (!coreml_enabled_ || coreml_config_.fixed_frames == 0 || !inference_backend_) {
         return;
     }
-    if (coreml_config_.backend != CoreMLConfig::Backend::Torch) {
+    if (coreml_config_.backend != BeatitConfig::Backend::Torch) {
         return;
     }
 
@@ -441,7 +441,7 @@ void BeatitStream::push(const float* samples, std::size_t count) {
     const std::size_t after_size = resampled_buffer_.size();
     accumulate_phase_energy(before_size, after_size);
     const auto process_start = std::chrono::steady_clock::now();
-    if (coreml_config_.backend == CoreMLConfig::Backend::Torch) {
+    if (coreml_config_.backend == BeatitConfig::Backend::Torch) {
         process_torch_windows();
     } else {
         process_coreml_windows();

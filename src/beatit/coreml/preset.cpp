@@ -20,7 +20,7 @@ public:
         return "beattrack";
     }
 
-    void apply(CoreMLConfig& config) const override {
+    void apply(BeatitConfig& config) const override {
         config.sample_rate = 44100;
         config.frame_size = 2048;
         config.hop_size = 441;
@@ -30,9 +30,9 @@ public:
         config.f_min = 0.0f;
         config.f_max = 0.0f;
         config.power = 2.0f;
-        config.mel_scale = CoreMLConfig::MelScale::Htk;
-        config.spectrogram_norm = CoreMLConfig::SpectrogramNorm::None;
-        config.input_layout = CoreMLConfig::InputLayout::ChannelsFramesMels;
+        config.mel_scale = BeatitConfig::MelScale::Htk;
+        config.spectrogram_norm = BeatitConfig::SpectrogramNorm::None;
+        config.input_layout = BeatitConfig::InputLayout::ChannelsFramesMels;
         config.fixed_frames = 3000;
         config.window_hop_frames = 2500;
         config.window_border_frames = 0;
@@ -46,8 +46,8 @@ public:
         return "beatthis";
     }
 
-    void apply(CoreMLConfig& config) const override {
-        config.backend = CoreMLConfig::Backend::CoreML;
+    void apply(BeatitConfig& config) const override {
+        config.backend = BeatitConfig::Backend::CoreML;
         config.sample_rate = 22050;
         config.frame_size = 1024;
         config.hop_size = 441;
@@ -57,9 +57,9 @@ public:
         config.f_min = 30.0f;
         config.f_max = 11000.0f;
         config.power = 1.0f;
-        config.mel_scale = CoreMLConfig::MelScale::Slaney;
-        config.spectrogram_norm = CoreMLConfig::SpectrogramNorm::FrameLength;
-        config.input_layout = CoreMLConfig::InputLayout::FramesByMels;
+        config.mel_scale = BeatitConfig::MelScale::Slaney;
+        config.spectrogram_norm = BeatitConfig::SpectrogramNorm::FrameLength;
+        config.input_layout = BeatitConfig::InputLayout::FramesByMels;
         config.fixed_frames = 1500;
         config.window_hop_frames = 1488;
         config.window_border_frames = 6;
@@ -79,7 +79,7 @@ public:
         config.logit_min_peaks = 8;
         config.disable_silence_trimming = true;
         config.dbn_use_downbeat = true;
-        config.dbn_mode = CoreMLConfig::DBNMode::Calmdad;
+        config.dbn_mode = BeatitConfig::DBNMode::Calmdad;
         config.dbn_activation_floor = 0.7f;
         config.dbn_tempo_prior_weight = 0.0f;
         config.dbn_downbeat_phase_peak_ratio = 0.2f;

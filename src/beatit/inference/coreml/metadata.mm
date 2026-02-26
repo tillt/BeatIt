@@ -34,7 +34,7 @@ static NSString* const MLModelMetadataKeyUserDefined = @"userDefined";
 
 namespace beatit {
 
-CoreMLMetadata load_coreml_metadata(const CoreMLConfig& config) {
+CoreMLMetadata load_coreml_metadata(const BeatitConfig& config) {
     CoreMLMetadata metadata;
 
     NSString* model_path = detail::resolve_model_path(config);

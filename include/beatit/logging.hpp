@@ -21,7 +21,7 @@
 
 namespace beatit {
 
-struct CoreMLConfig;
+struct BeatitConfig;
 
 /// @brief Logging level policy for BeatIt.
 ///
@@ -54,7 +54,7 @@ void set_log_verbosity(LogVerbosity level);
 LogVerbosity get_log_verbosity();
 
 /// @brief Configure BeatIt log verbosity from config flags.
-void set_log_verbosity_from_config(const CoreMLConfig& config);
+void set_log_verbosity_from_config(const BeatitConfig& config);
 
 /// @brief Hex-preview helper for debug dumps of short byte prefixes.
 inline constexpr std::size_t kHexPreviewBytes = 8;

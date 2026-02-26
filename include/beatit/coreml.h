@@ -17,7 +17,7 @@
 
 namespace beatit {
 
-struct CoreMLConfig {
+struct BeatitConfig {
     enum class Backend {
         CoreML,
         BeatThisExternal,
@@ -173,23 +173,23 @@ struct CoreMLMetadata {
 
 CoreMLResult analyze_with_coreml(const std::vector<float>& samples,
                                  double sample_rate,
-                                 const CoreMLConfig& config,
+                                 const BeatitConfig& config,
                                  float reference_bpm);
 
 CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activation,
                                             const std::vector<float>& downbeat_activation,
                                             const std::vector<float>* phase_energy,
-                                            const CoreMLConfig& config,
+                                            const BeatitConfig& config,
                                             double sample_rate,
                                             float reference_bpm,
                                             std::size_t last_active_frame = 0,
                                             std::size_t total_frames_full = 0);
 
-CoreMLMetadata load_coreml_metadata(const CoreMLConfig& config);
+CoreMLMetadata load_coreml_metadata(const BeatitConfig& config);
 
 std::vector<float> compute_mel_features(const std::vector<float>& samples,
                                         double sample_rate,
-                                        const CoreMLConfig& config,
+                                        const BeatitConfig& config,
                                         std::size_t* out_frames);
 
 } // namespace beatit

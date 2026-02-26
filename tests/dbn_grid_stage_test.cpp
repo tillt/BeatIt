@@ -38,7 +38,7 @@ bool test_uniform_grid_synthesis() {
     decoded.beat_frames = {10, 21, 31, 40, 50, 60, 70, 80, 90, 100, 110, 121, 130, 140, 150};
     decoded.downbeat_frames = {10, 50, 90, 130};
 
-    beatit::CoreMLConfig config;
+    beatit::BeatitConfig config;
     config.dbn_grid_global_fit = false;
     config.dbn_grid_start_strong_peak = false;
     config.dbn_grid_align_downbeat_peak = false;
@@ -88,7 +88,7 @@ bool test_downbeat_phase_selection() {
         decoded.beat_frames.push_back(frame);
     }
 
-    beatit::CoreMLConfig config;
+    beatit::BeatitConfig config;
     config.sample_rate = 50;
     config.hop_size = 1;
     config.dbn_downbeat_phase_window_seconds = 3.0f;
