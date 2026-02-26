@@ -14,7 +14,7 @@ namespace beatit {
 
 namespace {
 
-std::atomic<int> g_log_level{static_cast<int>(LogVerbosity::Warn)};
+std::atomic<int> g_log_level{static_cast<int>(LogVerbosity::Info)};
 
 } // namespace
 

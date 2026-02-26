@@ -128,7 +128,7 @@ struct CoreMLConfig {
     double debug_activations_start_s = -1.0;
     double debug_activations_end_s = -1.0;
     std::size_t debug_activations_max = 0;
-    LogVerbosity log_verbosity = LogVerbosity::Warn;
+    LogVerbosity log_verbosity = LogVerbosity::Info;
     bool profile = false;
     bool profile_per_window = false;
     std::string beatthis_python = "python3";

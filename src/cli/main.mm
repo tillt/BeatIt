@@ -607,8 +607,7 @@ int main(int argc, char** argv) {
     config.debug_activations_end_s = options.debug_activations_end_s;
     config.debug_activations_max = options.debug_activations_max;
     config.profile = options.info;
-    config.log_verbosity = options.info ? beatit::LogVerbosity::Info
-                                           : beatit::LogVerbosity::Warn;
+    config.log_verbosity = beatit::LogVerbosity::Info;
     if (options.log_level) {
         const std::string level = *options.log_level;
         if (level == "error") {
