@@ -6,7 +6,7 @@
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "beatit/coreml.h"
+#include "beatit/config.h"
 #include "beatit/dbn/beatit.h"
 #include "beatit/dbn/calmdad.h"
 

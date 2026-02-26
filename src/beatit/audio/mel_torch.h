@@ -14,7 +14,7 @@
 
 #include <torch/torch.h>
 
-#include "beatit/coreml.h"
+#include "beatit/config.h"
 
 namespace beatit {
 

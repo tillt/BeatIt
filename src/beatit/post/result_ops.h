@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include "beatit/coreml.h"
+#include "beatit/config.h"
 
 #include <cstddef>
 #include <vector>

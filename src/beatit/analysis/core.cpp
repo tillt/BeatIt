@@ -8,7 +8,7 @@
 
 #include "beatit/analysis.h"
 #include "beatit/analysis/torch_backend.h"
-#include "beatit/coreml.h"
+#include "beatit/config.h"
 #include "beatit/logging.hpp"
 #include "beatit/stream.h"
 

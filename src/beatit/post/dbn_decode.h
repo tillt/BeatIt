@@ -9,7 +9,7 @@
 #ifndef BEATIT_POST_DBN_DECODE_H
 #define BEATIT_POST_DBN_DECODE_H
 
-#include "beatit/coreml.h"
+#include "beatit/config.h"
 #include "beatit/dbn/beatit.h"
 #include "beatit/dbn/calmdad.h"
 

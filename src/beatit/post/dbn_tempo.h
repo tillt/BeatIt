@@ -9,7 +9,7 @@
 #ifndef BEATIT_INTERNAL_POSTPROCESS_DBN_TEMPO_DECISION_H
 #define BEATIT_INTERNAL_POSTPROCESS_DBN_TEMPO_DECISION_H
 
-#include "beatit/coreml.h"
+#include "beatit/config.h"
 #include "beatit/post/helpers.h"
 #include "beatit/dbn/calmdad.h"
 #include "../dbn/beatit.h"

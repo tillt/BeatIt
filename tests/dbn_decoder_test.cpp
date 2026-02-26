@@ -11,7 +11,7 @@
 #include <iostream>
 #include <vector>
 
-#include "beatit/coreml.h"
+#include "beatit/config.h"
 
 namespace {
 

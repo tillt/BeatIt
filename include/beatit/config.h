@@ -1,13 +1,13 @@
 //
-//  coreml.h
+//  config.h
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-01-17.
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#ifndef BEATIT_COREML_H
-#define BEATIT_COREML_H
+#ifndef BEATIT_CONFIG_H
+#define BEATIT_CONFIG_H
 
 #include "beatit/logging.hpp"
 
@@ -194,4 +194,4 @@ std::vector<float> compute_mel_features(const std::vector<float>& samples,
 
 } // namespace beatit
 
-#endif  // BEATIT_COREML_H
+#endif  // BEATIT_CONFIG_H

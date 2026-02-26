@@ -8,7 +8,7 @@
 
 #include "beatit/logging.hpp"
 
-#include "beatit/coreml.h"
+#include "beatit/config.h"
 
 namespace beatit {
 

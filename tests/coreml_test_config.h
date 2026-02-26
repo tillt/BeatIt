@@ -14,7 +14,7 @@
 #include <string>
 #include <vector>
 
-#include "beatit/coreml.h"
+#include "beatit/config.h"
 #include "beatit/coreml_preset.h"
 
 namespace beatit::tests {

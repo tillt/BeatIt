@@ -9,7 +9,7 @@
 #ifndef BEATIT_INTERNAL_POSTPROCESS_DBN_GRID_ANCHOR_H
 #define BEATIT_INTERNAL_POSTPROCESS_DBN_GRID_ANCHOR_H
 
-#include "beatit/coreml.h"
+#include "beatit/config.h"
 #include "../dbn/beatit.h"
 
 #include <cstddef>

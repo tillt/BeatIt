@@ -11,7 +11,7 @@
 #ifndef BEATIT_DBN_CALMDAD_H
 #define BEATIT_DBN_CALMDAD_H
 
-#include "beatit/coreml.h"
+#include "beatit/config.h"
 
 #include <cstddef>
 #include <limits>

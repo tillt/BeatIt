@@ -9,7 +9,7 @@
 #pragma once
 
 #include "beatit/analysis.h"
-#include "beatit/coreml.h"
+#include "beatit/config.h"
 
 #include <chrono>
 #include <cstddef>

@@ -266,7 +266,7 @@ endif()
 if(APPLE)
     set(BEATIT_PUBLIC_HEADERS
         "${CMAKE_CURRENT_SOURCE_DIR}/include/beatit/analysis.h"
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/beatit/coreml.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/beatit/config.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/beatit/coreml_preset.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/beatit/logging.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/beatit/refiner.h"

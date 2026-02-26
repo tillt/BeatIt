@@ -10,7 +10,7 @@
 #import <Foundation/Foundation.h>
 
 #include "beatit/analysis.h"
-#include "beatit/coreml.h"
+#include "beatit/config.h"
 #include "beatit/coreml_preset.h"
 #include "beatit/logging.hpp"
 #include "beatit/refiner.h"

@@ -11,7 +11,7 @@
 #import <CoreML/CoreML.h>
 #import <Foundation/Foundation.h>
 
-#include "beatit/coreml.h"
+#include "beatit/config.h"
 
 #include <cstddef>
 #include <vector>
