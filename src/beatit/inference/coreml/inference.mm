@@ -54,8 +54,6 @@ CoreMLResult analyze_with_coreml(const std::vector<float>& samples,
         return result;
     }
 
-    const bool should_profile =
-        config.profile && (config.fixed_frames == 0 || config.profile_per_window);
     const auto total_start = std::chrono::steady_clock::now();
 
     const auto mel_start = std::chrono::steady_clock::now();
@@ -114,15 +112,13 @@ CoreMLResult analyze_with_coreml(const std::vector<float>& samples,
     NSError* error = nil;
     NSString* model_path = detail::resolve_model_path(config);
     if (!model_path) {
-        if (config.verbose) {
-            BEATIT_LOG_WARN("CoreML model not found on disk or in bundle.");
-        }
+        BEATIT_LOG_ERROR("CoreML model not found on disk or in bundle.");
         return result;
     }
 
     NSURL* model_url = [NSURL fileURLWithPath:model_path];
     NSURL* compiled_url = detail::compile_model_if_needed(model_url, &error);
-    if (error && config.verbose) {
+    if (error) {
         BEATIT_LOG_WARN("CoreML compile error: " << error.localizedDescription.UTF8String);
     }
     if (compiled_url) {
@@ -148,8 +144,10 @@ CoreMLResult analyze_with_coreml(const std::vector<float>& samples,
 
     MLModel* model = detail::load_cached_model(model_url, model_config, &error);
     if (!model) {
-        if (config.verbose && error) {
-            BEATIT_LOG_WARN("CoreML load error: " << error.localizedDescription.UTF8String);
+        if (error) {
+            BEATIT_LOG_ERROR("CoreML load error: " << error.localizedDescription.UTF8String);
+        } else {
+            BEATIT_LOG_ERROR("CoreML load failed without NSError details.");
         }
         return result;
     }
@@ -181,9 +179,7 @@ CoreMLResult analyze_with_coreml(const std::vector<float>& samples,
                                                        window_frames,
                                                        config.mel_bins,
                                                        layout)) {
-                if (config.verbose) {
-                    BEATIT_LOG_DEBUG("CoreML input shape mismatch or allocation failure.");
-                }
+                BEATIT_LOG_DEBUG("CoreML input shape mismatch or allocation failure.");
                 return false;
             }
 
@@ -193,18 +189,22 @@ CoreMLResult analyze_with_coreml(const std::vector<float>& samples,
                 }
                                                               error:&error];
             if (!input) {
-                if (config.verbose && error) {
-                    BEATIT_LOG_WARN("CoreML input provider error: "
-                                    << error.localizedDescription.UTF8String);
+                if (error) {
+                    BEATIT_LOG_DEBUG("CoreML input provider error: "
+                                     << error.localizedDescription.UTF8String);
+                } else {
+                    BEATIT_LOG_DEBUG("CoreML input provider creation failed without NSError details.");
                 }
                 return false;
             }
 
             id<MLFeatureProvider> output = [model predictionFromFeatures:input error:&error];
             if (!output) {
-                if (config.verbose && error) {
-                    BEATIT_LOG_WARN("CoreML inference error: "
-                                    << error.localizedDescription.UTF8String);
+                if (error) {
+                    BEATIT_LOG_DEBUG("CoreML inference error: "
+                                     << error.localizedDescription.UTF8String);
+                } else {
+                    BEATIT_LOG_DEBUG("CoreML inference failed without NSError details.");
                 }
                 return false;
             }
@@ -214,7 +214,7 @@ CoreMLResult analyze_with_coreml(const std::vector<float>& samples,
             MLFeatureValue* downbeat_value =
                 [output featureValueForName:[NSString stringWithUTF8String:config.downbeat_output_name.c_str()]];
 
-            if (config.verbose && (!beat_value || !downbeat_value)) {
+            if (!beat_value || !downbeat_value) {
                 auto* outputs = model.modelDescription.outputDescriptionsByName;
                 std::ostringstream names;
                 bool first = true;
@@ -254,9 +254,7 @@ CoreMLResult analyze_with_coreml(const std::vector<float>& samples,
                 ? CoreMLConfig::InputLayout::ChannelsFramesMels
                 : CoreMLConfig::InputLayout::FramesByMels;
         if (fallback_layout != inferred_input_layout) {
-            if (config.verbose) {
-                BEATIT_LOG_DEBUG("CoreML retrying inference with alternate input layout.");
-            }
+            BEATIT_LOG_DEBUG("CoreML retrying inference with alternate input layout.");
             return try_layout(fallback_layout);
         }
         return false;
@@ -289,6 +287,7 @@ CoreMLResult analyze_with_coreml(const std::vector<float>& samples,
                                config.fixed_frames,
                                &beat_activation,
                                &downbeat_activation)) {
+                BEATIT_LOG_ERROR("CoreML inference failed while processing windowed activations.");
                 return result;
             }
             const auto infer_end = std::chrono::steady_clock::now();
@@ -324,6 +323,7 @@ CoreMLResult analyze_with_coreml(const std::vector<float>& samples,
                            used_frames,
                            &result.beat_activation,
                            &result.downbeat_activation)) {
+            BEATIT_LOG_ERROR("CoreML inference failed while processing full activations.");
             return result;
         }
         const auto infer_end = std::chrono::steady_clock::now();
@@ -342,7 +342,7 @@ CoreMLResult analyze_with_coreml(const std::vector<float>& samples,
                                             result.beat_activation.size());
     const auto post_end = std::chrono::steady_clock::now();
 
-    if (should_profile) {
+    if (config.profile) {
         const auto total_end = std::chrono::steady_clock::now();
         const double resample_ms =
             std::chrono::duration<double, std::milli>(resample_end - resample_start).count();

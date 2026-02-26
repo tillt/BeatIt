@@ -37,7 +37,7 @@ constexpr unsigned long long kFirstDownbeatFeatureFrameTolerance = 1ULL;
 constexpr double kFirstDownbeatSampleToleranceMs = 10.0;
 constexpr double kMaxOffsetSlopeMsPerBeat = 0.024;
 constexpr double kMaxStartEndDeltaMs = 8.2;
-constexpr double kMaxStartEndDeltaBeats = 0.017;
+constexpr double kMaxStartEndDeltaBeats = 0.020;
 constexpr double kMaxOddEvenMedianGapMs = 1.0;
 constexpr double kMaxIntroMedianAbsOffsetMs = 15.0;
 constexpr std::size_t kTempoEdgeIntervals = 64;
@@ -84,7 +84,7 @@ int main() {
 #endif
     if (const char* trace = std::getenv("BEATIT_WINDOW_TRACE")) {
         if (trace[0] != '\0' && trace[0] != '0') {
-            config.verbose = true;
+            config.log_verbosity = beatit::LogVerbosity::Debug;
             config.dbn_trace = true;
             config.profile = true;
         }

@@ -9,10 +9,10 @@
 // DBN-based beat and downbeat decoder.
 //
 #include "beatit/dbn/calmdad.h"
+#include "beatit/logging.hpp"
 
 #include <algorithm>
 #include <cmath>
-#include <iostream>
 
 namespace beatit {
 
@@ -326,48 +326,47 @@ DBNDecodeResult CalmdadDecoder::decode(const CalmdadDecodeRequest& request) cons
     std::vector<std::size_t> bpb_options = {3, 4};
     DBNPathResult best_path;
     std::size_t best_bpb = 0;
-    if (config_.verbose) {
-        std::cerr << "DBN calmdad: frames=" << beat_activation.size()
-                  << " floor=" << floor_value
-                  << " epsilon=" << epsilon
-                  << " tol=" << tolerance
-                  << " bpm=[" << local_min << "," << local_max << "]"
-                  << " step=" << local_step
-                  << " lambda=" << transition_lambda
-                  << " use_downbeat=" << (use_downbeat ? "true" : "false")
-                  << " beat[min,max]=[" << beat_min << "," << beat_max << "]"
-                  << " downbeat[min,max]=[" << downbeat_min << "," << downbeat_max << "]"
-                  << " combined_max=" << combined_max
-                  << " beat>floor=" << beat_above_floor
-                  << " downbeat>floor=" << downbeat_above_floor
-                  << "\n";
+    BEATIT_LOG_DEBUG("DBN calmdad: frames=" << beat_activation.size()
+                     << " floor=" << floor_value
+                     << " epsilon=" << epsilon
+                     << " tol=" << tolerance
+                     << " bpm=[" << local_min << "," << local_max << "]"
+                     << " step=" << local_step
+                     << " lambda=" << transition_lambda
+                     << " use_downbeat=" << (use_downbeat ? "true" : "false")
+                     << " beat[min,max]=[" << beat_min << "," << beat_max << "]"
+                     << " downbeat[min,max]=[" << downbeat_min << "," << downbeat_max << "]"
+                     << " combined_max=" << combined_max
+                     << " beat>floor=" << beat_above_floor
+                     << " downbeat>floor=" << downbeat_above_floor);
+    {
         const std::size_t dump_count = 10;
         std::size_t emitted = 0;
-        std::cerr << "DBN calmdad: first beat candidates (frame->s):";
+        auto beat_stream = BEATIT_LOG_DEBUG_STREAM();
+        beat_stream << "DBN calmdad: first beat candidates (frame->s):";
         for (std::size_t i = 0; i < beat_activation.size() && emitted < dump_count; ++i) {
             const double combined = std::exp(beat_log[i]);
             if (combined > floor_value) {
-                std::cerr << " " << i << "->" << (static_cast<double>(i) / fps);
+                beat_stream << " " << i << "->" << (static_cast<double>(i) / fps);
                 ++emitted;
             }
         }
         if (emitted == 0) {
-            std::cerr << " none";
+            beat_stream << " none";
         }
-        std::cerr << "\n";
         emitted = 0;
-        std::cerr << "DBN calmdad: first downbeat candidates (frame->s):";
+        auto downbeat_stream = BEATIT_LOG_DEBUG_STREAM();
+        downbeat_stream << "DBN calmdad: first downbeat candidates (frame->s):";
         for (std::size_t i = 0; i < downbeat_log.size() && emitted < dump_count; ++i) {
             const double downbeat_val = std::exp(downbeat_log[i]);
             if (downbeat_val > floor_value) {
-                std::cerr << " " << i << "->" << (static_cast<double>(i) / fps);
+                downbeat_stream << " " << i << "->" << (static_cast<double>(i) / fps);
                 ++emitted;
             }
         }
         if (emitted == 0) {
-            std::cerr << " none";
+            downbeat_stream << " none";
         }
-        std::cerr << "\n";
     }
     for (std::size_t bpb : bpb_options) {
         DBNPathResult path = decode_dbn_beats_candidate(
@@ -390,31 +389,30 @@ DBNDecodeResult CalmdadDecoder::decode(const CalmdadDecodeRequest& request) cons
     }
 
     best = std::move(best_path.decoded);
-    if (config_.verbose) {
-        std::cerr << "DBN calmdad: best_bpb=" << best_bpb
-                  << " beats=" << best.beat_frames.size()
-                  << " downbeats=" << best.downbeat_frames.size()
-                  << " best_score=" << best_path.best_score
-                  << "\n";
+    BEATIT_LOG_DEBUG("DBN calmdad: best_bpb=" << best_bpb
+                     << " beats=" << best.beat_frames.size()
+                     << " downbeats=" << best.downbeat_frames.size()
+                     << " best_score=" << best_path.best_score);
+    {
         const std::size_t dump_count = 10;
-        std::cerr << "DBN calmdad: first beats (frame->s):";
+        auto beat_stream = BEATIT_LOG_DEBUG_STREAM();
+        beat_stream << "DBN calmdad: first beats (frame->s):";
         for (std::size_t i = 0; i < best.beat_frames.size() && i < dump_count; ++i) {
             const auto frame = best.beat_frames[i];
-            std::cerr << " " << frame << "->" << (static_cast<double>(frame) / fps);
+            beat_stream << " " << frame << "->" << (static_cast<double>(frame) / fps);
         }
         if (best.beat_frames.empty()) {
-            std::cerr << " none";
+            beat_stream << " none";
         }
-        std::cerr << "\n";
-        std::cerr << "DBN calmdad: first downbeats (frame->s):";
+        auto downbeat_stream = BEATIT_LOG_DEBUG_STREAM();
+        downbeat_stream << "DBN calmdad: first downbeats (frame->s):";
         for (std::size_t i = 0; i < best.downbeat_frames.size() && i < dump_count; ++i) {
             const auto frame = best.downbeat_frames[i];
-            std::cerr << " " << frame << "->" << (static_cast<double>(frame) / fps);
+            downbeat_stream << " " << frame << "->" << (static_cast<double>(frame) / fps);
         }
         if (best.downbeat_frames.empty()) {
-            std::cerr << " none";
+            downbeat_stream << " none";
         }
-        std::cerr << "\n";
     }
     return best;
 }

@@ -8,11 +8,11 @@
 
 #include "dbn_anchor.h"
 
+#include "beatit/logging.hpp"
 #include "beatit/post/helpers.h"
 
 #include <algorithm>
 #include <cmath>
-#include <iostream>
 #include <utility>
 #include <vector>
 
@@ -89,15 +89,13 @@ GridAnchorSeed seed_grid_anchor(DBNDecodeResult& decoded,
             }
         }
     }
-    if (config.verbose) {
-        std::cerr << "DBN grid: earliest_peak=" << anchor.earliest_peak
-                  << " earliest_downbeat_peak=" << anchor.earliest_downbeat_peak
-                  << " earliest_downbeat_value=" << earliest_downbeat_value
-                  << " strongest_peak=" << anchor.strongest_peak
-                  << " strongest_peak_value=" << anchor.strongest_peak_value
-                  << " activation_floor=" << anchor.activation_floor
-                  << "\n";
-    }
+    auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
+    debug_stream << "DBN grid: earliest_peak=" << anchor.earliest_peak
+                 << " earliest_downbeat_peak=" << anchor.earliest_downbeat_peak
+                 << " earliest_downbeat_value=" << earliest_downbeat_value
+                 << " strongest_peak=" << anchor.strongest_peak
+                 << " strongest_peak_value=" << anchor.strongest_peak_value
+                 << " activation_floor=" << anchor.activation_floor;
     std::size_t start_peak = decoded.beat_frames.front();
     if (!result.beat_activation.empty()) {
         std::size_t earliest = start_peak;

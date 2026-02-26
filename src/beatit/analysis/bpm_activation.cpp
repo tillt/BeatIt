@@ -7,11 +7,10 @@
 //
 
 #include "beatit/analysis.h"
+#include "beatit/logging.hpp"
 
 #include <algorithm>
 #include <cmath>
-#include <cstdlib>
-#include <iostream>
 #include <numeric>
 #include <sstream>
 #include <vector>
@@ -25,7 +24,6 @@ float estimate_bpm_from_activation(const std::vector<float>& activation,
         return 0.0f;
     }
 
-    const bool debug_bpm = std::getenv("BEATIT_DEBUG_BPM") != nullptr;
     const double fps =
         static_cast<double>(config.sample_rate) / static_cast<double>(config.hop_size);
     if (fps <= 0.0) {
@@ -108,44 +106,44 @@ float estimate_bpm_from_activation(const std::vector<float>& activation,
         }
     }
 
-    if (debug_bpm) {
-        std::vector<double> intervals;
-        intervals.reserve(peaks.size() > 1 ? (peaks.size() - 1) : 0);
-        for (std::size_t i = 1; i < peaks.size(); ++i) {
-            intervals.push_back(static_cast<double>(peaks[i] - peaks[i - 1]));
-        }
-        double mean = 0.0;
-        double stddev = 0.0;
-        double median = 0.0;
-        if (!intervals.empty()) {
-            double sum = 0.0;
-            for (double v : intervals) {
-                sum += v;
-            }
-            mean = sum / static_cast<double>(intervals.size());
-            double var = 0.0;
-            for (double v : intervals) {
-                const double d = v - mean;
-                var += d * d;
-            }
-            stddev = std::sqrt(var / static_cast<double>(intervals.size()));
-            std::vector<double> tmp = intervals;
-            std::nth_element(tmp.begin(), tmp.begin() + tmp.size() / 2, tmp.end());
-            median = tmp[tmp.size() / 2];
-        }
-        const double bpm_mean = (mean > 0.0) ? (60.0 * fps / mean) : 0.0;
-        const double bpm_median = (median > 0.0) ? (60.0 * fps / median) : 0.0;
-        std::cerr << "BPM debug: activation peaks=" << peaks.size()
-                  << " threshold=" << threshold
-                  << " bins=" << bins
-                  << " interval_mean=" << mean
-                  << " interval_median=" << median
-                  << " interval_std=" << stddev
-                  << " bpm_mean=" << bpm_mean
-                  << " bpm_median=" << bpm_median
-                  << "\n";
-        std::cerr << "BPM debug: peak_median_bpm=" << bpm_median << "\n";
+    std::vector<double> intervals;
+    intervals.reserve(peaks.size() > 1 ? (peaks.size() - 1) : 0);
+    for (std::size_t i = 1; i < peaks.size(); ++i) {
+        intervals.push_back(static_cast<double>(peaks[i] - peaks[i - 1]));
     }
+    double mean = 0.0;
+    double stddev = 0.0;
+    double median = 0.0;
+    if (!intervals.empty()) {
+        double sum = 0.0;
+        for (double v : intervals) {
+            sum += v;
+        }
+        mean = sum / static_cast<double>(intervals.size());
+        double var = 0.0;
+        for (double v : intervals) {
+            const double d = v - mean;
+            var += d * d;
+        }
+        stddev = std::sqrt(var / static_cast<double>(intervals.size()));
+        std::vector<double> tmp = intervals;
+        std::nth_element(tmp.begin(), tmp.begin() + tmp.size() / 2, tmp.end());
+        median = tmp[tmp.size() / 2];
+    }
+    const double bpm_mean = (mean > 0.0) ? (60.0 * fps / mean) : 0.0;
+    const double bpm_median = (median > 0.0) ? (60.0 * fps / median) : 0.0;
+    {
+        auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
+        debug_stream << "BPM debug: activation peaks=" << peaks.size()
+                     << " threshold=" << threshold
+                     << " bins=" << bins
+                     << " interval_mean=" << mean
+                     << " interval_median=" << median
+                     << " interval_std=" << stddev
+                     << " bpm_mean=" << bpm_mean
+                     << " bpm_median=" << bpm_median;
+    }
+    BEATIT_LOG_DEBUG("BPM debug: peak_median_bpm=" << bpm_median);
 
     double best_score = 0.0;
     std::size_t best_idx = 0;
@@ -192,59 +190,62 @@ float estimate_bpm_from_activation(const std::vector<float>& activation,
         ? (weighted_sum / weight_total)
         : (min_bpm + static_cast<double>(best_idx) * kBpmBin);
 
-    if (debug_bpm) {
-        std::vector<std::size_t> top_idx(hist.size());
-        for (std::size_t i = 0; i < top_idx.size(); ++i) {
-            top_idx[i] = i;
+    std::vector<std::size_t> top_idx(hist.size());
+    for (std::size_t i = 0; i < top_idx.size(); ++i) {
+        top_idx[i] = i;
+    }
+    const std::size_t top_count = std::min<std::size_t>(5, top_idx.size());
+    std::partial_sort(
+        top_idx.begin(),
+        top_idx.begin() + top_count,
+        top_idx.end(),
+        [&](std::size_t a, std::size_t b) { return hist[a] > hist[b]; }
+    );
+    std::ostringstream oss;
+    double top_sum = 0.0;
+    double top1_weight = 0.0;
+    double top2_weight = 0.0;
+    double top1_bpm = 0.0;
+    double top2_bpm = 0.0;
+    double top_range = 0.0;
+    for (std::size_t i = 0; i < top_count; ++i) {
+        const std::size_t idx = top_idx[i];
+        const double bin_bpm = min_bpm + static_cast<double>(idx) * kBpmBin;
+        if (i != 0) {
+            oss << " ";
         }
-        const std::size_t top_count = std::min<std::size_t>(5, top_idx.size());
-        std::partial_sort(
-            top_idx.begin(),
-            top_idx.begin() + top_count,
-            top_idx.end(),
-            [&](std::size_t a, std::size_t b) { return hist[a] > hist[b]; }
-        );
-        std::ostringstream oss;
-        double top_sum = 0.0;
-        double top1_weight = 0.0;
-        double top2_weight = 0.0;
-        double top1_bpm = 0.0;
-        double top2_bpm = 0.0;
-        double top_range = 0.0;
-        for (std::size_t i = 0; i < top_count; ++i) {
-            const std::size_t idx = top_idx[i];
-            const double bin_bpm = min_bpm + static_cast<double>(idx) * kBpmBin;
-            if (i != 0) {
-                oss << " ";
-            }
-            oss << bin_bpm << "(" << hist[idx] << ")";
-            top_sum += hist[idx];
-            if (i == 0) {
-                top1_weight = hist[idx];
-                top1_bpm = bin_bpm;
-            } else if (i == 1) {
-                top2_weight = hist[idx];
-                top2_bpm = bin_bpm;
-            }
-            if (i == top_count - 1) {
-                top_range = std::abs(bin_bpm - top1_bpm);
-            }
+        oss << bin_bpm << "(" << hist[idx] << ")";
+        top_sum += hist[idx];
+        if (i == 0) {
+            top1_weight = hist[idx];
+            top1_bpm = bin_bpm;
+        } else if (i == 1) {
+            top2_weight = hist[idx];
+            top2_bpm = bin_bpm;
         }
-        std::cerr << "BPM debug: peak_hist_top=" << oss.str() << "\n";
-        const double top_ratio = (top_sum > 0.0) ? (top1_weight / top_sum) : 0.0;
-        const double top_gap = top1_weight - top2_weight;
-        std::cerr << "BPM debug: peak_hist_dom "
-                  << "top1_bpm=" << top1_bpm
-                  << " top1_w=" << top1_weight
-                  << " top2_bpm=" << top2_bpm
-                  << " top2_w=" << top2_weight
-                  << " top1_ratio=" << top_ratio
-                  << " top_gap=" << top_gap
-                  << " top_range_bpm=" << top_range
-                  << "\n";
-        std::cerr << "BPM debug: activation_bpm=" << refined
-                  << " best_idx=" << best_idx
-                  << " score=" << best_score << "\n";
+        if (i == top_count - 1) {
+            top_range = std::abs(bin_bpm - top1_bpm);
+        }
+    }
+    BEATIT_LOG_DEBUG("BPM debug: peak_hist_top=" << oss.str());
+    const double top_ratio = (top_sum > 0.0) ? (top1_weight / top_sum) : 0.0;
+    const double top_gap = top1_weight - top2_weight;
+    {
+        auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
+        debug_stream << "BPM debug: peak_hist_dom "
+                     << "top1_bpm=" << top1_bpm
+                     << " top1_w=" << top1_weight
+                     << " top2_bpm=" << top2_bpm
+                     << " top2_w=" << top2_weight
+                     << " top1_ratio=" << top_ratio
+                     << " top_gap=" << top_gap
+                     << " top_range_bpm=" << top_range;
+    }
+    {
+        auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
+        debug_stream << "BPM debug: activation_bpm=" << refined
+                     << " best_idx=" << best_idx
+                     << " score=" << best_score;
     }
 
     return static_cast<float>(refined);
@@ -257,7 +258,6 @@ float estimate_bpm_from_activation_autocorr(const std::vector<float>& activation
         return 0.0f;
     }
 
-    const bool debug_bpm = std::getenv("BEATIT_DEBUG_BPM") != nullptr;
     const double fps =
         static_cast<double>(config.sample_rate) / static_cast<double>(config.hop_size);
     if (fps <= 0.0) {
@@ -340,14 +340,12 @@ float estimate_bpm_from_activation_autocorr(const std::vector<float>& activation
     }
 
     const double bpm = (60.0 * fps_decim) / refined_lag;
-    if (debug_bpm) {
-        std::cerr << "BPM debug: autocorr frames=" << series.size()
-                  << " stride=" << stride
-                  << " lag=" << refined_lag
-                  << " bpm=" << bpm
-                  << " score=" << best_score
-                  << "\n";
-    }
+    auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
+    debug_stream << "BPM debug: autocorr frames=" << series.size()
+                 << " stride=" << stride
+                 << " lag=" << refined_lag
+                 << " bpm=" << bpm
+                 << " score=" << best_score;
     return static_cast<float>(bpm);
 }
 
@@ -358,7 +356,6 @@ float estimate_bpm_from_activation_comb(const std::vector<float>& activation,
         return 0.0f;
     }
 
-    const bool debug_bpm = std::getenv("BEATIT_DEBUG_BPM") != nullptr;
     const double fps =
         static_cast<double>(config.sample_rate) / static_cast<double>(config.hop_size);
     if (fps <= 0.0) {
@@ -419,53 +416,55 @@ float estimate_bpm_from_activation_comb(const std::vector<float>& activation,
     }
 
     const double bpm = (60.0 * fps) / static_cast<double>(best_lag);
-    if (debug_bpm) {
-        std::vector<std::size_t> top_idx;
-        top_idx.reserve(max_lag - min_lag + 1);
-        for (std::size_t lag = min_lag; lag <= max_lag; ++lag) {
-            top_idx.push_back(lag);
+    std::vector<std::size_t> top_idx;
+    top_idx.reserve(max_lag - min_lag + 1);
+    for (std::size_t lag = min_lag; lag <= max_lag; ++lag) {
+        top_idx.push_back(lag);
+    }
+    const std::size_t top_count = std::min<std::size_t>(3, top_idx.size());
+    std::partial_sort(
+        top_idx.begin(),
+        top_idx.begin() + top_count,
+        top_idx.end(),
+        [&](std::size_t a, std::size_t b) { return comb_scores[a] > comb_scores[b]; }
+    );
+    const std::size_t top1 = top_idx[0];
+    const std::size_t top2 = (top_count > 1) ? top_idx[1] : top1;
+    const double top1_bpm = (60.0 * fps) / static_cast<double>(top1);
+    const double top2_bpm = (60.0 * fps) / static_cast<double>(top2);
+    const double top1_score = comb_scores[top1];
+    const double top2_score = comb_scores[top2];
+    double top_sum = 0.0;
+    for (std::size_t i = 0; i < top_count; ++i) {
+        top_sum += comb_scores[top_idx[i]];
+    }
+    const double top_ratio = (top_sum > 0.0) ? (top1_score / top_sum) : 0.0;
+    const double top_gap = top1_score - top2_score;
+    std::ostringstream oss;
+    for (std::size_t i = 0; i < top_count; ++i) {
+        const std::size_t lag = top_idx[i];
+        const double bin_bpm = (60.0 * fps) / static_cast<double>(lag);
+        if (i != 0) {
+            oss << " ";
         }
-        const std::size_t top_count = std::min<std::size_t>(3, top_idx.size());
-        std::partial_sort(
-            top_idx.begin(),
-            top_idx.begin() + top_count,
-            top_idx.end(),
-            [&](std::size_t a, std::size_t b) { return comb_scores[a] > comb_scores[b]; }
-        );
-        const std::size_t top1 = top_idx[0];
-        const std::size_t top2 = (top_count > 1) ? top_idx[1] : top1;
-        const double top1_bpm = (60.0 * fps) / static_cast<double>(top1);
-        const double top2_bpm = (60.0 * fps) / static_cast<double>(top2);
-        const double top1_score = comb_scores[top1];
-        const double top2_score = comb_scores[top2];
-        double top_sum = 0.0;
-        for (std::size_t i = 0; i < top_count; ++i) {
-            top_sum += comb_scores[top_idx[i]];
-        }
-        const double top_ratio = (top_sum > 0.0) ? (top1_score / top_sum) : 0.0;
-        const double top_gap = top1_score - top2_score;
-        std::ostringstream oss;
-        for (std::size_t i = 0; i < top_count; ++i) {
-            const std::size_t lag = top_idx[i];
-            const double bin_bpm = (60.0 * fps) / static_cast<double>(lag);
-            if (i != 0) {
-                oss << " ";
-            }
-            oss << bin_bpm << "(" << comb_scores[lag] << ")";
-        }
-        std::cerr << "BPM debug: comb_bpm=" << bpm
-                  << " comb_lag=" << best_lag
-                  << " comb_score=" << best_score
-                  << "\n";
-        std::cerr << "BPM debug: comb_top=" << oss.str() << "\n";
-        std::cerr << "BPM debug: comb_dom "
-                  << "top1_bpm=" << top1_bpm
-                  << " top1_w=" << top1_score
-                  << " top2_bpm=" << top2_bpm
-                  << " top2_w=" << top2_score
-                  << " top1_ratio=" << top_ratio
-                  << " top_gap=" << top_gap
-                  << "\n";
+        oss << bin_bpm << "(" << comb_scores[lag] << ")";
+    }
+    {
+        auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
+        debug_stream << "BPM debug: comb_bpm=" << bpm
+                     << " comb_lag=" << best_lag
+                     << " comb_score=" << best_score;
+    }
+    BEATIT_LOG_DEBUG("BPM debug: comb_top=" << oss.str());
+    {
+        auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
+        debug_stream << "BPM debug: comb_dom "
+                     << "top1_bpm=" << top1_bpm
+                     << " top1_w=" << top1_score
+                     << " top2_bpm=" << top2_bpm
+                     << " top2_w=" << top2_score
+                     << " top1_ratio=" << top_ratio
+                     << " top_gap=" << top_gap;
     }
 
     return static_cast<float>(bpm);

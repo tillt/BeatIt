@@ -9,6 +9,8 @@
 #ifndef BEATIT_COREML_H
 #define BEATIT_COREML_H
 
+#include "beatit/logging.hpp"
+
 #include <cstddef>
 #include <string>
 #include <vector>
@@ -126,7 +128,7 @@ struct CoreMLConfig {
     double debug_activations_start_s = -1.0;
     double debug_activations_end_s = -1.0;
     std::size_t debug_activations_max = 0;
-    bool verbose = false;
+    LogVerbosity log_verbosity = LogVerbosity::Warn;
     bool profile = false;
     bool profile_per_window = false;
     std::string beatthis_python = "python3";

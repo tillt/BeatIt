@@ -193,7 +193,7 @@ int main() {
         config.backend = beatit::CoreMLConfig::Backend::Torch;
         config.torch_model_path = (device == "mps") ? mps_model_path : cpu_model_path;
         config.torch_device = device;
-        config.verbose = true;
+        config.log_verbosity = beatit::LogVerbosity::Debug;
         config.profile = true;
         config.use_dbn = true;
         config.dbn_use_downbeat = true;

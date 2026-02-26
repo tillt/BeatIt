@@ -48,24 +48,24 @@ Model selection:
 ./build/beatit --input training/manucho.wav
 
 # BeatTrack CoreML
-./build/beatit --input training/manucho.wav --ml-beattrack
+./build/beatit --input training/manucho.wav --beattrack
 
 # BeatThis Torch
-./build/beatit --input training/manucho.wav --ml-backend torch --torch-model models/beatthis.pt
+./build/beatit --input training/manucho.wav --backend torch --torch-model models/beatthis.pt
 ```
 
 Important options:
 
 - `-i, --input <path>`
-- `--ml-backend <coreml|torch|beatthis>`
+- `--backend <coreml|torch|beatthis>`
   `beatthis` means the external Python BeatThis runner (`training/beatthis_infer.py` + checkpoint), not the in-process CoreML/Torch backends.
-- `--ml-preset <beattrack|beatthis>`
+- `--preset <beattrack|beatthis>`
 - `--model <path>`
-- `--ml-min-bpm <bpm>` / `--ml-max-bpm <bpm>` (validated in `[70,180]`)
-- `--ml-dbn` / `--ml-no-dbn`
-- `--ml-cpu-only`
-- `--ml-verbose`
-- `--ml-info`
+- `--min-bpm <bpm>` / `--max-bpm <bpm>` (validated in `[70,180]`)
+- `--dbn` / `--no-dbn`
+- `--cpu-only`
+- `--log-level <error|warn|info|debug>`
+- `--model-info`
 
 Use `./build/beatit --help` for the authoritative option list.
 

@@ -11,13 +11,13 @@
 #include "beatit/post/helpers.h"
 #include "beatit/post/result_ops.h"
 #include "beatit/post/window.h"
+#include "beatit/logging.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <iostream>
 #include <limits>
 #include <vector>
 
@@ -121,21 +121,22 @@ void select_downbeat_phase(GridProjectionState& state,
             const std::size_t limit =
                 phase_window_end > phase_window_start ? (phase_window_end - phase_window_start) : 0;
             const std::size_t beat_preview = std::min<std::size_t>(12, result.beat_activation.size());
-            std::cerr << "DBN: beat head:";
+            auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
+            debug_stream << "DBN: beat head:";
             for (std::size_t i = 0; i < beat_preview; ++i) {
-                std::cerr << " " << i << "->" << result.beat_activation[i];
+                debug_stream << " " << i << "->" << result.beat_activation[i];
             }
-            std::cerr << "\n";
+            debug_stream << "\n";
             const std::size_t preview = std::min<std::size_t>(12, result.downbeat_activation.size());
-            std::cerr << "DBN: downbeat head:";
+            debug_stream << "DBN: downbeat head:";
             for (std::size_t i = 0; i < preview; ++i) {
-                std::cerr << " " << i << "->" << result.downbeat_activation[i];
+                debug_stream << " " << i << "->" << result.downbeat_activation[i];
             }
-            std::cerr << "\n";
-            std::cerr << "DBN: downbeat max=" << state.max_downbeat
-                      << " beat max=" << max_beat
-                      << " activation_floor=" << state.activation_floor
-                      << "\n";
+            debug_stream << "\n";
+            debug_stream << "DBN: downbeat max=" << state.max_downbeat
+                         << " beat max=" << max_beat
+                         << " activation_floor=" << state.activation_floor
+                         << "\n";
             struct Peak {
                 float value;
                 std::size_t frame;
@@ -157,13 +158,13 @@ void select_downbeat_phase(GridProjectionState& state,
             std::sort(peaks.begin(),
                       peaks.end(),
                       [](const Peak& a, const Peak& b) { return a.value > b.value; });
-            std::cerr << "DBN: downbeat peaks (phase window "
-                      << phase_window_start << "-" << phase_window_end << "):";
+            debug_stream << "DBN: downbeat peaks (phase window "
+                         << phase_window_start << "-" << phase_window_end << "):";
             const std::size_t top = std::min<std::size_t>(5, peaks.size());
             for (std::size_t i = 0; i < top; ++i) {
-                std::cerr << " " << peaks[i].frame << "->" << peaks[i].value;
+                debug_stream << " " << peaks[i].frame << "->" << peaks[i].value;
             }
-            std::cerr << "\n";
+            debug_stream << "\n";
             std::vector<Peak> global_peaks;
             const std::size_t global_end =
                 result.downbeat_activation.empty() ? 0 : used_frames > 1 ? used_frames - 1 : 0;
@@ -178,18 +179,18 @@ void select_downbeat_phase(GridProjectionState& state,
             std::sort(global_peaks.begin(),
                       global_peaks.end(),
                       [](const Peak& a, const Peak& b) { return a.value > b.value; });
-            std::cerr << "DBN: downbeat peaks (global top):";
+            debug_stream << "DBN: downbeat peaks (global top):";
             const std::size_t global_top = std::min<std::size_t>(6, global_peaks.size());
             for (std::size_t i = 0; i < global_top; ++i) {
                 const std::size_t frame = global_peaks[i].frame;
                 const double time_s = fps > 0.0 ? static_cast<double>(frame) / fps : 0.0;
-                std::cerr << " " << frame << "(" << time_s << "s)"
-                          << "->" << global_peaks[i].value;
+                debug_stream << " " << frame << "(" << time_s << "s)"
+                             << "->" << global_peaks[i].value;
             }
-            std::cerr << "\n";
-            std::cerr << "DBN: phase peaks for selection (beat-only, strict): "
-                      << (has_phase_peaks ? "picked" : "none")
-                      << " (limit=" << limit << ")\n";
+            debug_stream << "\n";
+            debug_stream << "DBN: phase peaks for selection (beat-only, strict): "
+                         << (has_phase_peaks ? "picked" : "none")
+                         << " (limit=" << limit << ")\n";
         }
     }
     const float downbeat_threshold =
@@ -366,14 +367,11 @@ void select_downbeat_phase(GridProjectionState& state,
             phase_debug.push_back(entry);
         }
     }
-    if (config.verbose) {
-        std::cerr << "DBN: phase_window_frames=" << phase_window_frames
-                  << " max_downbeat=" << state.max_downbeat
-                  << " threshold=" << downbeat_threshold
-                  << " best_phase=" << state.best_phase
-                  << " best_score=" << state.best_score
-                  << "\n";
-    }
+    BEATIT_LOG_DEBUG("DBN: phase_window_frames=" << phase_window_frames
+                     << " max_downbeat=" << state.max_downbeat
+                     << " threshold=" << downbeat_threshold
+                     << " best_phase=" << state.best_phase
+                     << " best_score=" << state.best_score);
     if (config.dbn_trace && !phase_debug.empty()) {
         std::vector<PhaseDebug> sorted = phase_debug;
         std::sort(sorted.begin(),
@@ -381,56 +379,58 @@ void select_downbeat_phase(GridProjectionState& state,
                   [](const PhaseDebug& a, const PhaseDebug& b) { return a.score > b.score; });
         const PhaseDebug& top = sorted.front();
         const PhaseDebug* runner = (sorted.size() > 1) ? &sorted[1] : nullptr;
-        std::cerr << "DBN: phase winner="
-                  << top.phase
-                  << " score=" << top.score
-                  << " first=" << top.first_frame
-                  << " hits=" << top.hits
-                  << " mean=" << top.mean
-                  << " penalty=" << top.delay_penalty
-                  << " src=" << top.source;
+        auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
+        debug_stream << "DBN: phase winner="
+                     << top.phase
+                     << " score=" << top.score
+                     << " first=" << top.first_frame
+                     << " hits=" << top.hits
+                     << " mean=" << top.mean
+                     << " penalty=" << top.delay_penalty
+                     << " src=" << top.source;
         if (runner) {
-            std::cerr << " runner=" << runner->phase
-                      << " score=" << runner->score
-                      << " first=" << runner->first_frame
-                      << " hits=" << runner->hits
-                      << " mean=" << runner->mean
-                      << " penalty=" << runner->delay_penalty
-                      << " src=" << runner->source;
+            debug_stream << " runner=" << runner->phase
+                         << " score=" << runner->score
+                         << " first=" << runner->first_frame
+                         << " hits=" << runner->hits
+                         << " mean=" << runner->mean
+                         << " penalty=" << runner->delay_penalty
+                         << " src=" << runner->source;
         }
-        std::cerr << "\n";
-        std::cerr << "DBN: phase candidates:";
+        debug_stream << "\n";
+        debug_stream << "DBN: phase candidates:";
         for (const auto& entry : phase_debug) {
-            std::cerr << " p" << entry.phase
-                      << " score=" << entry.score
-                      << " first=" << entry.first_frame
-                      << " hits=" << entry.hits
-                      << " mean=" << entry.mean
-                      << " penalty=" << entry.delay_penalty
-                      << " src=" << entry.source;
+            debug_stream << " p" << entry.phase
+                         << " score=" << entry.score
+                         << " first=" << entry.first_frame
+                         << " hits=" << entry.hits
+                         << " mean=" << entry.mean
+                         << " penalty=" << entry.delay_penalty
+                         << " src=" << entry.source;
         }
-        std::cerr << "\n";
+        debug_stream << "\n";
     }
     decoded.downbeat_frames =
         project_downbeats_from_beats(decoded.beat_frames, state.bpb, state.best_phase);
     if (config.dbn_trace) {
         const std::size_t preview = std::min<std::size_t>(6, decoded.downbeat_frames.size());
-        std::cerr << "DBN: downbeat frames head:";
+        auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
+        debug_stream << "DBN: downbeat frames head:";
         for (std::size_t i = 0; i < preview; ++i) {
             const std::size_t frame = decoded.downbeat_frames[i];
             const double time_s = fps > 0.0 ? static_cast<double>(frame) / fps : 0.0;
-            std::cerr << " " << frame << "(" << time_s << "s)";
+            debug_stream << " " << frame << "(" << time_s << "s)";
         }
-        std::cerr << "\n";
+        debug_stream << "\n";
         if (!decoded.downbeat_frames.empty()) {
             const std::size_t first_frame = decoded.downbeat_frames.front();
             const double first_time = fps > 0.0 ? static_cast<double>(first_frame) / fps : 0.0;
-            std::cerr << "DBN: downbeat selection start="
-                      << first_frame << " (" << first_time << "s)"
-                      << " bpb=" << state.bpb
-                      << " phase=" << state.best_phase
-                      << " score=" << state.best_score
-                      << "\n";
+            debug_stream << "DBN: downbeat selection start="
+                         << first_frame << " (" << first_time << "s)"
+                         << " bpb=" << state.bpb
+                         << " phase=" << state.best_phase
+                         << " score=" << state.best_score
+                         << "\n";
         }
     }
 }
@@ -463,12 +463,9 @@ void synthesize_uniform_grid(GridProjectionState& state,
         if (std::abs(den) > 1e-9) {
             const double fit_step = (n * sxy - sx * sy) / den;
             if (fit_step > 1.0) {
-                if (config.verbose) {
-                    std::cerr << "DBN grid fit: step_frames(raw)=" << state.step_frames
-                              << " step_frames(fit)=" << fit_step
-                              << " beats=" << decoded.beat_frames.size()
-                              << "\n";
-                }
+                BEATIT_LOG_DEBUG("DBN grid fit: step_frames(raw)=" << state.step_frames
+                                 << " step_frames(fit)=" << fit_step
+                                 << " beats=" << decoded.beat_frames.size());
                 state.step_frames = fit_step;
             }
         }
@@ -544,12 +541,9 @@ void synthesize_uniform_grid(GridProjectionState& state,
         const double alt_score = phase_score(alt_start);
         if (alt_score > base_score) {
             grid_start = alt_start;
-            if (config.verbose) {
-                std::cerr << "DBN grid: half-step phase shift selected"
-                          << " base_score=" << base_score
-                          << " alt_score=" << alt_score
-                          << "\n";
-            }
+            BEATIT_LOG_DEBUG("DBN grid: half-step phase shift selected"
+                             << " base_score=" << base_score
+                             << " alt_score=" << alt_score);
         }
     }
     if (grid_start < 0.0) {
@@ -643,18 +637,15 @@ void synthesize_uniform_grid(GridProjectionState& state,
                         if (grid_start < 0.0) {
                             grid_start = 0.0;
                         }
-                        if (config.verbose) {
-                            std::cerr << "DBN grid drift-correct:"
-                                      << " start_offset=" << start_offset
-                                      << " end_offset=" << end_offset
-                                      << " start_index=" << start_index
-                                      << " end_index=" << end_index
-                                      << " step_correction=" << step_correction
-                                      << " step_applied=" << clamped_correction
-                                      << " step_frames=" << state.step_frames
-                                      << " samples=" << samples.size()
-                                      << "\n";
-                        }
+                        BEATIT_LOG_DEBUG("DBN grid drift-correct:"
+                                         << " start_offset=" << start_offset
+                                         << " end_offset=" << end_offset
+                                         << " start_index=" << start_index
+                                         << " end_index=" << end_index
+                                         << " step_correction=" << step_correction
+                                         << " step_applied=" << clamped_correction
+                                         << " step_frames=" << state.step_frames
+                                         << " samples=" << samples.size());
                     }
                 }
             }
@@ -684,15 +675,12 @@ void synthesize_uniform_grid(GridProjectionState& state,
                                   state.activation_floor,
                                   fps);
     }
-    if (config.verbose) {
-        std::cerr << "DBN grid: start=" << start
-                  << " grid_start=" << grid_start
-                  << " strongest_peak=" << state.strongest_peak
-                  << " strongest_peak_value=" << state.strongest_peak_value
-                  << " earliest_downbeat_peak=" << state.earliest_downbeat_peak
-                  << " advance_s=" << config.dbn_grid_start_advance_seconds
-                  << "\n";
-    }
+    BEATIT_LOG_DEBUG("DBN grid: start=" << start
+                     << " grid_start=" << grid_start
+                     << " strongest_peak=" << state.strongest_peak
+                     << " strongest_peak_value=" << state.strongest_peak_value
+                     << " earliest_downbeat_peak=" << state.earliest_downbeat_peak
+                     << " advance_s=" << config.dbn_grid_start_advance_seconds);
 }
 
 } // namespace beatit::detail

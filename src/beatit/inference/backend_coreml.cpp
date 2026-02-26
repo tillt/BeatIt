@@ -8,6 +8,7 @@
 
 #include "beatit/inference/backend.h"
 #include "beatit/inference/backend_torch.h"
+#include "beatit/logging.hpp"
 
 #include <algorithm>
 
@@ -67,6 +68,10 @@ public:
                                                   local_config.sample_rate,
                                                   local_config,
                                                   0.0f);
+        if (result.beat_activation.empty()) {
+            BEATIT_LOG_ERROR("CoreML backend: inference returned empty beat activation.");
+            return false;
+        }
         *beat = std::move(result.beat_activation);
         *downbeat = std::move(result.downbeat_activation);
         return true;

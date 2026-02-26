@@ -27,15 +27,11 @@ LogVerbosity get_log_verbosity() {
 }
 
 void set_log_verbosity_from_config(const CoreMLConfig& config) {
-    if (config.verbose) {
-        set_log_verbosity(LogVerbosity::Debug);
-        return;
+    LogVerbosity level = config.log_verbosity;
+    if (config.profile && static_cast<int>(level) < static_cast<int>(LogVerbosity::Info)) {
+        level = LogVerbosity::Info;
     }
-    if (config.profile) {
-        set_log_verbosity(LogVerbosity::Info);
-        return;
-    }
-    set_log_verbosity(LogVerbosity::Warn);
+    set_log_verbosity(level);
 }
 
 } // namespace beatit

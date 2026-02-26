@@ -134,13 +134,11 @@ void run_logit_consensus_postprocess(CoreMLResult& result,
 
         double interval_frames =
             median_interval_frames_interpolated(result.beat_activation, beat_peaks);
-        if (config.verbose) {
-            BEATIT_LOG_DEBUG("Logit consensus: max_activation=" << max_activation
-                             << " peak_threshold=" << peak_threshold
-                             << " peaks=" << beat_peaks.size()
-                             << " interval_frames=" << interval_frames
-                             << " fps=" << fps);
-        }
+        BEATIT_LOG_DEBUG("Logit consensus: max_activation=" << max_activation
+                         << " peak_threshold=" << peak_threshold
+                         << " peaks=" << beat_peaks.size()
+                         << " interval_frames=" << interval_frames
+                         << " fps=" << fps);
 
         double bpm = 0.0;
         double sweep_phase = 0.0;
@@ -182,11 +180,9 @@ void run_logit_consensus_postprocess(CoreMLResult& result,
                     }
                 }
             }
-            if (config.verbose) {
-                BEATIT_LOG_DEBUG("Logit sweep: bpm=" << bpm
-                                 << " phase=" << sweep_phase
-                                 << " score=" << sweep_score);
-            }
+            BEATIT_LOG_DEBUG("Logit sweep: bpm=" << bpm
+                             << " phase=" << sweep_phase
+                             << " score=" << sweep_score);
         }
 
         if (bpm <= 0.0) {
@@ -228,12 +224,10 @@ void run_logit_consensus_postprocess(CoreMLResult& result,
         }
 
         const double step_frames = (60.0 * fps) / std::max(1.0, bpm);
-        if (config.verbose) {
-            BEATIT_LOG_DEBUG("Logit consensus: bpm=" << bpm
-                             << " step_frames=" << step_frames
-                             << " used_frames=" << used_frames
-                             << " max_shift_s=" << config.logit_phase_max_shift_seconds);
-        }
+        BEATIT_LOG_DEBUG("Logit consensus: bpm=" << bpm
+                         << " step_frames=" << step_frames
+                         << " used_frames=" << used_frames
+                         << " max_shift_s=" << config.logit_phase_max_shift_seconds);
         if (step_frames <= 0.0) {
             return;
         }
@@ -336,10 +330,8 @@ void run_logit_consensus_postprocess(CoreMLResult& result,
             global_phase = refine_peak_position(strongest_peak, result.beat_activation);
         }
 
-        if (config.verbose) {
-            BEATIT_LOG_DEBUG("Logit consensus: global_phase=" << global_phase
-                             << " best_score=" << best_score);
-        }
+        BEATIT_LOG_DEBUG("Logit consensus: global_phase=" << global_phase
+                         << " best_score=" << best_score);
 
         auto build_grid_frames = [&](double phase_seed) {
             std::vector<std::size_t> grid_frames;
@@ -387,21 +379,17 @@ void run_logit_consensus_postprocess(CoreMLResult& result,
                     std::max(0.0, std::round(0.025 * fps)));
                 detail::dedupe_frames_tolerant(grid_frames, tolerance_frames);
             }
-        if (config.verbose) {
-            if (!grid_frames.empty()) {
-                BEATIT_LOG_DEBUG("Logit consensus: grid_frames=" << grid_frames.size()
-                                 << " first=" << grid_frames.front()
-                                 << " last=" << grid_frames.back());
-            } else {
-                BEATIT_LOG_DEBUG("Logit consensus: grid_frames=0");
-            }
+        if (!grid_frames.empty()) {
+            BEATIT_LOG_DEBUG("Logit consensus: grid_frames=" << grid_frames.size()
+                             << " first=" << grid_frames.front()
+                             << " last=" << grid_frames.back());
+        } else {
+            BEATIT_LOG_DEBUG("Logit consensus: grid_frames=0");
         }
 
         fill_beats_from_frames(grid_frames);
-        if (config.verbose) {
-            BEATIT_LOG_DEBUG("Logit consensus: beats_out=" << result.beat_feature_frames.size()
-                             << " samples_out=" << result.beat_sample_frames.size());
-        }
+        BEATIT_LOG_DEBUG("Logit consensus: beats_out=" << result.beat_feature_frames.size()
+                         << " samples_out=" << result.beat_sample_frames.size());
 
         const std::size_t bpb = std::max<std::size_t>(1, config.dbn_beats_per_bar);
         if (!result.downbeat_activation.empty()) {

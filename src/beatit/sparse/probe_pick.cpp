@@ -7,6 +7,7 @@
 //
 
 #include "beatit/sparse/probe_pick.h"
+#include "beatit/logging.hpp"
 #include "beatit/sparse/phase_metrics.h"
 #include "beatit/sparse/waveform.h"
 #include "probe_score.h"
@@ -14,7 +15,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
-#include <iostream>
 #include <string>
 #include <vector>
 
@@ -231,9 +231,9 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
     WindowPhaseGate selected_right_gate;
     bool middle_gate_triggered = false;
     bool consistency_gate_triggered = false;
-    bool consistency_edges_calm = false;
-    bool consistency_between_hot = false;
-    bool consistency_middle_hot = false;
+    bool consistency_edges_low_mismatch = false;
+    bool consistency_between_high_mismatch = false;
+    bool consistency_middle_high_mismatch = false;
     bool interior_probe_added = false;
 
     auto refresh_selected_window_diagnostics = [&]() {
@@ -273,16 +273,16 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
         constexpr double kCalmAbsRatio = 0.20;
         constexpr double kCalmSignedRatio = 0.25;
 
-        const auto window_hot = [&](const SparseWindowPhaseMetrics& metrics,
-                                    const WindowPhaseGate& gate) {
+        const auto window_high_mismatch = [&](const SparseWindowPhaseMetrics& metrics,
+                                              const WindowPhaseGate& gate) {
             return gate.has_data &&
                    std::isfinite(metrics.abs_limit_exceed_ratio) &&
                    std::isfinite(metrics.signed_limit_exceed_ratio) &&
                    metrics.abs_limit_exceed_ratio >= kHotAbsRatio &&
                    metrics.signed_limit_exceed_ratio >= kHotSignedRatio;
         };
-        const auto window_calm = [&](const SparseWindowPhaseMetrics& metrics,
-                                     const WindowPhaseGate& gate) {
+        const auto window_low_mismatch = [&](const SparseWindowPhaseMetrics& metrics,
+                                             const WindowPhaseGate& gate) {
             return gate.has_data &&
                    std::isfinite(metrics.abs_limit_exceed_ratio) &&
                    std::isfinite(metrics.signed_limit_exceed_ratio) &&
@@ -290,11 +290,15 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
                    metrics.signed_limit_exceed_ratio <= kCalmSignedRatio;
         };
 
-        consistency_between_hot = window_hot(selected_between_metrics, selected_between_gate);
-        consistency_middle_hot = window_hot(selected_middle_metrics, selected_middle_gate);
-        consistency_edges_calm = window_calm(selected_left_window_metrics, selected_left_gate) &&
-                                 window_calm(selected_right_window_metrics, selected_right_gate);
-        return consistency_edges_calm && (consistency_between_hot || consistency_middle_hot);
+        consistency_between_high_mismatch =
+            window_high_mismatch(selected_between_metrics, selected_between_gate);
+        consistency_middle_high_mismatch =
+            window_high_mismatch(selected_middle_metrics, selected_middle_gate);
+        consistency_edges_low_mismatch =
+            window_low_mismatch(selected_left_window_metrics, selected_left_gate) &&
+            window_low_mismatch(selected_right_window_metrics, selected_right_gate);
+        return consistency_edges_low_mismatch &&
+               (consistency_between_high_mismatch || consistency_middle_high_mismatch);
     };
 
     if (probes.size() == 2) {
@@ -316,11 +320,9 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
             interior_probe_added = true;
         }
     }
-    if (original_config.verbose) {
-        refresh_selected_window_diagnostics();
-        middle_gate_triggered = selected_middle_gate.unstable_or;
-        consistency_gate_triggered = evaluate_consistency_gate();
-    }
+    refresh_selected_window_diagnostics();
+    middle_gate_triggered = selected_middle_gate.unstable_or;
+    consistency_gate_triggered = evaluate_consistency_gate();
 
     AnalysisResult result = probes[selected_index].analysis;
     const double selected_mode_error = probe_mode_errors[selected_index];
@@ -343,92 +345,93 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
         result = run_probe(repair_start, probe_duration, repair_bpm);
     }
 
-    if (original_config.verbose) {
-        std::cerr << "Sparse probes:";
-        for (std::size_t i = 0; i < probes.size(); ++i) {
-            const auto& p = probes[i];
-            std::cerr << " start=" << p.start
-                      << " bpm=" << p.bpm
-                      << " conf=" << p.conf
-                      << " mode_err=" << probe_mode_errors[i];
-        }
-        std::cerr << " consensus=" << consensus_bpm
-                  << " anchor_start=" << anchor_start
-                  << " left_probe_start_s=" << left_probe_start
-                  << " right_probe_start_s=" << right_probe_start
-                  << " decision=" << decision.mode
-                  << " selected_start=" << probes[selected_index].start
-                  << " selected_score=" << selected_score
-                  << " score_margin=" << score_margin
-                  << " selected_mode_err=" << selected_mode_error
-                  << " selected_conf=" << probes[selected_index].conf
-                  << " selected_intro_abs_ms=" << selected_intro_metrics.median_abs_ms
-                  << " selected_odd_even_gap_ms=" << selected_intro_metrics.odd_even_gap_ms
-                  << " selected_middle_ms=" << selected_middle_metrics.median_ms
-                  << " selected_middle_abs_ms=" << selected_middle_metrics.median_abs_ms
-                  << " selected_middle_odd_even_gap_ms=" << selected_middle_metrics.odd_even_gap_ms
-                  << " selected_middle_abs_p90_ms=" << selected_middle_metrics.abs_p90_ms
-                  << " selected_middle_abs_p95_ms=" << selected_middle_metrics.abs_p95_ms
-                  << " selected_middle_abs_exceed_ratio=" << selected_middle_metrics.abs_limit_exceed_ratio
-                  << " selected_middle_signed_exceed_ratio="
-                  << selected_middle_metrics.signed_limit_exceed_ratio
-                  << " middle_gate_triggered=" << (middle_gate_triggered ? 1 : 0)
-                  << " consistency_gate_triggered=" << (consistency_gate_triggered ? 1 : 0)
-                  << " consistency_edges_calm=" << (consistency_edges_calm ? 1 : 0)
-                  << " consistency_between_hot=" << (consistency_between_hot ? 1 : 0)
-                  << " consistency_middle_hot=" << (consistency_middle_hot ? 1 : 0)
-                  << " middle_gate_has_data=" << (selected_middle_gate.has_data ? 1 : 0)
-                  << " middle_gate_signed_limit_ms=" << selected_middle_gate.signed_limit_ms
-                  << " middle_gate_abs_limit_ms=" << selected_middle_gate.abs_limit_ms
-                  << " middle_gate_signed_exceeds=" << (selected_middle_gate.signed_exceeds ? 1 : 0)
-                  << " middle_gate_abs_exceeds=" << (selected_middle_gate.abs_exceeds ? 1 : 0)
-                  << " middle_gate_and=" << (selected_middle_gate.unstable_and ? 1 : 0)
-                  << " middle_gate_or=" << (selected_middle_gate.unstable_or ? 1 : 0)
-                  << " selected_between_ms=" << selected_between_metrics.median_ms
-                  << " selected_between_abs_ms=" << selected_between_metrics.median_abs_ms
-                  << " selected_between_odd_even_gap_ms=" << selected_between_metrics.odd_even_gap_ms
-                  << " selected_between_abs_p90_ms=" << selected_between_metrics.abs_p90_ms
-                  << " selected_between_abs_p95_ms=" << selected_between_metrics.abs_p95_ms
-                  << " selected_between_abs_exceed_ratio=" << selected_between_metrics.abs_limit_exceed_ratio
-                  << " selected_between_signed_exceed_ratio="
-                  << selected_between_metrics.signed_limit_exceed_ratio
-                  << " between_gate_has_data=" << (selected_between_gate.has_data ? 1 : 0)
-                  << " between_gate_signed_exceeds=" << (selected_between_gate.signed_exceeds ? 1 : 0)
-                  << " between_gate_abs_exceeds=" << (selected_between_gate.abs_exceeds ? 1 : 0)
-                  << " between_gate_and=" << (selected_between_gate.unstable_and ? 1 : 0)
-                  << " between_gate_or=" << (selected_between_gate.unstable_or ? 1 : 0)
-                  << " selected_left_ms=" << selected_left_window_metrics.median_ms
-                  << " selected_left_abs_ms=" << selected_left_window_metrics.median_abs_ms
-                  << " selected_left_odd_even_gap_ms=" << selected_left_window_metrics.odd_even_gap_ms
-                  << " selected_left_abs_p90_ms=" << selected_left_window_metrics.abs_p90_ms
-                  << " selected_left_abs_p95_ms=" << selected_left_window_metrics.abs_p95_ms
-                  << " selected_left_abs_exceed_ratio=" << selected_left_window_metrics.abs_limit_exceed_ratio
-                  << " selected_left_signed_exceed_ratio="
-                  << selected_left_window_metrics.signed_limit_exceed_ratio
-                  << " left_gate_has_data=" << (selected_left_gate.has_data ? 1 : 0)
-                  << " left_gate_signed_exceeds=" << (selected_left_gate.signed_exceeds ? 1 : 0)
-                  << " left_gate_abs_exceeds=" << (selected_left_gate.abs_exceeds ? 1 : 0)
-                  << " left_gate_and=" << (selected_left_gate.unstable_and ? 1 : 0)
-                  << " left_gate_or=" << (selected_left_gate.unstable_or ? 1 : 0)
-                  << " selected_right_ms=" << selected_right_window_metrics.median_ms
-                  << " selected_right_abs_ms=" << selected_right_window_metrics.median_abs_ms
-                  << " selected_right_odd_even_gap_ms=" << selected_right_window_metrics.odd_even_gap_ms
-                  << " selected_right_abs_p90_ms=" << selected_right_window_metrics.abs_p90_ms
-                  << " selected_right_abs_p95_ms=" << selected_right_window_metrics.abs_p95_ms
-                  << " selected_right_abs_exceed_ratio=" << selected_right_window_metrics.abs_limit_exceed_ratio
-                  << " selected_right_signed_exceed_ratio="
-                  << selected_right_window_metrics.signed_limit_exceed_ratio
-                  << " right_gate_has_data=" << (selected_right_gate.has_data ? 1 : 0)
-                  << " right_gate_signed_exceeds=" << (selected_right_gate.signed_exceeds ? 1 : 0)
-                  << " right_gate_abs_exceeds=" << (selected_right_gate.abs_exceeds ? 1 : 0)
-                  << " right_gate_and=" << (selected_right_gate.unstable_and ? 1 : 0)
-                  << " right_gate_or=" << (selected_right_gate.unstable_or ? 1 : 0)
-                  << " middle_probe_start_s=" << middle_probe_start
-                  << " between_probe_start_s=" << between_probe_start
-                  << " interior_probe_added=" << (interior_probe_added ? 1 : 0)
-                  << " repair=" << (low_confidence ? 1 : 0)
-                  << "\n";
+    auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
+    debug_stream << "Sparse probes:";
+    for (std::size_t i = 0; i < probes.size(); ++i) {
+        const auto& p = probes[i];
+        debug_stream << " start=" << p.start
+                     << " bpm=" << p.bpm
+                     << " conf=" << p.conf
+                     << " mode_err=" << probe_mode_errors[i];
     }
+    debug_stream << " consensus=" << consensus_bpm
+                 << " anchor_start=" << anchor_start
+                 << " left_probe_start_s=" << left_probe_start
+                 << " right_probe_start_s=" << right_probe_start
+                 << " decision=" << decision.mode
+                 << " selected_start=" << probes[selected_index].start
+                 << " selected_score=" << selected_score
+                 << " score_margin=" << score_margin
+                 << " selected_mode_err=" << selected_mode_error
+                 << " selected_conf=" << probes[selected_index].conf
+                 << " selected_intro_abs_ms=" << selected_intro_metrics.median_abs_ms
+                 << " selected_odd_even_gap_ms=" << selected_intro_metrics.odd_even_gap_ms
+                 << " selected_middle_ms=" << selected_middle_metrics.median_ms
+                 << " selected_middle_abs_ms=" << selected_middle_metrics.median_abs_ms
+                 << " selected_middle_odd_even_gap_ms=" << selected_middle_metrics.odd_even_gap_ms
+                 << " selected_middle_abs_p90_ms=" << selected_middle_metrics.abs_p90_ms
+                 << " selected_middle_abs_p95_ms=" << selected_middle_metrics.abs_p95_ms
+                 << " selected_middle_abs_exceed_ratio=" << selected_middle_metrics.abs_limit_exceed_ratio
+                 << " selected_middle_signed_exceed_ratio="
+                 << selected_middle_metrics.signed_limit_exceed_ratio
+                 << " middle_gate_triggered=" << (middle_gate_triggered ? 1 : 0)
+                 << " consistency_gate_triggered=" << (consistency_gate_triggered ? 1 : 0)
+                 << " consistency_edges_low_mismatch="
+                 << (consistency_edges_low_mismatch ? 1 : 0)
+                 << " consistency_between_high_mismatch="
+                 << (consistency_between_high_mismatch ? 1 : 0)
+                 << " consistency_middle_high_mismatch="
+                 << (consistency_middle_high_mismatch ? 1 : 0)
+                 << " middle_gate_has_data=" << (selected_middle_gate.has_data ? 1 : 0)
+                 << " middle_gate_signed_limit_ms=" << selected_middle_gate.signed_limit_ms
+                 << " middle_gate_abs_limit_ms=" << selected_middle_gate.abs_limit_ms
+                 << " middle_gate_signed_exceeds=" << (selected_middle_gate.signed_exceeds ? 1 : 0)
+                 << " middle_gate_abs_exceeds=" << (selected_middle_gate.abs_exceeds ? 1 : 0)
+                 << " middle_gate_and=" << (selected_middle_gate.unstable_and ? 1 : 0)
+                 << " middle_gate_or=" << (selected_middle_gate.unstable_or ? 1 : 0)
+                 << " selected_between_ms=" << selected_between_metrics.median_ms
+                 << " selected_between_abs_ms=" << selected_between_metrics.median_abs_ms
+                 << " selected_between_odd_even_gap_ms=" << selected_between_metrics.odd_even_gap_ms
+                 << " selected_between_abs_p90_ms=" << selected_between_metrics.abs_p90_ms
+                 << " selected_between_abs_p95_ms=" << selected_between_metrics.abs_p95_ms
+                 << " selected_between_abs_exceed_ratio=" << selected_between_metrics.abs_limit_exceed_ratio
+                 << " selected_between_signed_exceed_ratio="
+                 << selected_between_metrics.signed_limit_exceed_ratio
+                 << " between_gate_has_data=" << (selected_between_gate.has_data ? 1 : 0)
+                 << " between_gate_signed_exceeds=" << (selected_between_gate.signed_exceeds ? 1 : 0)
+                 << " between_gate_abs_exceeds=" << (selected_between_gate.abs_exceeds ? 1 : 0)
+                 << " between_gate_and=" << (selected_between_gate.unstable_and ? 1 : 0)
+                 << " between_gate_or=" << (selected_between_gate.unstable_or ? 1 : 0)
+                 << " selected_left_ms=" << selected_left_window_metrics.median_ms
+                 << " selected_left_abs_ms=" << selected_left_window_metrics.median_abs_ms
+                 << " selected_left_odd_even_gap_ms=" << selected_left_window_metrics.odd_even_gap_ms
+                 << " selected_left_abs_p90_ms=" << selected_left_window_metrics.abs_p90_ms
+                 << " selected_left_abs_p95_ms=" << selected_left_window_metrics.abs_p95_ms
+                 << " selected_left_abs_exceed_ratio=" << selected_left_window_metrics.abs_limit_exceed_ratio
+                 << " selected_left_signed_exceed_ratio="
+                 << selected_left_window_metrics.signed_limit_exceed_ratio
+                 << " left_gate_has_data=" << (selected_left_gate.has_data ? 1 : 0)
+                 << " left_gate_signed_exceeds=" << (selected_left_gate.signed_exceeds ? 1 : 0)
+                 << " left_gate_abs_exceeds=" << (selected_left_gate.abs_exceeds ? 1 : 0)
+                 << " left_gate_and=" << (selected_left_gate.unstable_and ? 1 : 0)
+                 << " left_gate_or=" << (selected_left_gate.unstable_or ? 1 : 0)
+                 << " selected_right_ms=" << selected_right_window_metrics.median_ms
+                 << " selected_right_abs_ms=" << selected_right_window_metrics.median_abs_ms
+                 << " selected_right_odd_even_gap_ms=" << selected_right_window_metrics.odd_even_gap_ms
+                 << " selected_right_abs_p90_ms=" << selected_right_window_metrics.abs_p90_ms
+                 << " selected_right_abs_p95_ms=" << selected_right_window_metrics.abs_p95_ms
+                 << " selected_right_abs_exceed_ratio=" << selected_right_window_metrics.abs_limit_exceed_ratio
+                 << " selected_right_signed_exceed_ratio="
+                 << selected_right_window_metrics.signed_limit_exceed_ratio
+                 << " right_gate_has_data=" << (selected_right_gate.has_data ? 1 : 0)
+                 << " right_gate_signed_exceeds=" << (selected_right_gate.signed_exceeds ? 1 : 0)
+                 << " right_gate_abs_exceeds=" << (selected_right_gate.abs_exceeds ? 1 : 0)
+                 << " right_gate_and=" << (selected_right_gate.unstable_and ? 1 : 0)
+                 << " right_gate_or=" << (selected_right_gate.unstable_or ? 1 : 0)
+                 << " middle_probe_start_s=" << middle_probe_start
+                 << " between_probe_start_s=" << between_probe_start
+                 << " interior_probe_added=" << (interior_probe_added ? 1 : 0)
+                 << " repair=" << (low_confidence ? 1 : 0);
 
     out.result = std::move(result);
     out.probes = std::move(probes);

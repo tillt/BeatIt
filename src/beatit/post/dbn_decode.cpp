@@ -212,8 +212,7 @@ bool run_dbn_decoded_postprocess(CoreMLResult& result,
             projected_phase = guard_projected_downbeat_phase(projected_frames,
                                                              result.downbeat_activation,
                                                              projected_bpb,
-                                                             projected_phase,
-                                                             config.verbose);
+                                                             projected_phase);
             // Preserve DBN-selected bar phase on the projected beat grid.
             // Nearest-neighbor remapping can flip bars by one beat when
             // projection tempo differs slightly from the decoded beat list.

@@ -245,6 +245,9 @@ void BeatitStream::process_coreml_windows() {
             std::chrono::duration<double, std::milli>(infer_end - infer_start).count();
         perf_.window_count += 1;
         if (!ok) {
+            BEATIT_LOG_ERROR("Stream inference failed in process_coreml_windows."
+                             << " backend=" << static_cast<int>(coreml_config_.backend)
+                             << " frame_offset=" << coreml_frame_offset_);
             return;
         }
         detail::trim_activation_to_frames(&beat_activation, coreml_config_.fixed_frames);
@@ -317,6 +320,9 @@ void BeatitStream::process_torch_windows() {
             std::chrono::duration<double, std::milli>(infer_end - infer_start).count();
         perf_.window_count += batch_count;
         if (!ok) {
+            BEATIT_LOG_ERROR("Stream inference failed in process_torch_windows."
+                             << " batch_count=" << batch_count
+                             << " frame_offset=" << coreml_frame_offset_);
             return;
         }
 

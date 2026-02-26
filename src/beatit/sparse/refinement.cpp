@@ -106,8 +106,7 @@ void apply_sparse_bounded_grid_refit(AnalysisResult& result, double sample_rate)
 void apply_sparse_anchor_state_refit(AnalysisResult& result,
                                      double sample_rate,
                                      double probe_duration,
-                                     const std::vector<SparseProbeObservation>& probes,
-                                     bool verbose) {
+                                     const std::vector<SparseProbeObservation>& probes) {
     if (sample_rate <= 0.0 || probes.size() < 2) {
         return;
     }
@@ -266,15 +265,13 @@ void apply_sparse_anchor_state_refit(AnalysisResult& result,
             static_cast<unsigned long long>(std::max<long long>(0, adjusted));
     }
 
-    if (verbose) {
-        BEATIT_LOG_DEBUG("Sparse anchor state refit:"
-                         << " anchors=" << anchors.size()
-                         << " spread_ratio=" << spread_ratio
-                         << " step_target=" << step_target
-                         << " ratio=" << raw_ratio
-                         << " ratio_applied=" << ratio
-                         << " base_step=" << base_step);
-    }
+    BEATIT_LOG_DEBUG("Sparse anchor state refit:"
+                     << " anchors=" << anchors.size()
+                     << " spread_ratio=" << spread_ratio
+                     << " step_target=" << step_target
+                     << " ratio=" << raw_ratio
+                     << " ratio_applied=" << ratio
+                     << " base_step=" << base_step);
 }
 
 } // namespace detail

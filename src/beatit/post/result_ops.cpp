@@ -7,10 +7,10 @@
 //
 
 #include "beatit/post/result_ops.h"
+#include "beatit/logging.hpp"
 
 #include <algorithm>
 #include <cmath>
-#include <iostream>
 
 namespace beatit::detail {
 
@@ -202,16 +202,15 @@ void fill_beats_from_bpm_grid_into(const std::vector<float>& beat_activation,
                 ? static_cast<double>(std::max<long long>(0, start_sample_frame)) /
                     sample_rate
                 : 0.0;
-        std::cerr << "DBN grid project: start_frame=" << start_frame
-                  << " start_time=" << start_time
-                  << " bpm=" << bpm
-                  << " step_frames=" << step_frames
-                  << " total_frames=" << total_frames
-                  << " hop_size=" << config.hop_size
-                  << " hop_scale=" << hop_scale
-                  << " start_sample_frame=" << start_sample_frame
-                  << " start_time_adj=" << start_time_after_latency
-                  << "\n";
+        BEATIT_LOG_DEBUG("DBN grid project: start_frame=" << start_frame
+                         << " start_time=" << start_time
+                         << " bpm=" << bpm
+                         << " step_frames=" << step_frames
+                         << " total_frames=" << total_frames
+                         << " hop_size=" << config.hop_size
+                         << " hop_scale=" << hop_scale
+                         << " start_sample_frame=" << start_sample_frame
+                         << " start_time_adj=" << start_time_after_latency);
     }
 
     const double step_samples = (60.0 * sample_rate) / bpm;
@@ -287,17 +286,17 @@ void fill_beats_from_bpm_grid_into(const std::vector<float>& beat_activation,
 
     if (config.dbn_trace) {
         const std::size_t preview = std::min<std::size_t>(6, out_feature_frames.size());
-        std::cerr << "DBN grid beats head:";
+        auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
+        debug_stream << "DBN grid beats head:";
         for (std::size_t i = 0; i < preview; ++i) {
             const std::size_t frame = static_cast<std::size_t>(out_feature_frames[i]);
             const double time_s = static_cast<double>(frame) / fps;
-            std::cerr << " " << frame << "(" << time_s << "s)";
+            debug_stream << " " << frame << "(" << time_s << "s)";
         }
-        std::cerr << "\n";
-        std::cerr << "DBN grid beats total=" << out_feature_frames.size()
-                  << " backward=" << backward_count
-                  << " forward=" << forward_count
-                  << "\n";
+        debug_stream << "\n";
+        debug_stream << "DBN grid beats total=" << out_feature_frames.size()
+                     << " backward=" << backward_count
+                     << " forward=" << forward_count;
     }
 }
 

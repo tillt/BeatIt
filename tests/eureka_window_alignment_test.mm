@@ -88,7 +88,7 @@ int main() {
 #endif
     if (const char* trace = std::getenv("BEATIT_WINDOW_TRACE")) {
         if (trace[0] != '\0' && trace[0] != '0') {
-            config.verbose = true;
+            config.log_verbosity = beatit::LogVerbosity::Debug;
             config.dbn_trace = true;
             config.profile = true;
         }

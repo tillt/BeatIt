@@ -10,10 +10,10 @@
 
 #include "beatit/post/tempo_fit.h"
 #include "beatit/post/window.h"
+#include "beatit/logging.hpp"
 
 #include <algorithm>
 #include <cmath>
-#include <iostream>
 #include <string>
 #include <vector>
 
@@ -286,27 +286,27 @@ void log_grid_tempo_decision(const GridTempoDecision& decision,
     if (input.config.dbn_trace && d.stats_computed) {
         auto print_stats = [&](const char* label, const IntervalStats& stats) {
             if (stats.count == 0 || stats.median_interval <= 0.0) {
-                std::cerr << "DBN stats: " << label << " empty\n";
+                BEATIT_LOG_DEBUG("DBN stats: " << label << " empty");
                 return;
             }
+            auto stats_stream = BEATIT_LOG_DEBUG_STREAM();
             const double bpm_median = (60.0 * input.fps) / stats.median_interval;
             const double bpm_mean = (60.0 * input.fps) / stats.mean_interval;
             const double interval_cv =
                 stats.mean_interval > 0.0 ? (stats.stdev_interval / stats.mean_interval) : 0.0;
-            std::cerr << "DBN stats: " << label
-                      << " count=" << stats.count
-                      << " bpm_median=" << bpm_median
-                      << " bpm_mean=" << bpm_mean
-                      << " interval_cv=" << interval_cv
-                      << " interval_range=[" << stats.min_interval
-                      << "," << stats.max_interval << "]";
+            stats_stream << "DBN stats: " << label
+                         << " count=" << stats.count
+                         << " bpm_median=" << bpm_median
+                         << " bpm_mean=" << bpm_mean
+                         << " interval_cv=" << interval_cv
+                         << " interval_range=[" << stats.min_interval
+                         << "," << stats.max_interval << "]";
             if (!stats.top_bpm_bins.empty()) {
-                std::cerr << " bpm_bins:";
+                stats_stream << " bpm_bins:";
                 for (const auto& bin : stats.top_bpm_bins) {
-                    std::cerr << " " << bin.first << "(" << bin.second << ")";
+                    stats_stream << " " << bin.first << "(" << bin.second << ")";
                 }
             }
-            std::cerr << "\n";
         };
         print_stats("tempo_peaks", d.tempo_stats);
         if (d.has_downbeat_stats) {
@@ -315,43 +315,39 @@ void log_grid_tempo_decision(const GridTempoDecision& decision,
         print_stats("decoded_beats", d.decoded_stats);
         print_stats("decoded_beats_filtered", d.decoded_filtered_stats);
         if (d.short_interval_threshold > 0.0) {
-            std::cerr << "DBN stats: filter_threshold=" << d.short_interval_threshold
-                      << " min_interval=" << d.min_interval_frames << "\n";
+            BEATIT_LOG_DEBUG("DBN stats: filter_threshold=" << d.short_interval_threshold
+                             << " min_interval=" << d.min_interval_frames);
         }
     }
-    if (input.config.verbose) {
-        std::cerr << "DBN grid: bpm=" << input.decoded.bpm
-                  << " bpm_from_fit=" << d.bpm_from_fit
-                  << " bpm_from_global_fit=" << d.bpm_from_global_fit
-                  << " bpm_from_peaks=" << d.bpm_from_peaks
-                  << " bpm_from_peaks_median=" << d.bpm_from_peaks_median
-                  << " bpm_from_peaks_reg=" << d.bpm_from_peaks_reg
-                  << " bpm_from_peaks_median_full=" << d.bpm_from_peaks_median_full
-                  << " bpm_from_peaks_reg_full=" << d.bpm_from_peaks_reg_full
-                  << " bpm_from_downbeats=" << d.bpm_from_downbeats
-                  << " bpm_from_downbeats_median=" << d.bpm_from_downbeats_median
-                  << " bpm_from_downbeats_reg=" << d.bpm_from_downbeats_reg
-                  << " base_interval=" << decision.base_interval
-                  << " bpm_reference=" << input.reference_bpm
-                  << " quality_qpar=" << d.quality_qpar
-                  << " quality_qkur=" << d.quality_qkur
-                  << " quality_low=" << (decision.quality_low ? 1 : 0)
-                  << " bpm_for_grid=" << decision.bpm_for_grid
-                  << " step_frames=" << decision.step_frames
-                  << " start_frame=" << input.decoded.beat_frames.front()
-                  << "\n";
-    }
+    BEATIT_LOG_DEBUG("DBN grid: bpm=" << input.decoded.bpm
+                     << " bpm_from_fit=" << d.bpm_from_fit
+                     << " bpm_from_global_fit=" << d.bpm_from_global_fit
+                     << " bpm_from_peaks=" << d.bpm_from_peaks
+                     << " bpm_from_peaks_median=" << d.bpm_from_peaks_median
+                     << " bpm_from_peaks_reg=" << d.bpm_from_peaks_reg
+                     << " bpm_from_peaks_median_full=" << d.bpm_from_peaks_median_full
+                     << " bpm_from_peaks_reg_full=" << d.bpm_from_peaks_reg_full
+                     << " bpm_from_downbeats=" << d.bpm_from_downbeats
+                     << " bpm_from_downbeats_median=" << d.bpm_from_downbeats_median
+                     << " bpm_from_downbeats_reg=" << d.bpm_from_downbeats_reg
+                     << " base_interval=" << decision.base_interval
+                     << " bpm_reference=" << input.reference_bpm
+                     << " quality_qpar=" << d.quality_qpar
+                     << " quality_qkur=" << d.quality_qkur
+                     << " quality_low=" << (decision.quality_low ? 1 : 0)
+                     << " bpm_for_grid=" << decision.bpm_for_grid
+                     << " step_frames=" << decision.step_frames
+                     << " start_frame=" << input.decoded.beat_frames.front());
     if (input.config.dbn_trace) {
-        std::cerr << "DBN quality gate: low=" << (decision.quality_low ? 1 : 0)
-                  << " drop_ref=" << (d.drop_ref ? 1 : 0)
-                  << " drop_fit=" << (d.drop_fit ? 1 : 0)
-                  << " downbeat_ok=" << (decision.downbeat_override_ok ? 1 : 0)
-                  << " downbeat_cv=" << d.downbeat_cv
-                  << " downbeat_count=" << d.downbeat_count
-                  << " used=" << d.bpm_source
-                  << " pre_override=" << d.bpm_source_before_downbeat
-                  << " pre_bpm=" << d.bpm_before_downbeat
-                  << "\n";
+        BEATIT_LOG_DEBUG("DBN quality gate: low=" << (decision.quality_low ? 1 : 0)
+                         << " drop_ref=" << (d.drop_ref ? 1 : 0)
+                         << " drop_fit=" << (d.drop_fit ? 1 : 0)
+                         << " downbeat_ok=" << (decision.downbeat_override_ok ? 1 : 0)
+                         << " downbeat_cv=" << d.downbeat_cv
+                         << " downbeat_count=" << d.downbeat_count
+                         << " used=" << d.bpm_source
+                         << " pre_override=" << d.bpm_source_before_downbeat
+                         << " pre_bpm=" << d.bpm_before_downbeat);
     }
 }
 

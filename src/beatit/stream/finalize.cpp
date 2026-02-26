@@ -15,7 +15,6 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
-#include <iostream>
 #include <string>
 #include <vector>
 
@@ -61,6 +60,9 @@ AnalysisResult BeatitStream::finalize() {
             perf_.finalize_infer_ms +=
                 std::chrono::duration<double, std::milli>(infer_end - infer_start).count();
             if (!ok) {
+                BEATIT_LOG_ERROR("Stream finalize inference failed."
+                                 << " backend=" << static_cast<int>(local_config.backend)
+                                 << " frame_offset=" << coreml_frame_offset_);
                 return result;
             }
             detail::trim_activation_to_frames(&beat_activation, local_config.fixed_frames);

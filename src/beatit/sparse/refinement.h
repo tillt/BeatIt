@@ -22,8 +22,7 @@ void apply_sparse_bounded_grid_refit(AnalysisResult& result, double sample_rate)
 void apply_sparse_anchor_state_refit(AnalysisResult& result,
                                      double sample_rate,
                                      double probe_duration,
-                                     const std::vector<SparseProbeObservation>& probes,
-                                     bool verbose);
+                                     const std::vector<SparseProbeObservation>& probes);
 
 struct SparseWaveformRefitParams {
     const CoreMLConfig* config = nullptr;

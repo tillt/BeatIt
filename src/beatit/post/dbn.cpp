@@ -126,15 +126,13 @@ bool run_dbn_postprocess(CoreMLResult& result,
                 local_downbeat_slice.assign(result.downbeat_activation.begin() + window_start,
                                             result.downbeat_activation.begin() + window_end);
             }
-            if (config.verbose) {
-                BEATIT_LOG_DEBUG("DBN window: start=" << window_start
-                                 << " end=" << window_end
-                                 << " frames=" << (window_end - window_start)
-                                 << " (" << ((window_end - window_start) / fps) << "s)"
-                                 << " selector="
-                                 << (window_energy ? "best-energy-phase" : "tempo")
-                                 << " energy=" << (window_energy ? "phase" : "beat"));
-            }
+            BEATIT_LOG_DEBUG("DBN window: start=" << window_start
+                             << " end=" << window_end
+                             << " frames=" << (window_end - window_start)
+                             << " (" << ((window_end - window_start) / fps) << "s)"
+                             << " selector="
+                             << (window_energy ? "best-energy-phase" : "tempo")
+                             << " energy=" << (window_energy ? "phase" : "beat"));
         }
         beat_slice = std::move(local_beat_slice);
         downbeat_slice = std::move(local_downbeat_slice);
@@ -247,13 +245,11 @@ bool run_dbn_postprocess(CoreMLResult& result,
                     min_bpm = static_cast<float>(prior_bpm * (1.0 - window_pct));
                     max_bpm = static_cast<float>(prior_bpm * (1.0 + window_pct));
                     clamp_bpm_range(min_bpm, max_bpm);
-                    if (config.verbose) {
-                        BEATIT_LOG_DEBUG("DBN calmdad prior: bpm=" << prior_bpm
-                                         << " peaks=" << prior_peaks.size()
-                                         << " window_pct=" << window_pct
-                                         << " clamp=[" << min_bpm << "," << max_bpm << "]");
-                    }
-                } else if (config.verbose) {
+                    BEATIT_LOG_DEBUG("DBN calmdad prior: bpm=" << prior_bpm
+                                     << " peaks=" << prior_peaks.size()
+                                     << " window_pct=" << window_pct
+                                     << " clamp=[" << min_bpm << "," << max_bpm << "]");
+                } else {
                     BEATIT_LOG_DEBUG("DBN calmdad prior: insufficient peaks for clamp");
                 }
             }

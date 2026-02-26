@@ -9,10 +9,10 @@
 #include "beatit/post/tempo_fit.h"
 
 #include "beatit/dbn/calmdad.h"
+#include "beatit/logging.hpp"
 
 #include <algorithm>
 #include <cmath>
-#include <iostream>
 #include <limits>
 #include <utility>
 
@@ -140,17 +140,16 @@ double bpm_from_global_fit(const CoreMLResult& result,
                                 std::size_t beat_count) {
             const double start_s = static_cast<double>(w.first) / fps;
             const double end_s = static_cast<double>(w.second) / fps;
-            std::cerr << "DBN tempo window " << name
-                      << ": frames=" << w.first << "-" << w.second
-                      << " (" << start_s << "s-" << end_s << "s)"
-                      << " beats=" << beat_count << "\n";
+            BEATIT_LOG_DEBUG("DBN tempo window " << name
+                             << ": frames=" << w.first << "-" << w.second
+                             << " (" << start_s << "s-" << end_s << "s)"
+                             << " beats=" << beat_count);
         };
         print_window("intro", intro, intro_beats.size());
         print_window("outro", outro, outro_beats.size());
-        std::cerr << "DBN tempo anchors: gap_frames=" << anchor_gap_frames
-                  << " min_gap_frames=" << min_anchor_gap_frames
-                  << " separated=" << (anchors_separated ? "true" : "false")
-                  << "\n";
+        BEATIT_LOG_DEBUG("DBN tempo anchors: gap_frames=" << anchor_gap_frames
+                         << " min_gap_frames=" << min_anchor_gap_frames
+                         << " separated=" << (anchors_separated ? "true" : "false"));
     }
 
     if (intro_valid && outro_valid && anchors_separated) {
@@ -257,15 +256,14 @@ double bpm_from_global_fit(const CoreMLResult& result,
             }
         }
         if (config.dbn_trace) {
-            std::cerr << "DBN tempo anchors: intro_bpm=" << intro_bpm
-                      << " intro_conf=" << intro_conf
-                      << " outro_bpm=" << outro_bpm
-                      << " outro_conf=" << outro_conf
-                      << " mode_match_intro=" << best_intro.mode
-                      << " mode_match_outro=" << best_outro.mode
-                      << " agree_rel=" << agree_rel
-                      << " fused_bpm=" << bpm_from_global_fit
-                      << "\n";
+            BEATIT_LOG_DEBUG("DBN tempo anchors: intro_bpm=" << intro_bpm
+                             << " intro_conf=" << intro_conf
+                             << " outro_bpm=" << outro_bpm
+                             << " outro_conf=" << outro_conf
+                             << " mode_match_intro=" << best_intro.mode
+                             << " mode_match_outro=" << best_outro.mode
+                             << " agree_rel=" << agree_rel
+                             << " fused_bpm=" << bpm_from_global_fit);
         }
     }
 
@@ -273,4 +271,3 @@ double bpm_from_global_fit(const CoreMLResult& result,
 }
 
 } // namespace beatit::detail
-

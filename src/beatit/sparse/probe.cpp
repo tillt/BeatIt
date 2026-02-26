@@ -60,8 +60,7 @@ AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
     apply_sparse_anchor_state_refit(result,
                                     sample_rate,
                                     selected.probe_duration,
-                                    selected.probes,
-                                    original_config.verbose);
+                                    selected.probes);
 
     SparseWaveformRefitParams waveform_refit_params;
     waveform_refit_params.config = &original_config;

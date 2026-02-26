@@ -12,6 +12,7 @@
 #include "beatit/analysis.h"
 #include "beatit/coreml.h"
 #include "beatit/coreml_preset.h"
+#include "beatit/logging.hpp"
 #include "beatit/refiner.h"
 #include "beatit/version.h"
 
@@ -41,7 +42,7 @@ struct CliOptions {
     double target_sample_rate = 0.0;
     bool info = false;
     bool show_help = false;
-    std::string ml_backend = "coreml";
+    std::string backend = "coreml";
     std::string beatthis_python;
     std::string beatthis_script;
     std::string beatthis_checkpoint;
@@ -50,31 +51,31 @@ struct CliOptions {
     std::string torch_model_path;
     std::string torch_device;
     float torch_fps = 100.0f;
-    std::string coreml_model_path;
-    std::string coreml_input_name;
-    std::string coreml_beat_name;
-    std::string coreml_downbeat_name;
-    std::optional<float> coreml_min_bpm;
-    std::optional<float> coreml_max_bpm;
-    std::optional<float> coreml_threshold;
-    std::optional<float> coreml_gap_tolerance;
-    std::optional<float> coreml_offbeat_tolerance;
-    std::string coreml_preset = "beatthis";
-    bool coreml_use_dbn = false;
-    bool coreml_use_dbn_set = false;
-    bool coreml_disable_dbn = false;
-    std::optional<double> coreml_output_latency_seconds;
-    double coreml_debug_activations_start_s = -1.0;
-    double coreml_debug_activations_end_s = -1.0;
-    std::size_t coreml_debug_activations_max = 0;
-    bool coreml_constant_refine = false;
-    bool coreml_refine_csv = false;
-    bool coreml_info = false;
-    bool coreml_refine_downbeat_anchor = false;
-    bool coreml_cpu_only = false;
-    bool coreml_refine_halfbeat = false;
-    float coreml_refine_lowfreq = -1.0f;
-    bool coreml_verbose = false;
+    std::string model_path;
+    std::string input_name;
+    std::string beat_name;
+    std::string downbeat_name;
+    std::optional<float> bpm_min;
+    std::optional<float> bpm_max;
+    std::optional<float> activation_threshold;
+    std::optional<float> gap_tolerance;
+    std::optional<float> offbeat_tolerance;
+    std::string preset = "beatthis";
+    bool use_dbn = false;
+    bool use_dbn_set = false;
+    bool disable_dbn = false;
+    std::optional<double> output_latency_seconds;
+    double debug_activations_start_s = -1.0;
+    double debug_activations_end_s = -1.0;
+    std::size_t debug_activations_max = 0;
+    bool constant_refine = false;
+    bool refine_csv = false;
+    bool model_info = false;
+    bool refine_downbeat_anchor = false;
+    bool cpu_only = false;
+    bool refine_halfbeat = false;
+    float refine_lowfreq = -1.0f;
+    std::optional<std::string> log_level;
 };
 
 void print_usage(const char* exe) {
@@ -83,7 +84,7 @@ void print_usage(const char* exe) {
         << "Options:\n"
         << "  -i, --input <path>        Audio file (MP3/MP4/WAV/AIFF/CAF)\n"
         << "  --sample-rate <hz>        Resample to target sample rate\n"
-        << "  --ml-backend <name>       ML backend (coreml, torch, beatthis[external])\n"
+        << "  --backend <name>          Backend (coreml, torch, beatthis[external])\n"
         << "  --beatthis-python <path>  External BeatThis python interpreter\n"
         << "  --beatthis-script <path>  External BeatThis inference script\n"
         << "  --beatthis-checkpoint <p> External BeatThis checkpoint path\n"
@@ -93,31 +94,31 @@ void print_usage(const char* exe) {
         << "  --torch-device <name>     Torch device (cpu, mps)\n"
         << "  --torch-fps <hz>          Torch output fps (default 100)\n"
         << "  --model <path>            CoreML model path (.mlmodelc)\n"
-        << "  --ml-input <name>         CoreML input feature name\n"
-        << "  --ml-beat <name>          CoreML beat output name\n"
-        << "  --ml-downbeat <name>      CoreML downbeat output name\n"
-        << "  --ml-min-bpm <bpm>        CoreML min BPM [70,180]\n"
-        << "  --ml-max-bpm <bpm>        CoreML max BPM [70,180]\n"
-        << "  --ml-threshold <value>    CoreML activation threshold\n"
-        << "  --ml-gap <ratio>          CoreML gap tolerance (0-1)\n"
-        << "  --ml-offbeat <ratio>      CoreML offbeat tolerance (0-1)\n"
-        << "  --ml-preset <name>        CoreML preset (beattrack, beatthis)\n"
-        << "  --ml-beattrack            Alias for --ml-preset beattrack\n"
-        << "  --ml-beatthis             Alias for --ml-preset beatthis\n"
-        << "  --ml-dbn                  Use DBN-style beat decoder\n"
-        << "  --ml-no-dbn               Disable DBN even if preset enables it\n"
-        << "  --ml-output-latency <sec> Subtract output latency from detected events\n"
-        << "  --ml-activations-window <start> <end>\n"
+        << "  --input-name <name>       CoreML input feature name\n"
+        << "  --beat-name <name>        CoreML beat output name\n"
+        << "  --downbeat-name <name>    CoreML downbeat output name\n"
+        << "  --min-bpm <bpm>           Min BPM [70,180]\n"
+        << "  --max-bpm <bpm>           Max BPM [70,180]\n"
+        << "  --threshold <value>       Activation threshold\n"
+        << "  --gap <ratio>             Gap tolerance (0-1)\n"
+        << "  --offbeat <ratio>         Offbeat tolerance (0-1)\n"
+        << "  --preset <name>           Preset (beattrack, beatthis)\n"
+        << "  --beattrack               Alias for --preset beattrack\n"
+        << "  --beatthis                Alias for --preset beatthis\n"
+        << "  --dbn                     Use DBN-style beat decoder\n"
+        << "  --no-dbn                  Disable DBN even if preset enables it\n"
+        << "  --output-latency <sec>    Subtract output latency from detected events\n"
+        << "  --activations-window <start> <end>\n"
         << "                           Dump beat/downbeat activations between seconds\n"
-        << "  --ml-activations-max <n>  Cap activation dump rows (0 = no cap)\n"
-        << "  --ml-refine-constant      Post-process beats into a constant grid\n"
-        << "  --ml-refine-csv           Print CSV for constant beat events\n"
-        << "  --ml-refine-downbeat      Use model downbeats to anchor bar phase\n"
-        << "  --ml-refine-halfbeat      Enable half-beat phase correction\n"
-        << "  --ml-refine-lowfreq <w>   Low-frequency weight for bar phase\n"
-        << "  --ml-verbose              Enable verbose ML diagnostics\n"
-        << "  --ml-cpu-only             Force CoreML CPU-only execution\n"
-        << "  --ml-info                 Print CoreML model metadata\n"
+        << "  --activations-max <n>     Cap activation dump rows (0 = no cap)\n"
+        << "  --refine-constant         Post-process beats into a constant grid\n"
+        << "  --refine-csv              Print CSV for constant beat events\n"
+        << "  --refine-downbeat         Use model downbeats to anchor bar phase\n"
+        << "  --refine-halfbeat         Enable half-beat phase correction\n"
+        << "  --refine-lowfreq <w>      Low-frequency weight for bar phase\n"
+        << "  --log-level <level>       Log level (error, warn, info, debug)\n"
+        << "  --cpu-only                Force CoreML CPU-only execution\n"
+        << "  --model-info              Print CoreML model metadata\n"
         << "  --info                    Print decoded audio stats\n"
         << "  -v, --version             Show BeatIt version\n"
         << "  -h, --help                Show this help\n";
@@ -190,8 +191,8 @@ bool parse_args(int argc, char** argv, CliOptions* options) {
 
         if (arg == "-i" || arg == "--input") {
             options->input_path = require_value(arg.c_str());
-        } else if (arg == "--ml-backend") {
-            options->ml_backend = require_value(arg.c_str());
+        } else if (arg == "--backend") {
+            options->backend = require_value(arg.c_str());
         } else if (arg == "--beatthis-python") {
             options->beatthis_python = require_value(arg.c_str());
         } else if (arg == "--beatthis-script") {
@@ -227,120 +228,120 @@ bool parse_args(int argc, char** argv, CliOptions* options) {
                 return false;
             }
         } else if (arg == "--model") {
-            options->coreml_model_path = require_value(arg.c_str());
-        } else if (arg == "--ml-input") {
-            options->coreml_input_name = require_value(arg.c_str());
-        } else if (arg == "--ml-beat") {
-            options->coreml_beat_name = require_value(arg.c_str());
-        } else if (arg == "--ml-downbeat") {
-            options->coreml_downbeat_name = require_value(arg.c_str());
-        } else if (arg == "--ml-min-bpm") {
+            options->model_path = require_value(arg.c_str());
+        } else if (arg == "--input-name") {
+            options->input_name = require_value(arg.c_str());
+        } else if (arg == "--beat-name") {
+            options->beat_name = require_value(arg.c_str());
+        } else if (arg == "--downbeat-name") {
+            options->downbeat_name = require_value(arg.c_str());
+        } else if (arg == "--min-bpm") {
             std::string value = require_value(arg.c_str());
             float parsed = 0.0f;
             if (!parse_float(value, &parsed)) {
-                std::cerr << "Invalid ml min bpm: " << value << "\n";
+                std::cerr << "Invalid min bpm: " << value << "\n";
                 return false;
             }
             if (parsed < 70.0f || parsed > 180.0f) {
-                std::cerr << "ml min bpm out of range [70,180]: " << value << "\n";
+                std::cerr << "min bpm out of range [70,180]: " << value << "\n";
                 return false;
             }
-            options->coreml_min_bpm = parsed;
-        } else if (arg == "--ml-max-bpm") {
+            options->bpm_min = parsed;
+        } else if (arg == "--max-bpm") {
             std::string value = require_value(arg.c_str());
             float parsed = 0.0f;
             if (!parse_float(value, &parsed)) {
-                std::cerr << "Invalid ml max bpm: " << value << "\n";
+                std::cerr << "Invalid max bpm: " << value << "\n";
                 return false;
             }
             if (parsed < 70.0f || parsed > 180.0f) {
-                std::cerr << "ml max bpm out of range [70,180]: " << value << "\n";
+                std::cerr << "max bpm out of range [70,180]: " << value << "\n";
                 return false;
             }
-            options->coreml_max_bpm = parsed;
-        } else if (arg == "--ml-threshold") {
+            options->bpm_max = parsed;
+        } else if (arg == "--threshold") {
             std::string value = require_value(arg.c_str());
             float parsed = 0.0f;
             if (!parse_float(value, &parsed)) {
-                std::cerr << "Invalid ml threshold: " << value << "\n";
+                std::cerr << "Invalid threshold: " << value << "\n";
                 return false;
             }
-            options->coreml_threshold = parsed;
-        } else if (arg == "--ml-gap") {
+            options->activation_threshold = parsed;
+        } else if (arg == "--gap") {
             std::string value = require_value(arg.c_str());
             float parsed = 0.0f;
             if (!parse_float(value, &parsed)) {
-                std::cerr << "Invalid ml gap tolerance: " << value << "\n";
+                std::cerr << "Invalid gap tolerance: " << value << "\n";
                 return false;
             }
-            options->coreml_gap_tolerance = parsed;
-        } else if (arg == "--ml-offbeat") {
+            options->gap_tolerance = parsed;
+        } else if (arg == "--offbeat") {
             std::string value = require_value(arg.c_str());
             float parsed = 0.0f;
             if (!parse_float(value, &parsed)) {
-                std::cerr << "Invalid ml offbeat tolerance: " << value << "\n";
+                std::cerr << "Invalid offbeat tolerance: " << value << "\n";
                 return false;
             }
-            options->coreml_offbeat_tolerance = parsed;
-        } else if (arg == "--ml-preset") {
-            options->coreml_preset = require_value(arg.c_str());
-        } else if (arg == "--ml-beattrack") {
-            options->coreml_preset = "beattrack";
-        } else if (arg == "--ml-beatthis") {
-            options->coreml_preset = "beatthis";
-        } else if (arg == "--ml-dbn") {
-            options->coreml_use_dbn = true;
-            options->coreml_use_dbn_set = true;
-        } else if (arg == "--ml-no-dbn") {
-            options->coreml_disable_dbn = true;
-            options->coreml_use_dbn = false;
-            options->coreml_use_dbn_set = true;
+            options->offbeat_tolerance = parsed;
+        } else if (arg == "--preset") {
+            options->preset = require_value(arg.c_str());
+        } else if (arg == "--beattrack") {
+            options->preset = "beattrack";
+        } else if (arg == "--beatthis") {
+            options->preset = "beatthis";
+        } else if (arg == "--dbn") {
+            options->use_dbn = true;
+            options->use_dbn_set = true;
+        } else if (arg == "--no-dbn") {
+            options->disable_dbn = true;
+            options->use_dbn = false;
+            options->use_dbn_set = true;
             options->beatthis_use_dbn = false;
-        } else if (arg == "--ml-output-latency") {
+        } else if (arg == "--output-latency") {
             std::string value = require_value(arg.c_str());
             double parsed = 0.0;
             if (!parse_double(value, &parsed)) {
-                std::cerr << "Invalid ml output latency: " << value << "\n";
+                std::cerr << "Invalid output latency: " << value << "\n";
                 return false;
             }
-            options->coreml_output_latency_seconds = parsed;
-        } else if (arg == "--ml-activations-window") {
+            options->output_latency_seconds = parsed;
+        } else if (arg == "--activations-window") {
             std::string start = require_value(arg.c_str());
             std::string end = require_value(arg.c_str());
             try {
-                options->coreml_debug_activations_start_s = std::stod(start);
-                options->coreml_debug_activations_end_s = std::stod(end);
+                options->debug_activations_start_s = std::stod(start);
+                options->debug_activations_end_s = std::stod(end);
             } catch (...) {
-                std::cerr << "Invalid ml activations window: " << start
+                std::cerr << "Invalid activations window: " << start
                           << " " << end << "\n";
                 return false;
             }
-        } else if (arg == "--ml-activations-max") {
+        } else if (arg == "--activations-max") {
             std::string value = require_value(arg.c_str());
-            if (!parse_size_t(value, &options->coreml_debug_activations_max)) {
-                std::cerr << "Invalid ml activations max: " << value << "\n";
+            if (!parse_size_t(value, &options->debug_activations_max)) {
+                std::cerr << "Invalid activations max: " << value << "\n";
                 return false;
             }
-        } else if (arg == "--ml-refine-constant") {
-            options->coreml_constant_refine = true;
-        } else if (arg == "--ml-refine-csv") {
-            options->coreml_refine_csv = true;
-        } else if (arg == "--ml-refine-downbeat") {
-            options->coreml_refine_downbeat_anchor = true;
-        } else if (arg == "--ml-refine-halfbeat") {
-            options->coreml_refine_halfbeat = true;
-        } else if (arg == "--ml-refine-lowfreq") {
+        } else if (arg == "--refine-constant") {
+            options->constant_refine = true;
+        } else if (arg == "--refine-csv") {
+            options->refine_csv = true;
+        } else if (arg == "--refine-downbeat") {
+            options->refine_downbeat_anchor = true;
+        } else if (arg == "--refine-halfbeat") {
+            options->refine_halfbeat = true;
+        } else if (arg == "--refine-lowfreq") {
             std::string value = require_value(arg.c_str());
-            if (!parse_float(value, &options->coreml_refine_lowfreq)) {
-                std::cerr << "Invalid ml refine lowfreq weight: " << value << "\n";
+            if (!parse_float(value, &options->refine_lowfreq)) {
+                std::cerr << "Invalid refine lowfreq weight: " << value << "\n";
                 return false;
             }
-        } else if (arg == "--ml-verbose") {
-            options->coreml_verbose = true;
-        } else if (arg == "--ml-cpu-only") {
-            options->coreml_cpu_only = true;
-        } else if (arg == "--ml-info") {
-            options->coreml_info = true;
+        } else if (arg == "--log-level") {
+            options->log_level = require_value(arg.c_str());
+        } else if (arg == "--cpu-only") {
+            options->cpu_only = true;
+        } else if (arg == "--model-info") {
+            options->model_info = true;
         } else if (arg == "--info") {
             options->info = true;
         } else {
@@ -354,9 +355,9 @@ bool parse_args(int argc, char** argv, CliOptions* options) {
         print_usage(argv[0]);
         return false;
     }
-    if (options->coreml_min_bpm && options->coreml_max_bpm &&
-        *options->coreml_min_bpm > *options->coreml_max_bpm) {
-        std::cerr << "Invalid bpm range: ml-min-bpm must be <= ml-max-bpm\n";
+    if (options->bpm_min && options->bpm_max &&
+        *options->bpm_min > *options->bpm_max) {
+        std::cerr << "Invalid bpm range: min-bpm must be <= max-bpm\n";
         return false;
     }
 
@@ -545,79 +546,96 @@ int main(int argc, char** argv) {
         return 1;
     }
     const auto decode_end = std::chrono::steady_clock::now();
-    beatit::CoreMLConfig ml_config;
+    beatit::CoreMLConfig config;
     beatit::CoreMLConfig::Backend requested_backend =
         beatit::CoreMLConfig::Backend::CoreML;
-    if (options.ml_backend == "beatthis") {
+    if (options.backend == "beatthis") {
         requested_backend = beatit::CoreMLConfig::Backend::BeatThisExternal;
-    } else if (options.ml_backend == "torch") {
+    } else if (options.backend == "torch") {
         requested_backend = beatit::CoreMLConfig::Backend::Torch;
-    } else if (options.ml_backend != "coreml") {
-        std::cerr << "Unknown --ml-backend: " << options.ml_backend << "\n";
+    } else if (options.backend != "coreml") {
+        std::cerr << "Unknown --backend: " << options.backend << "\n";
         return 1;
     }
 
-    if (!options.coreml_preset.empty()) {
+    if (!options.preset.empty()) {
         std::unique_ptr<beatit::CoreMLPreset> preset =
-            beatit::make_coreml_preset(options.coreml_preset);
+            beatit::make_coreml_preset(options.preset);
         if (!preset) {
-            std::cerr << "Unknown CoreML preset: " << options.coreml_preset << "\n";
+            std::cerr << "Unknown CoreML preset: " << options.preset << "\n";
             return 1;
         }
         if (requested_backend != beatit::CoreMLConfig::Backend::BeatThisExternal) {
-            preset->apply(ml_config);
+            preset->apply(config);
         }
     }
 
-    ml_config.backend = requested_backend;
+    config.backend = requested_backend;
 
     // Explicit CLI model/io names must override preset values.
-    if (!options.coreml_model_path.empty()) {
-        ml_config.model_path = options.coreml_model_path;
+    if (!options.model_path.empty()) {
+        config.model_path = options.model_path;
     }
-    if (!options.coreml_input_name.empty()) {
-        ml_config.input_name = options.coreml_input_name;
+    if (!options.input_name.empty()) {
+        config.input_name = options.input_name;
     }
-    if (!options.coreml_beat_name.empty()) {
-        ml_config.beat_output_name = options.coreml_beat_name;
+    if (!options.beat_name.empty()) {
+        config.beat_output_name = options.beat_name;
     }
-    if (!options.coreml_downbeat_name.empty()) {
-        ml_config.downbeat_output_name = options.coreml_downbeat_name;
+    if (!options.downbeat_name.empty()) {
+        config.downbeat_output_name = options.downbeat_name;
     }
-    if (options.coreml_min_bpm) {
-        ml_config.min_bpm = *options.coreml_min_bpm;
+    if (options.bpm_min) {
+        config.min_bpm = *options.bpm_min;
     }
-    if (options.coreml_max_bpm) {
-        ml_config.max_bpm = *options.coreml_max_bpm;
+    if (options.bpm_max) {
+        config.max_bpm = *options.bpm_max;
     }
-    if (options.coreml_threshold) {
-        ml_config.activation_threshold = *options.coreml_threshold;
+    if (options.activation_threshold) {
+        config.activation_threshold = *options.activation_threshold;
     }
-    if (options.coreml_gap_tolerance) {
-        ml_config.gap_tolerance = *options.coreml_gap_tolerance;
+    if (options.gap_tolerance) {
+        config.gap_tolerance = *options.gap_tolerance;
     }
-    if (options.coreml_offbeat_tolerance) {
-        ml_config.offbeat_tolerance = *options.coreml_offbeat_tolerance;
+    if (options.offbeat_tolerance) {
+        config.offbeat_tolerance = *options.offbeat_tolerance;
     }
-    if (options.coreml_output_latency_seconds) {
-        ml_config.output_latency_seconds = *options.coreml_output_latency_seconds;
+    if (options.output_latency_seconds) {
+        config.output_latency_seconds = *options.output_latency_seconds;
     }
-    ml_config.debug_activations_start_s = options.coreml_debug_activations_start_s;
-    ml_config.debug_activations_end_s = options.coreml_debug_activations_end_s;
-    ml_config.debug_activations_max = options.coreml_debug_activations_max;
-    ml_config.verbose = options.coreml_verbose || options.info;
-    if (options.coreml_cpu_only) {
-        ml_config.compute_units = beatit::CoreMLConfig::ComputeUnits::CPUOnly;
+    config.debug_activations_start_s = options.debug_activations_start_s;
+    config.debug_activations_end_s = options.debug_activations_end_s;
+    config.debug_activations_max = options.debug_activations_max;
+    config.profile = options.info;
+    config.log_verbosity = options.info ? beatit::LogVerbosity::Info
+                                           : beatit::LogVerbosity::Warn;
+    if (options.log_level) {
+        const std::string level = *options.log_level;
+        if (level == "error") {
+            config.log_verbosity = beatit::LogVerbosity::Error;
+        } else if (level == "warn" || level == "warning") {
+            config.log_verbosity = beatit::LogVerbosity::Warn;
+        } else if (level == "info") {
+            config.log_verbosity = beatit::LogVerbosity::Info;
+        } else if (level == "debug") {
+            config.log_verbosity = beatit::LogVerbosity::Debug;
+        } else {
+            std::cerr << "Invalid --log-level: " << level << "\n";
+            return 1;
+        }
     }
-    if (options.coreml_use_dbn_set) {
-        ml_config.use_dbn = options.coreml_use_dbn;
+    if (options.cpu_only) {
+        config.compute_units = beatit::CoreMLConfig::ComputeUnits::CPUOnly;
     }
-    if (options.coreml_disable_dbn) {
-        ml_config.use_dbn = false;
-        ml_config.dbn_use_downbeat = false;
+    if (options.use_dbn_set) {
+        config.use_dbn = options.use_dbn;
     }
-    if (options.coreml_info && ml_config.backend == beatit::CoreMLConfig::Backend::CoreML) {
-        const beatit::CoreMLMetadata metadata = beatit::load_coreml_metadata(ml_config);
+    if (options.disable_dbn) {
+        config.use_dbn = false;
+        config.dbn_use_downbeat = false;
+    }
+    if (options.model_info && config.backend == beatit::CoreMLConfig::Backend::CoreML) {
+        const beatit::CoreMLMetadata metadata = beatit::load_coreml_metadata(config);
         std::cout << "CoreML metadata:\n";
         if (!metadata.author.empty()) {
             std::cout << "  Author: " << metadata.author << "\n";
@@ -638,49 +656,49 @@ int main(int argc, char** argv) {
             }
         }
     }
-    if (ml_config.backend == beatit::CoreMLConfig::Backend::BeatThisExternal) {
+    if (config.backend == beatit::CoreMLConfig::Backend::BeatThisExternal) {
         if (!options.beatthis_python.empty()) {
-            ml_config.beatthis_python = options.beatthis_python;
+            config.beatthis_python = options.beatthis_python;
         }
-        ml_config.beatthis_script = options.beatthis_script;
-        ml_config.beatthis_checkpoint = options.beatthis_checkpoint;
-        ml_config.beatthis_use_dbn = options.beatthis_use_dbn;
-        ml_config.beatthis_fps = options.beatthis_fps;
+        config.beatthis_script = options.beatthis_script;
+        config.beatthis_checkpoint = options.beatthis_checkpoint;
+        config.beatthis_use_dbn = options.beatthis_use_dbn;
+        config.beatthis_fps = options.beatthis_fps;
 
-        if (ml_config.beatthis_script.empty()) {
+        if (config.beatthis_script.empty()) {
             const std::filesystem::path fallback =
                 std::filesystem::current_path() / "training" / "beatthis_infer.py";
             if (std::filesystem::exists(fallback)) {
-                ml_config.beatthis_script = fallback.string();
+                config.beatthis_script = fallback.string();
             }
         }
-        if (ml_config.beatthis_checkpoint.empty()) {
+        if (config.beatthis_checkpoint.empty()) {
             const std::filesystem::path fallback =
                 std::filesystem::current_path() / "third_party" / "beat_this" / "beat_this-final0.ckpt";
             if (std::filesystem::exists(fallback)) {
-                ml_config.beatthis_checkpoint = fallback.string();
+                config.beatthis_checkpoint = fallback.string();
             }
         }
 
-        if (ml_config.beatthis_script.empty() || ml_config.beatthis_checkpoint.empty()) {
+        if (config.beatthis_script.empty() || config.beatthis_checkpoint.empty()) {
             std::cerr << "BeatThis backend requires --beatthis-script and --beatthis-checkpoint.\n";
             return 1;
         }
     }
-    if (ml_config.backend == beatit::CoreMLConfig::Backend::Torch) {
-        ml_config.torch_model_path = options.torch_model_path;
+    if (config.backend == beatit::CoreMLConfig::Backend::Torch) {
+        config.torch_model_path = options.torch_model_path;
         if (!options.torch_device.empty()) {
-            ml_config.torch_device = options.torch_device;
+            config.torch_device = options.torch_device;
         }
-        ml_config.torch_fps = options.torch_fps;
-        if (ml_config.torch_model_path.empty()) {
+        config.torch_fps = options.torch_fps;
+        if (config.torch_model_path.empty()) {
             std::cerr << "Torch backend requires --torch-model.\n";
             return 1;
         }
     }
 
     const auto analyze_start = std::chrono::steady_clock::now();
-    beatit::AnalysisResult result = beatit::analyze(audio.samples, audio.sample_rate, ml_config);
+    beatit::AnalysisResult result = beatit::analyze(audio.samples, audio.sample_rate, config);
     const auto analyze_end = std::chrono::steady_clock::now();
 
     if (options.info) {
@@ -692,9 +710,9 @@ int main(int argc, char** argv) {
     }
 
     if (result.coreml_beat_activation.empty() && result.coreml_downbeat_activation.empty()) {
-        if (ml_config.backend == beatit::CoreMLConfig::Backend::BeatThisExternal) {
+        if (config.backend == beatit::CoreMLConfig::Backend::BeatThisExternal) {
             std::cout << "BeatThis: no output (backend missing or incompatible).\n";
-        } else if (ml_config.backend == beatit::CoreMLConfig::Backend::Torch) {
+        } else if (config.backend == beatit::CoreMLConfig::Backend::Torch) {
             std::cout << "Torch: no output (backend missing or incompatible).\n";
         } else {
             std::cout << "CoreML: no output (model missing or incompatible).\n";
@@ -749,23 +767,23 @@ int main(int argc, char** argv) {
     };
 
     const char* backend_label = "CoreML";
-    if (ml_config.backend == beatit::CoreMLConfig::Backend::BeatThisExternal) {
+    if (config.backend == beatit::CoreMLConfig::Backend::BeatThisExternal) {
         backend_label = "BeatThis";
-    } else if (ml_config.backend == beatit::CoreMLConfig::Backend::Torch) {
+    } else if (config.backend == beatit::CoreMLConfig::Backend::Torch) {
         backend_label = "Torch";
     }
 
     const double anchor_peaks =
         beatit::estimate_bpm_from_activation(result.coreml_beat_activation,
-                                             ml_config,
+                                             config,
                                              audio.sample_rate);
     const double anchor_autocorr =
         beatit::estimate_bpm_from_activation_autocorr(result.coreml_beat_activation,
-                                                      ml_config,
+                                                      config,
                                                       audio.sample_rate);
     const double anchor_comb =
         beatit::estimate_bpm_from_activation_comb(result.coreml_beat_activation,
-                                                  ml_config,
+                                                  config,
                                                   audio.sample_rate);
     const double anchor_beats =
         beatit::estimate_bpm_from_beats(result.coreml_beat_sample_frames, audio.sample_rate);
@@ -826,10 +844,11 @@ int main(int argc, char** argv) {
               << "beats=" << result.coreml_beat_feature_frames.size()
               << " downbeats=" << result.coreml_downbeat_feature_frames.size()
               << " activations=" << result.coreml_beat_activation.size()
-              << " threshold=" << ml_config.activation_threshold
-              << " window_hop=" << ml_config.window_hop_frames
-              << " fixed_frames=" << ml_config.fixed_frames
+              << " threshold=" << config.activation_threshold
+              << " window_hop=" << config.window_hop_frames
+              << " fixed_frames=" << config.fixed_frames
               << "\n";
+    const bool debug_enabled = beatit_should_log("debug");
 
     if (!result.coreml_downbeat_feature_frames.empty()) {
         const auto& beat_frames = result.coreml_beat_feature_frames;
@@ -838,12 +857,12 @@ int main(int argc, char** argv) {
 
         const unsigned long long downbeat_feature_frame = downbeat_frames.front();
         double fps = 0.0;
-        if (ml_config.backend == beatit::CoreMLConfig::Backend::Torch) {
-            fps = ml_config.torch_fps;
-        } else if (ml_config.backend == beatit::CoreMLConfig::Backend::BeatThisExternal) {
-            fps = ml_config.beatthis_fps;
-        } else if (ml_config.hop_size > 0 && ml_config.sample_rate > 0) {
-            fps = static_cast<double>(ml_config.sample_rate) / ml_config.hop_size;
+        if (config.backend == beatit::CoreMLConfig::Backend::Torch) {
+            fps = config.torch_fps;
+        } else if (config.backend == beatit::CoreMLConfig::Backend::BeatThisExternal) {
+            fps = config.beatthis_fps;
+        } else if (config.hop_size > 0 && config.sample_rate > 0) {
+            fps = static_cast<double>(config.sample_rate) / config.hop_size;
         }
 
         double downbeat_s = 0.0;
@@ -871,7 +890,7 @@ int main(int argc, char** argv) {
 
         std::cout << "\n";
 
-        if (ml_config.verbose) {
+        if (debug_enabled) {
             std::unordered_map<unsigned long long, unsigned long long> feature_to_sample;
             feature_to_sample.reserve(beat_frames.size());
             for (std::size_t i = 0; i < beat_frames.size(); ++i) {
@@ -923,25 +942,25 @@ int main(int argc, char** argv) {
         const float floor_threshold = 0.01f;
         float max_activation_first2s = 0.0f;
         for (float value : result.coreml_beat_activation) {
-            if (value >= ml_config.activation_threshold) {
+            if (value >= config.activation_threshold) {
                 ++above_threshold;
             }
             max_activation = std::max(max_activation, value);
             sum_activation += value;
         }
 
-        const double hop_scale = ml_config.sample_rate > 0.0
-            ? (audio.sample_rate / static_cast<double>(ml_config.sample_rate))
+        const double hop_scale = config.sample_rate > 0.0
+            ? (audio.sample_rate / static_cast<double>(config.sample_rate))
             : 1.0;
 
-        if (ml_config.verbose) {
+        if (debug_enabled) {
             std::vector<std::size_t> peaks;
             if (result.coreml_beat_activation.size() >= 3) {
                 for (std::size_t i = 1; i + 1 < result.coreml_beat_activation.size(); ++i) {
                     const float prev = result.coreml_beat_activation[i - 1];
                     const float curr = result.coreml_beat_activation[i];
                     const float next = result.coreml_beat_activation[i + 1];
-                    if (curr >= ml_config.activation_threshold && curr >= prev && curr >= next) {
+                    if (curr >= config.activation_threshold && curr >= prev && curr >= next) {
                         peaks.push_back(i);
                     }
                     if (curr >= floor_threshold && first_floor_idx == result.coreml_beat_activation.size()) {
@@ -952,12 +971,12 @@ int main(int argc, char** argv) {
             if (!peaks.empty()) {
                 first_peak_idx = peaks.front();
                 const double sample_pos =
-                    static_cast<double>(first_peak_idx * ml_config.hop_size) * hop_scale;
+                    static_cast<double>(first_peak_idx * config.hop_size) * hop_scale;
                 first_peak_sample = static_cast<unsigned long long>(std::llround(sample_pos));
             }
             if (first_floor_idx < result.coreml_beat_activation.size()) {
                 const double sample_pos =
-                    static_cast<double>(first_floor_idx * ml_config.hop_size) * hop_scale;
+                    static_cast<double>(first_floor_idx * config.hop_size) * hop_scale;
                 first_floor_sample = static_cast<unsigned long long>(std::llround(sample_pos));
             }
 
@@ -965,7 +984,7 @@ int main(int argc, char** argv) {
                 static_cast<std::size_t>(std::max(0.0, audio.sample_rate * 2.0));
             for (std::size_t i = 0; i < result.coreml_beat_activation.size(); ++i) {
                 const double sample_pos =
-                    static_cast<double>(i * ml_config.hop_size) * hop_scale;
+                    static_cast<double>(i * config.hop_size) * hop_scale;
                 if (sample_pos > static_cast<double>(max_samples)) {
                     continue;
                 }
@@ -980,7 +999,7 @@ int main(int argc, char** argv) {
                   << " max=" << max_activation
                   << " above_threshold=" << above_threshold
                   << "\n";
-        if (ml_config.verbose && first_peak_idx < result.coreml_beat_activation.size()) {
+        if (debug_enabled && first_peak_idx < result.coreml_beat_activation.size()) {
             double first_peak_s = 0.0;
             if (audio.sample_rate > 0.0) {
                 first_peak_s = static_cast<double>(first_peak_sample) / audio.sample_rate;
@@ -990,7 +1009,7 @@ int main(int argc, char** argv) {
                       << " sample_frame=" << first_peak_sample
                       << " (s " << first_peak_s << ")\n";
         }
-        if (ml_config.verbose && first_floor_idx < result.coreml_beat_activation.size()) {
+        if (debug_enabled && first_floor_idx < result.coreml_beat_activation.size()) {
             double first_floor_s = 0.0;
             if (audio.sample_rate > 0.0) {
                 first_floor_s = static_cast<double>(first_floor_sample) / audio.sample_rate;
@@ -1002,7 +1021,7 @@ int main(int argc, char** argv) {
             std::cout << backend_label << " max beat activation (first 2s): "
                       << max_activation_first2s << "\n";
         }
-        if (ml_config.verbose && !result.coreml_beat_feature_frames.empty()) {
+        if (debug_enabled && !result.coreml_beat_feature_frames.empty()) {
             const std::size_t dump_count =
                 std::min<std::size_t>(10, result.coreml_beat_feature_frames.size());
             std::cout << backend_label << " beat frame->sample map (first "
@@ -1024,14 +1043,14 @@ int main(int argc, char** argv) {
             }
             std::cout << "\n";
         }
-        if (ml_config.verbose) {
+        if (debug_enabled) {
             const std::size_t dump_count =
                 std::min<std::size_t>(10, result.coreml_beat_activation.size());
             std::cout << backend_label << " activation->sample map (first "
                       << dump_count << "):";
             for (std::size_t i = 0; i < dump_count; ++i) {
                 const double sample_pos =
-                    static_cast<double>(i * ml_config.hop_size) * hop_scale;
+                    static_cast<double>(i * config.hop_size) * hop_scale;
                 const auto sample_frame =
                     static_cast<unsigned long long>(std::llround(sample_pos));
                 double seconds = 0.0;
@@ -1050,17 +1069,17 @@ int main(int argc, char** argv) {
         print_bpm_stats(result.coreml_beat_sample_frames, backend_label);
     }
 
-    if (options.coreml_constant_refine) {
+    if (options.constant_refine) {
         beatit::ConstantBeatRefinerConfig refiner_config;
-        refiner_config.use_downbeat_anchor = options.coreml_refine_downbeat_anchor;
-        refiner_config.use_half_beat_correction = options.coreml_refine_halfbeat;
-        if (options.coreml_refine_lowfreq >= 0.0f) {
-            refiner_config.low_freq_weight = options.coreml_refine_lowfreq;
+        refiner_config.use_downbeat_anchor = options.refine_downbeat_anchor;
+        refiner_config.use_half_beat_correction = options.refine_halfbeat;
+        if (options.refine_lowfreq >= 0.0f) {
+            refiner_config.low_freq_weight = options.refine_lowfreq;
         }
         beatit::ConstantBeatResult refined =
             beatit::refine_constant_beats(result.coreml_beat_feature_frames,
                                           result.coreml_beat_activation.size(),
-                                          ml_config,
+                                          config,
                                           audio.sample_rate,
                                           0,
                                           refiner_config,
@@ -1091,7 +1110,7 @@ int main(int argc, char** argv) {
                 print_bpm_stats(refined.beat_sample_frames, "Constant");
             }
 
-            if (options.coreml_refine_csv) {
+            if (options.refine_csv) {
                 write_beat_events_csv(std::cout,
                                       refined.beat_events,
                                       true,

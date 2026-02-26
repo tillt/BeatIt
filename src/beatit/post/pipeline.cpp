@@ -23,7 +23,6 @@
 #include <cmath>
 #include <cstddef>
 #include <iomanip>
-#include <iostream>
 #include <limits>
 #include <numeric>
 #include <string>
@@ -135,15 +134,16 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
         const double floor_value = epsilon / 2.0;
         std::size_t emitted = 0;
 
-        std::cerr << "Activation window: start=" << config.debug_activations_start_s
-                  << "s end=" << config.debug_activations_end_s
-                  << "s fps=" << fps
-                  << " hop=" << config.hop_size
-                  << " hop_scale=" << hop_scale
-                  << " frames=[" << start_frame << "," << end_frame << "]\n";
-        std::cerr << "Activations (frame,time_s,sample_frame,"
-                  << "beat_raw,downbeat_raw,beat_prob,downbeat_prob,combined)\n";
-        std::cerr << std::fixed << std::setprecision(6);
+        auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
+        debug_stream << std::fixed << std::setprecision(6);
+        debug_stream << "Activation window: start=" << config.debug_activations_start_s
+                     << "s end=" << config.debug_activations_end_s
+                     << "s fps=" << fps
+                     << " hop=" << config.hop_size
+                     << " hop_scale=" << hop_scale
+                     << " frames=[" << start_frame << "," << end_frame << "]\n";
+        debug_stream << "Activations (frame,time_s,sample_frame,"
+                     << "beat_raw,downbeat_raw,beat_prob,downbeat_prob,combined)\n";
         for (std::size_t frame = start_frame; frame <= end_frame; ++frame) {
             const float beat_raw = result.beat_activation[frame];
             const float downbeat_raw =
@@ -158,16 +158,17 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
             }
             const double time_s = static_cast<double>(frame) / fps;
             const double sample_pos = static_cast<double>(frame * config.hop_size) * hop_scale;
-            std::cerr << frame << "," << time_s << "," << static_cast<unsigned long long>(std::llround(sample_pos))
-                      << "," << beat_raw << "," << downbeat_raw
-                      << "," << beat_prob << "," << downbeat_prob << "," << combined << "\n";
+            debug_stream << frame << "," << time_s << ","
+                         << static_cast<unsigned long long>(std::llround(sample_pos))
+                         << "," << beat_raw << "," << downbeat_raw
+                         << "," << beat_prob << "," << downbeat_prob << "," << combined << "\n";
             if (config.debug_activations_max > 0 &&
                 ++emitted >= config.debug_activations_max) {
-                std::cerr << "Activations truncated at " << emitted << " rows\n";
+                debug_stream << "Activations truncated at " << emitted << " rows\n";
                 break;
             }
         }
-        std::cerr << std::defaultfloat;
+        debug_stream << std::defaultfloat;
     }
 
     constexpr std::size_t kRefineWindow = 2;

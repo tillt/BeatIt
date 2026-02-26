@@ -175,8 +175,9 @@ int main() {
         preset->apply(config);
     }
     config.prepend_silence_seconds = 0.0;
-    if (const char* verbose = std::getenv("BEATIT_VERBOSE"); verbose && verbose[0] != '\0') {
-        config.verbose = true;
+    if (const char* log_level = std::getenv("BEATIT_LOG_LEVEL");
+        log_level && std::string(log_level) == "debug") {
+        config.log_verbosity = beatit::LogVerbosity::Debug;
     }
 
     std::filesystem::path test_root;

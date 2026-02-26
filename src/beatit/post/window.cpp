@@ -9,11 +9,11 @@
 #include "beatit/post/window.h"
 
 #include "beatit/post/helpers.h"
+#include "beatit/logging.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <iostream>
 #include <limits>
 #include <unordered_map>
 
@@ -308,12 +308,12 @@ std::pair<std::size_t, std::size_t> infer_bpb_phase(const std::vector<std::size_
         return std::make_pair(best_bpb, best_phase);
     }
     if (config.dbn_trace) {
-        std::cerr << "DBN bpb inference: beats=" << beats.size()
-                  << " downbeats=" << downbeats.size() << " candidates=";
+        auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
+        debug_stream << "DBN bpb inference: beats=" << beats.size()
+                     << " downbeats=" << downbeats.size() << " candidates=";
         for (std::size_t bpb : candidates) {
-            std::cerr << " " << bpb;
+            debug_stream << " " << bpb;
         }
-        std::cerr << "\n";
     }
     std::unordered_map<std::size_t, std::size_t> beat_index;
     beat_index.reserve(beats.size());
@@ -343,9 +343,9 @@ std::pair<std::size_t, std::size_t> infer_bpb_phase(const std::vector<std::size_
         hits_by_bpb[bpb] = hits;
         phase_by_bpb[bpb] = phase;
         if (config.dbn_trace) {
-            std::cerr << "DBN bpb inference: bpb=" << bpb
-                      << " phase=" << phase
-                      << " hits=" << hits << "\n";
+            BEATIT_LOG_DEBUG("DBN bpb inference: bpb=" << bpb
+                             << " phase=" << phase
+                             << " hits=" << hits);
         }
         if (hits > best_hits) {
             best_hits = hits;
@@ -362,15 +362,15 @@ std::pair<std::size_t, std::size_t> infer_bpb_phase(const std::vector<std::size_
             best_phase = phase_by_bpb[4];
             best_hits = hits_by_bpb[4];
             if (config.dbn_trace) {
-                std::cerr << "DBN bpb inference: biasing to 4/4 (hits3="
-                          << hits3 << " hits4=" << hits4 << ")\n";
+                BEATIT_LOG_DEBUG("DBN bpb inference: biasing to 4/4 (hits3="
+                                 << hits3 << " hits4=" << hits4 << ")");
             }
         }
     }
     if (config.dbn_trace) {
-        std::cerr << "DBN bpb inference: best_bpb=" << best_bpb
-                  << " best_phase=" << best_phase
-                  << " best_hits=" << best_hits << "\n";
+        BEATIT_LOG_DEBUG("DBN bpb inference: best_bpb=" << best_bpb
+                         << " best_phase=" << best_phase
+                         << " best_hits=" << best_hits);
     }
     return std::make_pair(best_bpb, best_phase);
 }
@@ -394,8 +394,7 @@ std::vector<std::size_t> project_downbeats_from_beats(const std::vector<std::siz
 std::size_t guard_projected_downbeat_phase(const std::vector<std::size_t>& projected_frames,
                                            const std::vector<float>& downbeat_activation,
                                            std::size_t projected_bpb,
-                                           std::size_t inferred_phase,
-                                           bool verbose) {
+                                           std::size_t inferred_phase) {
     if (projected_frames.empty() ||
         projected_bpb < 2 ||
         downbeat_activation.empty()) {
@@ -448,14 +447,11 @@ std::size_t guard_projected_downbeat_phase(const std::vector<std::size_t>& proje
         inferred_score > (phase0_score + 0.06) &&
         inferred_score > (phase0_score * 1.15);
     if (best_phase == 0 && normalized_inferred_phase != 0 && !inferred_strong) {
-        if (verbose) {
-            std::cerr << "DBN projected phase guard: inferred_phase="
-                      << normalized_inferred_phase
-                      << " inferred_score=" << inferred_score
-                      << " phase0_score=" << phase0_score
-                      << " selected_phase=0"
-                      << "\n";
-        }
+        BEATIT_LOG_DEBUG("DBN projected phase guard: inferred_phase="
+                         << normalized_inferred_phase
+                         << " inferred_score=" << inferred_score
+                         << " phase0_score=" << phase0_score
+                         << " selected_phase=0");
         return 0;
     }
 

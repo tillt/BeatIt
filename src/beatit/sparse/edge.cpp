@@ -19,7 +19,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
-#include <iostream>
 #include <limits>
 #include <utility>
 #include <vector>
@@ -32,7 +31,6 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
     if (!params.config || !params.provider || !params.probes) {
         return;
     }
-    const CoreMLConfig& original_config = *params.config;
     const SparseSampleProvider& provider = *params.provider;
     const std::vector<SparseProbeObservation>& probes = *params.probes;
     const double sample_rate = params.sample_rate;
@@ -431,41 +429,39 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
             ? ((0.40 * post_global_delta_ms) + post_between_abs_ms + post_middle_abs_ms)
             : std::numeric_limits<double>::infinity();
 
-    if (original_config.verbose) {
-        const double err_delta_frames =
-            ((outro.median_ms - intro.median_ms) * sample_rate) / 1000.0;
-        BEATIT_LOG_DEBUG("Sparse edge refit:"
-                         << " second_pass=" << (second_pass_enabled ? 1 : 0)
-                         << " first_probe_start_s=" << first_probe_start
-                         << " last_probe_start_s=" << last_probe_start
-                         << " first_window_start_s=" << first_window_start
-                         << " last_window_start_s=" << last_window_start
-                         << " quality_shift_rounds=" << quality_shift_rounds
-                         << " intro_ms=" << intro.median_ms
-                         << " outro_ms=" << outro.median_ms
-                         << " post_intro_ms=" << post_intro.median_ms
-                         << " post_outro_ms=" << post_outro.median_ms
-                         << " global_intro_ms=" << global_intro.median_ms
-                         << " global_outro_ms=" << global_outro.median_ms
-                         << " pre_global_delta_ms=" << pre_global_delta_ms
-                         << " post_global_delta_ms=" << post_global_delta_ms
-                         << " pre_between_abs_ms=" << pre_between_abs_ms
-                         << " pre_middle_abs_ms=" << pre_middle_abs_ms
-                         << " post_between_abs_ms=" << post_between_abs_ms
-                         << " post_middle_abs_ms=" << post_middle_abs_ms
-                         << " pre_phase_score=" << pre_phase_score
-                         << " post_phase_score=" << post_phase_score
-                         << " phase_try_base_score=" << phase_try.base_score
-                         << " phase_try_minus_score=" << phase_try.minus_score
-                         << " phase_try_plus_score=" << phase_try.plus_score
-                         << " phase_try_selected=" << phase_try.selected
-                         << " phase_try_applied=" << (phase_try.applied ? 1 : 0)
-                         << " global_ratio_applied=" << global_guard_ratio
-                         << " delta_frames=" << err_delta_frames
-                         << " ratio=" << ratio
-                         << " ratio_applied=" << applied_ratio
-                         << " beats=" << projected->size());
-    }
+    const double err_delta_frames =
+        ((outro.median_ms - intro.median_ms) * sample_rate) / 1000.0;
+    BEATIT_LOG_DEBUG("Sparse edge refit:"
+                     << " second_pass=" << (second_pass_enabled ? 1 : 0)
+                     << " first_probe_start_s=" << first_probe_start
+                     << " last_probe_start_s=" << last_probe_start
+                     << " first_window_start_s=" << first_window_start
+                     << " last_window_start_s=" << last_window_start
+                     << " quality_shift_rounds=" << quality_shift_rounds
+                     << " intro_ms=" << intro.median_ms
+                     << " outro_ms=" << outro.median_ms
+                     << " post_intro_ms=" << post_intro.median_ms
+                     << " post_outro_ms=" << post_outro.median_ms
+                     << " global_intro_ms=" << global_intro.median_ms
+                     << " global_outro_ms=" << global_outro.median_ms
+                     << " pre_global_delta_ms=" << pre_global_delta_ms
+                     << " post_global_delta_ms=" << post_global_delta_ms
+                     << " pre_between_abs_ms=" << pre_between_abs_ms
+                     << " pre_middle_abs_ms=" << pre_middle_abs_ms
+                     << " post_between_abs_ms=" << post_between_abs_ms
+                     << " post_middle_abs_ms=" << post_middle_abs_ms
+                     << " pre_phase_score=" << pre_phase_score
+                     << " post_phase_score=" << post_phase_score
+                     << " phase_try_base_score=" << phase_try.base_score
+                     << " phase_try_minus_score=" << phase_try.minus_score
+                     << " phase_try_plus_score=" << phase_try.plus_score
+                     << " phase_try_selected=" << phase_try.selected
+                     << " phase_try_applied=" << (phase_try.applied ? 1 : 0)
+                     << " global_ratio_applied=" << global_guard_ratio
+                     << " delta_frames=" << err_delta_frames
+                     << " ratio=" << ratio
+                     << " ratio_applied=" << applied_ratio
+                     << " beats=" << projected->size());
 }
 
 } // namespace detail

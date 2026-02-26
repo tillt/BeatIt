@@ -7,10 +7,10 @@
 //
 
 #include "beatit/post/helpers.h"
+#include "beatit/logging.hpp"
 
 #include <algorithm>
 #include <cmath>
-#include <iostream>
 #include <limits>
 #include <numeric>
 #include <unordered_map>
@@ -363,8 +363,8 @@ void trace_grid_peak_alignment(const std::vector<std::size_t>& beat_grid,
                                const std::vector<std::size_t>& peaks,
                                const char* label) {
         if (grid.empty() || peaks.empty()) {
-            std::cerr << "DBN align: " << label
-                      << "_peak_offset_s mean=nan std=nan count=0\n";
+            BEATIT_LOG_DEBUG("DBN align: " << label
+                                           << "_peak_offset_s mean=nan std=nan count=0");
             return;
         }
         double sum = 0.0;
@@ -396,11 +396,10 @@ void trace_grid_peak_alignment(const std::vector<std::size_t>& beat_grid,
         const double mean = sum / static_cast<double>(count);
         const double var = (sum_sq / static_cast<double>(count)) - mean * mean;
         const double stddev = var > 0.0 ? std::sqrt(var) : 0.0;
-        std::cerr << "DBN align: " << label
-                  << "_peak_offset_s mean=" << mean
-                  << " std=" << stddev
-                  << " count=" << count
-                  << "\n";
+        BEATIT_LOG_DEBUG("DBN align: " << label
+                                       << "_peak_offset_s mean=" << mean
+                                       << " std=" << stddev
+                                       << " count=" << count);
     };
 
     std::vector<std::size_t> beat_peaks;

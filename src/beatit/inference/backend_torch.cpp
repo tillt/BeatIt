@@ -9,10 +9,10 @@
 #include "beatit/inference/backend_torch.h"
 
 #include "beatit/audio/mel_torch.h"
+#include "beatit/logging.hpp"
 
 #include <algorithm>
 #include <chrono>
-#include <iostream>
 #include <vector>
 
 #include <c10/core/InferenceMode.h>
@@ -42,19 +42,13 @@ bool forward_torch_model(torch::jit::script::Module* module,
                 std::chrono::duration<double, std::milli>(forward_end - forward_start).count();
         }
     } catch (const c10::Error& err) {
-        if (config.verbose) {
-            std::cerr << "Torch backend: forward failed: " << err.what() << "\n";
-        }
+        BEATIT_LOG_ERROR("Torch backend: forward failed: " << err.what());
         return false;
     } catch (const std::exception& err) {
-        if (config.verbose) {
-            std::cerr << "Torch backend: forward exception: " << err.what() << "\n";
-        }
+        BEATIT_LOG_ERROR("Torch backend: forward exception: " << err.what());
         return false;
     } catch (...) {
-        if (config.verbose) {
-            std::cerr << "Torch backend: forward unknown exception\n";
-        }
+        BEATIT_LOG_ERROR("Torch backend: forward unknown exception");
         return false;
     }
     return true;
@@ -88,9 +82,7 @@ bool extract_torch_output_tensors(const torch::IValue& output,
     }
 
     if (!beat_tensor->defined()) {
-        if (config.verbose) {
-            std::cerr << "Torch backend: unexpected output signature.\n";
-        }
+        BEATIT_LOG_ERROR("Torch backend: unexpected output signature.");
         return false;
     }
     return true;
@@ -144,9 +136,7 @@ public:
             }
         }
         if (features.empty() || frames == 0) {
-            if (config.verbose) {
-                std::cerr << "Torch backend: mel feature extraction failed.\n";
-            }
+            BEATIT_LOG_ERROR("Torch backend: mel feature extraction failed.");
             return false;
         }
 
@@ -248,9 +238,7 @@ public:
                 }
             }
             if (features.empty() || frames == 0) {
-                if (config.verbose) {
-                    std::cerr << "Torch backend: mel feature extraction failed.\n";
-                }
+                BEATIT_LOG_ERROR("Torch backend: mel feature extraction failed.");
                 return false;
             }
             if (expected_frames > 0) {
@@ -316,9 +304,7 @@ public:
 
         if (beat_tensor.dim() != 2 || static_cast<std::size_t>(beat_tensor.size(0)) < batch ||
             static_cast<std::size_t>(beat_tensor.size(1)) < expected_frames) {
-            if (config.verbose) {
-                std::cerr << "Torch backend: unexpected beat tensor shape.\n";
-            }
+            BEATIT_LOG_ERROR("Torch backend: unexpected beat tensor shape.");
             return false;
         }
 
@@ -339,9 +325,7 @@ public:
             if (downbeat_tensor.dim() != 2 ||
                 static_cast<std::size_t>(downbeat_tensor.size(0)) < batch ||
                 static_cast<std::size_t>(downbeat_tensor.size(1)) < expected_frames) {
-                if (config.verbose) {
-                    std::cerr << "Torch backend: unexpected downbeat tensor shape.\n";
-                }
+                BEATIT_LOG_ERROR("Torch backend: unexpected downbeat tensor shape.");
                 return false;
             }
             const auto downbeat_cpu = downbeat_tensor.contiguous();
@@ -369,9 +353,7 @@ private:
             return true;
         }
         if (config.torch_model_path.empty()) {
-            if (config.verbose) {
-                std::cerr << "Torch backend: missing model path.\n";
-            }
+            BEATIT_LOG_ERROR("Torch backend: missing model path.");
             return false;
         }
 
@@ -385,9 +367,7 @@ private:
             void* metal = dlopen("/System/Library/Frameworks/Metal.framework/Metal",
                                  RTLD_LAZY);
             if (!metal_graph || !metal_mps || !metal) {
-                if (config.verbose) {
-                    std::cerr << "Torch backend: Metal frameworks missing, MPS unavailable.\n";
-                }
+                BEATIT_LOG_WARN("Torch backend: Metal frameworks missing, MPS unavailable.");
                 torch_state_->device = torch::kCPU;
             } else {
                 dlclose(metal_graph);
@@ -403,29 +383,23 @@ private:
                 try {
                     torch_state_->module.to(torch_state_->device);
                 } catch (const c10::Error& err) {
-                    if (config.verbose) {
-                        std::string message = err.what();
-                        const std::size_t newline = message.find('\n');
-                        if (newline != std::string::npos) {
-                            message = message.substr(0, newline);
-                        }
-                        std::cerr << "Torch backend: device move failed, falling back to cpu: "
-                                  << message << "\n";
+                    std::string message = err.what();
+                    const std::size_t newline = message.find('\n');
+                    if (newline != std::string::npos) {
+                        message = message.substr(0, newline);
                     }
+                    BEATIT_LOG_WARN(
+                        "Torch backend: device move failed, falling back to cpu: " << message);
                     torch_state_->device = torch::kCPU;
                 }
             }
-            if (config.verbose) {
-                std::cerr << "Torch backend: resolved device="
-                          << torch_state_->device.str() << "\n";
-                std::cerr << "Torch backend: mel backend="
-                          << (config.mel_backend == CoreMLConfig::MelBackend::Torch ? "torch" : "cpu")
-                          << "\n";
-            }
+            BEATIT_LOG_DEBUG("Torch backend: resolved device=" << torch_state_->device.str());
+            BEATIT_LOG_DEBUG("Torch backend: mel backend="
+                             << (config.mel_backend == CoreMLConfig::MelBackend::Torch
+                                     ? "torch"
+                                     : "cpu"));
         } catch (const c10::Error& err) {
-            if (config.verbose) {
-                std::cerr << "Torch backend: failed to load model: " << err.what() << "\n";
-            }
+            BEATIT_LOG_ERROR("Torch backend: failed to load model: " << err.what());
             torch_state_.reset();
             return false;
         }
