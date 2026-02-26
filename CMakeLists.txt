@@ -1,5 +1,11 @@
 cmake_minimum_required(VERSION 3.20)
 
+if(APPLE)
+    # Let Apple Clang manage libc++ implicitly; avoid explicit CMake -lc++ injection.
+    set(CMAKE_CXX_STANDARD_LIBRARIES_INIT "")
+    set(CMAKE_OBJCXX_STANDARD_LIBRARIES_INIT "")
+endif()
+
 project(beatit
     VERSION 0.1.0
     DESCRIPTION "A Minimal BPM/beat tracker using CoreML. Lightweight, permissive."
@@ -70,6 +76,11 @@ endif()
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+if(APPLE AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    # Avoid duplicate -lc++ on Apple Clang: driver already injects libc++.
+    set(CMAKE_OBJCXX_IMPLICIT_LINK_LIBRARIES "")
+endif()
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
