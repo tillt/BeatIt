@@ -45,6 +45,55 @@ void BeatitStream::reset_state(bool reset_tempo_anchor) {
     perf_ = {};
 }
 
+bool BeatitStream::can_process_windows() const {
+    return coreml_enabled_ && coreml_config_.fixed_frames > 0 && inference_backend_;
+}
+
+std::size_t BeatitStream::current_window_samples() const {
+    return coreml_config_.frame_size +
+           (coreml_config_.fixed_frames - 1) * coreml_config_.hop_size;
+}
+
+std::size_t BeatitStream::current_hop_samples() const {
+    return coreml_config_.window_hop_frames * coreml_config_.hop_size;
+}
+
+std::vector<float> BeatitStream::make_resampled_window(std::size_t start_offset,
+                                                       std::size_t window_samples) const {
+    std::vector<float> window(window_samples, 0.0f);
+    const float* start_ptr = resampled_buffer_.data() + start_offset;
+    std::copy(start_ptr, start_ptr + window_samples, window.begin());
+    return window;
+}
+
+void BeatitStream::merge_activation_window(std::size_t window_offset,
+                                           std::vector<float>& beat_activation,
+                                           std::vector<float>& downbeat_activation,
+                                           std::size_t border_frames) {
+    detail::trim_activation_to_frames(&beat_activation, coreml_config_.fixed_frames);
+    detail::trim_activation_to_frames(&downbeat_activation, coreml_config_.fixed_frames);
+    detail::merge_window_activations(&coreml_beat_activation_,
+                                     &coreml_downbeat_activation_,
+                                     window_offset,
+                                     coreml_config_.fixed_frames,
+                                     beat_activation,
+                                     downbeat_activation,
+                                     border_frames);
+}
+
+void BeatitStream::advance_window_offsets(std::size_t windows_advanced,
+                                          std::size_t hop_samples,
+                                          std::size_t window_samples) {
+    resampled_offset_ += hop_samples * windows_advanced;
+    coreml_frame_offset_ += coreml_config_.window_hop_frames * windows_advanced;
+
+    if (resampled_offset_ > window_samples) {
+        resampled_buffer_.erase(resampled_buffer_.begin(),
+                                resampled_buffer_.begin() + static_cast<long>(resampled_offset_));
+        resampled_offset_ = 0;
+    }
+}
+
 bool BeatitStream::request_analysis_window(double* start_seconds,
                                            double* duration_seconds) const {
     const bool sparse_dynamic =
@@ -216,18 +265,15 @@ BeatitStream::BeatitStream(double sample_rate,
 }
 
 void BeatitStream::process_coreml_windows() {
-    if (!coreml_enabled_ || coreml_config_.fixed_frames == 0 || !inference_backend_) {
+    if (!can_process_windows()) {
         return;
     }
 
-    const std::size_t window_samples =
-        coreml_config_.frame_size + (coreml_config_.fixed_frames - 1) * coreml_config_.hop_size;
-    const std::size_t hop_samples = coreml_config_.window_hop_frames * coreml_config_.hop_size;
+    const std::size_t window_samples = current_window_samples();
+    const std::size_t hop_samples = current_hop_samples();
 
     while (resampled_buffer_.size() - resampled_offset_ >= window_samples) {
-        std::vector<float> window(window_samples, 0.0f);
-        const float* start_ptr = resampled_buffer_.data() + resampled_offset_;
-        std::copy(start_ptr, start_ptr + window_samples, window.begin());
+        std::vector<float> window = make_resampled_window(resampled_offset_, window_samples);
 
         const auto infer_start = std::chrono::steady_clock::now();
         std::vector<float> beat_activation;
@@ -250,39 +296,21 @@ void BeatitStream::process_coreml_windows() {
                              << " frame_offset=" << coreml_frame_offset_);
             return;
         }
-        detail::trim_activation_to_frames(&beat_activation, coreml_config_.fixed_frames);
-        detail::trim_activation_to_frames(&downbeat_activation, coreml_config_.fixed_frames);
-
-        detail::merge_window_activations(&coreml_beat_activation_,
-                                         &coreml_downbeat_activation_,
-                                         coreml_frame_offset_,
-                                         coreml_config_.fixed_frames,
-                                         beat_activation,
-                                         downbeat_activation,
-                                         0);
-
-        resampled_offset_ += hop_samples;
-        coreml_frame_offset_ += coreml_config_.window_hop_frames;
-
-        if (resampled_offset_ > window_samples) {
-            resampled_buffer_.erase(resampled_buffer_.begin(),
-                                    resampled_buffer_.begin() + static_cast<long>(resampled_offset_));
-            resampled_offset_ = 0;
-        }
+        merge_activation_window(coreml_frame_offset_, beat_activation, downbeat_activation, 0);
+        advance_window_offsets(1, hop_samples, window_samples);
     }
 }
 
 void BeatitStream::process_torch_windows() {
-    if (!coreml_enabled_ || coreml_config_.fixed_frames == 0 || !inference_backend_) {
+    if (!can_process_windows()) {
         return;
     }
     if (coreml_config_.backend != BeatitConfig::Backend::Torch) {
         return;
     }
 
-    const std::size_t window_samples =
-        coreml_config_.frame_size + (coreml_config_.fixed_frames - 1) * coreml_config_.hop_size;
-    const std::size_t hop_samples = coreml_config_.window_hop_frames * coreml_config_.hop_size;
+    const std::size_t window_samples = current_window_samples();
+    const std::size_t hop_samples = current_hop_samples();
     const std::size_t border = std::min(inference_backend_->border_frames(coreml_config_),
                                         coreml_config_.fixed_frames / 2);
     const std::size_t batch_size = std::max<std::size_t>(
@@ -296,11 +324,8 @@ void BeatitStream::process_torch_windows() {
         std::vector<std::vector<float>> windows;
         windows.reserve(batch_count);
         for (std::size_t w = 0; w < batch_count; ++w) {
-            std::vector<float> window(window_samples, 0.0f);
-            const float* start_ptr =
-                resampled_buffer_.data() + resampled_offset_ + w * hop_samples;
-            std::copy(start_ptr, start_ptr + window_samples, window.begin());
-            windows.push_back(std::move(window));
+            windows.push_back(
+                make_resampled_window(resampled_offset_ + w * hop_samples, window_samples));
         }
 
         std::vector<std::vector<float>> beat_activations;
@@ -330,28 +355,12 @@ void BeatitStream::process_torch_windows() {
             auto& beat_activation = beat_activations[w];
             auto& downbeat_activation = downbeat_activations[w];
 
-            detail::trim_activation_to_frames(&beat_activation, coreml_config_.fixed_frames);
-            detail::trim_activation_to_frames(&downbeat_activation, coreml_config_.fixed_frames);
-
             const std::size_t window_offset =
                 coreml_frame_offset_ + w * coreml_config_.window_hop_frames;
-            detail::merge_window_activations(&coreml_beat_activation_,
-                                             &coreml_downbeat_activation_,
-                                             window_offset,
-                                             coreml_config_.fixed_frames,
-                                             beat_activation,
-                                             downbeat_activation,
-                                             border);
+            merge_activation_window(window_offset, beat_activation, downbeat_activation, border);
         }
 
-        resampled_offset_ += hop_samples * batch_count;
-        coreml_frame_offset_ += coreml_config_.window_hop_frames * batch_count;
-
-        if (resampled_offset_ > window_samples) {
-            resampled_buffer_.erase(resampled_buffer_.begin(),
-                                    resampled_buffer_.begin() + static_cast<long>(resampled_offset_));
-            resampled_offset_ = 0;
-        }
+        advance_window_offsets(batch_count, hop_samples, window_samples);
     }
 }
 

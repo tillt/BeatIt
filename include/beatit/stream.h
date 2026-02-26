@@ -53,6 +53,18 @@ public:
 
 private:
     void reset_state(bool reset_tempo_anchor = false);
+    bool can_process_windows() const;
+    std::size_t current_window_samples() const;
+    std::size_t current_hop_samples() const;
+    std::vector<float> make_resampled_window(std::size_t start_offset,
+                                             std::size_t window_samples) const;
+    void merge_activation_window(std::size_t window_offset,
+                                 std::vector<float>& beat_activation,
+                                 std::vector<float>& downbeat_activation,
+                                 std::size_t border_frames);
+    void advance_window_offsets(std::size_t windows_advanced,
+                                std::size_t hop_samples,
+                                std::size_t window_samples);
     void process_coreml_windows();
     void process_torch_windows();
     void accumulate_phase_energy(std::size_t begin_sample, std::size_t end_sample);
