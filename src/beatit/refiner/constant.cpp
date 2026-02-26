@@ -320,50 +320,18 @@ ConstantBeatResult refine_constant_beats(const std::vector<unsigned long long>& 
     std::size_t coarse_index = 0;
 
     std::size_t beat_index = 0;
-    bool use_model_downbeat = refiner_config.use_downbeat_anchor;
-    const std::vector<float>* downbeat_for_phase = downbeat_activation;
-    if (use_model_downbeat && refiner_config.auto_downbeat_fallback) {
-        if (!downbeat_activation || downbeat_activation->empty()) {
-            use_model_downbeat = false;
-            downbeat_for_phase = nullptr;
-        } else {
-            float max_downbeat = 0.0f;
-            for (float value : *downbeat_activation) {
-                max_downbeat = std::max(max_downbeat, value);
-            }
-            if (max_downbeat <= 0.0f) {
-                use_model_downbeat = false;
-                downbeat_for_phase = nullptr;
-            } else {
-                std::size_t covered = 0;
-                for (unsigned long long frame : beat_feature_frames) {
-                    if (frame >= downbeat_activation->size()) {
-                        continue;
-                    }
-                    const float value = (*downbeat_activation)[static_cast<std::size_t>(frame)];
-                    if (value >= max_downbeat * refiner_config.downbeat_min_strength_ratio) {
-                        covered++;
-                    }
-                }
-                if (!beat_feature_frames.empty()) {
-                    result.downbeat_coverage =
-                        static_cast<double>(covered) /
-                        static_cast<double>(beat_feature_frames.size());
-                }
-                if (result.downbeat_coverage < refiner_config.downbeat_min_coverage) {
-                    use_model_downbeat = false;
-                    downbeat_for_phase = nullptr;
-                }
-            }
-        }
-    }
+    const detail::DownbeatPhaseSource downbeat_source =
+        detail::choose_downbeat_phase_source(beat_feature_frames,
+                                             downbeat_activation,
+                                             refiner_config);
     const std::size_t downbeat_phase =
         detail::choose_downbeat_phase(beat_feature_frames,
-                                      downbeat_for_phase,
+                                      downbeat_source.activation,
                                       phase_energy,
                                       refiner_config.low_freq_weight);
     result.downbeat_phase = downbeat_phase;
-    result.used_model_downbeat = use_model_downbeat;
+    result.used_model_downbeat = downbeat_source.use_model;
+    result.downbeat_coverage = downbeat_source.coverage;
 
     // Segment markers are defined in bars (4 beats) and aligned to the bar phase.
     unsigned long intro_bar_count = 32U;
@@ -407,27 +375,18 @@ ConstantBeatResult refine_constant_beats(const std::vector<unsigned long long>& 
             event.style = static_cast<BeatEventStyle>(event.style | BeatEventStyleFound);
         }
 
-        if (beat_index == 0) {
-            event.style = static_cast<BeatEventStyle>(event.style | BeatEventStyleMarkStart);
-        } else if (beat_index == intro_beats_starting_at) {
-            event.style = static_cast<BeatEventStyle>(event.style | BeatEventStyleMarkIntro);
-        } else if (beat_index == buildup_beats_starting_at) {
-            event.style = static_cast<BeatEventStyle>(event.style | BeatEventStyleMarkBuildup);
-        } else if (beat_index == teardown_beats_starting_at) {
-            event.style = static_cast<BeatEventStyle>(event.style | BeatEventStyleMarkTeardown);
-        } else if (beat_index == outro_beats_starting_at) {
-            event.style = static_cast<BeatEventStyle>(event.style | BeatEventStyleMarkOutro);
-        }
-
-        if (beat_index >= outro_beats_starting_at) {
-            event.style = static_cast<BeatEventStyle>(event.style | BeatEventStyleAlarmOutro);
-        } else if (beat_index >= teardown_beats_starting_at) {
-            event.style = static_cast<BeatEventStyle>(event.style | BeatEventStyleAlarmTeardown);
-        } else if (beat_index < intro_beats_starting_at) {
-            event.style = static_cast<BeatEventStyle>(event.style | BeatEventStyleAlarmIntro);
-        } else if (beat_index < buildup_beats_starting_at) {
-            event.style = static_cast<BeatEventStyle>(event.style | BeatEventStyleAlarmBuildup);
-        }
+        detail::apply_marker_style(event,
+                                   beat_index,
+                                   intro_beats_starting_at,
+                                   buildup_beats_starting_at,
+                                   teardown_beats_starting_at,
+                                   outro_beats_starting_at);
+        detail::apply_alarm_style(event,
+                                  beat_index,
+                                  intro_beats_starting_at,
+                                  buildup_beats_starting_at,
+                                  teardown_beats_starting_at,
+                                  outro_beats_starting_at);
 
         if (fake_first) {
             next_beat_frame = static_cast<double>(shifted_first) + beat_length;
@@ -455,44 +414,8 @@ ConstantBeatResult refine_constant_beats(const std::vector<unsigned long long>& 
             static_cast<BeatEventStyle>(last_event.style | BeatEventStyleMarkEnd);
     }
 
-    result.total_count = result.beat_events.size();
-    if (result.total_count > 0) {
-        std::size_t current_missing = 0;
-        std::size_t total_missing = 0;
-        std::size_t missing_runs = 0;
-        for (const BeatEvent& event : result.beat_events) {
-            const bool found = (event.style & BeatEventStyleFound) == BeatEventStyleFound;
-            if (found) {
-                result.found_count++;
-                if (current_missing > 0) {
-                    result.max_missing_run = std::max(result.max_missing_run, current_missing);
-                    total_missing += current_missing;
-                    missing_runs++;
-                    current_missing = 0;
-                }
-            } else {
-                current_missing++;
-            }
-        }
-        if (current_missing > 0) {
-            result.max_missing_run = std::max(result.max_missing_run, current_missing);
-            total_missing += current_missing;
-            missing_runs++;
-        }
-        result.found_ratio =
-            static_cast<double>(result.found_count) / static_cast<double>(result.total_count);
-        if (missing_runs > 0) {
-            result.avg_missing_run =
-                static_cast<double>(total_missing) / static_cast<double>(missing_runs);
-        }
-    }
-
-    result.beat_sample_frames.reserve(result.beat_feature_frames.size());
-    result.beat_strengths.reserve(result.beat_feature_frames.size());
-    for (const BeatEvent& event : result.beat_events) {
-        result.beat_sample_frames.push_back(event.frame);
-        result.beat_strengths.push_back(static_cast<float>(event.peak));
-    }
+    detail::summarize_found_stats(result);
+    detail::fill_event_exports(result);
 
     return result;
 }
