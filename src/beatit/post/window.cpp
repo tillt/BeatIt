@@ -19,6 +19,96 @@
 
 namespace beatit::detail {
 
+namespace {
+
+std::size_t compute_window_frames(std::size_t total_frames, double window_seconds, double fps) {
+    if (total_frames == 0 || window_seconds <= 0.0 || fps <= 0.0) {
+        return 0;
+    }
+    return static_cast<std::size_t>(std::max(1.0, std::round(window_seconds * fps)));
+}
+
+std::pair<std::size_t, std::size_t> make_window_bounds(std::size_t total_frames,
+                                                        std::size_t start,
+                                                        std::size_t window_frames) {
+    const std::size_t end = std::min(total_frames, start + window_frames);
+    return std::make_pair(start, end);
+}
+
+std::array<std::pair<std::size_t, std::size_t>, 3> intro_mid_outro_windows(
+    std::size_t total_frames, std::size_t window_frames) {
+    const std::size_t intro_start = 0;
+    const std::size_t mid_center = total_frames / 2;
+    const std::size_t mid_start =
+        (mid_center > (window_frames / 2)) ? (mid_center - (window_frames / 2)) : 0;
+    const std::size_t outro_start = total_frames - window_frames;
+
+    return {
+        make_window_bounds(total_frames, intro_start, window_frames),
+        make_window_bounds(total_frames, mid_start, window_frames),
+        make_window_bounds(total_frames, outro_start, window_frames),
+    };
+}
+
+template <typename ScoreFn>
+std::pair<std::size_t, std::size_t> pick_best_intro_mid_outro(std::size_t total_frames,
+                                                               std::size_t window_frames,
+                                                               ScoreFn&& score_fn) {
+    const auto windows = intro_mid_outro_windows(total_frames, window_frames);
+    double best_score = -1.0;
+    std::pair<std::size_t, std::size_t> best = windows.front();
+    for (const auto& window : windows) {
+        const double score = score_fn(window.first, window.second);
+        if (score > best_score) {
+            best_score = score;
+            best = window;
+        }
+    }
+    return best;
+}
+
+template <typename ScoreFn>
+std::pair<std::size_t, std::size_t> pick_best_sliding_window(std::size_t total_frames,
+                                                              std::size_t window_frames,
+                                                              double min_accepted_score,
+                                                              ScoreFn&& score_fn) {
+    const std::size_t step = std::max<std::size_t>(1, window_frames / 4);
+    double best_score = -1.0;
+    std::size_t best_start = 0;
+    for (std::size_t start = 0; start + window_frames <= total_frames; start += step) {
+        const double score = score_fn(start, start + window_frames);
+        if (score > best_score) {
+            best_score = score;
+            best_start = start;
+        }
+    }
+    if (best_score <= min_accepted_score) {
+        return {0, total_frames};
+    }
+    return {best_start, best_start + window_frames};
+}
+
+std::size_t nearest_beat_frame(const std::vector<std::size_t>& beats, std::size_t frame) {
+    if (beats.empty()) {
+        return frame;
+    }
+    const auto it = std::lower_bound(beats.begin(), beats.end(), frame);
+    if (it == beats.begin()) {
+        return *it;
+    }
+    if (it == beats.end()) {
+        return beats.back();
+    }
+
+    const std::size_t hi = *it;
+    const std::size_t lo = *(it - 1);
+    const std::size_t d_hi = hi - frame;
+    const std::size_t d_lo = frame - lo;
+    return (d_lo <= d_hi) ? lo : hi;
+}
+
+} // namespace
+
 double window_tempo_score(const std::vector<float>& activation,
                           std::size_t start,
                           std::size_t end,
@@ -87,93 +177,50 @@ std::pair<std::size_t, std::size_t> select_dbn_window(const std::vector<float>& 
                                                        float max_bpm,
                                                        float peak_threshold,
                                                        double fps) {
-    if (activation.empty() || window_seconds <= 0.0 || fps <= 0.0) {
+    if (activation.empty()) {
         return {0, activation.size()};
     }
     const std::size_t total_frames = activation.size();
-    std::size_t window_frames =
-        static_cast<std::size_t>(std::max(1.0, std::round(window_seconds * fps)));
+    const std::size_t window_frames = compute_window_frames(total_frames, window_seconds, fps);
+    if (window_frames == 0) {
+        return {0, total_frames};
+    }
     if (window_frames >= total_frames) {
         return {0, total_frames};
     }
 
-    auto clamp_window = [&](std::size_t start) {
-        const std::size_t end = std::min(total_frames, start + window_frames);
-        return std::make_pair(start, end);
+    const auto score_window = [&](std::size_t start, std::size_t end) {
+        return window_tempo_score(activation,
+                                  start,
+                                  end,
+                                  min_bpm,
+                                  max_bpm,
+                                  peak_threshold,
+                                  fps);
     };
 
-    if (intro_mid_outro && total_frames > window_frames) {
-        const std::size_t intro_start = 0;
-        const std::size_t mid_center = total_frames / 2;
-        const std::size_t mid_start =
-            (mid_center > (window_frames / 2)) ? (mid_center - (window_frames / 2)) : 0;
-        const std::size_t outro_start = total_frames - window_frames;
-
-        const auto intro = clamp_window(intro_start);
-        const auto mid = clamp_window(mid_start);
-        const auto outro = clamp_window(outro_start);
-
-        std::array<std::pair<std::size_t, std::size_t>, 3> windows = {intro, mid, outro};
-        double best_score = -1.0;
-        std::pair<std::size_t, std::size_t> best = intro;
-        for (const auto& w : windows) {
-            const double score =
-                window_tempo_score(activation,
-                                   w.first,
-                                   w.second,
-                                   min_bpm,
-                                   max_bpm,
-                                   peak_threshold,
-                                   fps);
-            if (score > best_score) {
-                best_score = score;
-                best = w;
-            }
-        }
-        return best;
+    if (intro_mid_outro) {
+        return pick_best_intro_mid_outro(total_frames, window_frames, score_window);
     }
 
-    const std::size_t step = std::max<std::size_t>(1, window_frames / 4);
-    double best_score = -1.0;
-    std::size_t best_start = 0;
-    for (std::size_t start = 0; start + window_frames <= total_frames; start += step) {
-        const double score =
-            window_tempo_score(activation,
-                               start,
-                               start + window_frames,
-                               min_bpm,
-                               max_bpm,
-                               peak_threshold,
-                               fps);
-        if (score > best_score) {
-            best_score = score;
-            best_start = start;
-        }
-    }
-    if (best_score <= 1e-6) {
-        return {0, total_frames};
-    }
-    return {best_start, best_start + window_frames};
+    return pick_best_sliding_window(total_frames, window_frames, 1e-6, score_window);
 }
 
 std::pair<std::size_t, std::size_t> select_dbn_window_energy(const std::vector<float>& energy,
                                                               double window_seconds,
                                                               bool intro_mid_outro,
                                                               double fps) {
-    if (energy.empty() || window_seconds <= 0.0 || fps <= 0.0) {
+    if (energy.empty()) {
         return {0, energy.size()};
     }
     const std::size_t total_frames = energy.size();
-    const std::size_t window_frames =
-        static_cast<std::size_t>(std::max(1.0, std::round(window_seconds * fps)));
+    const std::size_t window_frames = compute_window_frames(total_frames, window_seconds, fps);
+    if (window_frames == 0) {
+        return {0, total_frames};
+    }
     if (window_frames >= total_frames) {
         return {0, total_frames};
     }
-
-    auto clamp_window = [&](std::size_t start) {
-        const std::size_t end = std::min(total_frames, start + window_frames);
-        return std::make_pair(start, end);
-    };
 
     auto mean_energy = [&](std::size_t start, std::size_t end) {
         double sum = 0.0;
@@ -184,44 +231,11 @@ std::pair<std::size_t, std::size_t> select_dbn_window_energy(const std::vector<f
         return sum / static_cast<double>(denom);
     };
 
-    if (intro_mid_outro && total_frames > window_frames) {
-        const std::size_t intro_start = 0;
-        const std::size_t mid_center = total_frames / 2;
-        const std::size_t mid_start =
-            (mid_center > (window_frames / 2)) ? (mid_center - (window_frames / 2)) : 0;
-        const std::size_t outro_start = total_frames - window_frames;
-
-        const auto intro = clamp_window(intro_start);
-        const auto mid = clamp_window(mid_start);
-        const auto outro = clamp_window(outro_start);
-
-        std::array<std::pair<std::size_t, std::size_t>, 3> windows = {intro, mid, outro};
-        double best_score = -1.0;
-        std::pair<std::size_t, std::size_t> best = intro;
-        for (const auto& w : windows) {
-            const double score = mean_energy(w.first, w.second);
-            if (score > best_score) {
-                best_score = score;
-                best = w;
-            }
-        }
-        return best;
+    if (intro_mid_outro) {
+        return pick_best_intro_mid_outro(total_frames, window_frames, mean_energy);
     }
 
-    const std::size_t step = std::max<std::size_t>(1, window_frames / 4);
-    double best_score = -1.0;
-    std::size_t best_start = 0;
-    for (std::size_t start = 0; start + window_frames <= total_frames; start += step) {
-        const double score = mean_energy(start, start + window_frames);
-        if (score > best_score) {
-            best_score = score;
-            best_start = start;
-        }
-    }
-    if (best_score <= 1e-9) {
-        return {0, total_frames};
-    }
-    return {best_start, best_start + window_frames};
+    return pick_best_sliding_window(total_frames, window_frames, 1e-9, mean_energy);
 }
 
 std::vector<std::size_t> deduplicate_peaks(const std::vector<std::size_t>& peaks, std::size_t width) {
@@ -281,16 +295,7 @@ std::vector<std::size_t> align_downbeats_to_beats(const std::vector<std::size_t>
     std::vector<std::size_t> aligned;
     aligned.reserve(downbeats.size());
     for (std::size_t db : downbeats) {
-        std::size_t best = beats.front();
-        std::size_t best_dist = (db > best) ? (db - best) : (best - db);
-        for (std::size_t beat : beats) {
-            const std::size_t dist = (db > beat) ? (db - beat) : (beat - db);
-            if (dist < best_dist) {
-                best = beat;
-                best_dist = dist;
-            }
-        }
-        aligned.push_back(best);
+        aligned.push_back(nearest_beat_frame(beats, db));
     }
     std::sort(aligned.begin(), aligned.end());
     aligned.erase(std::unique(aligned.begin(), aligned.end()), aligned.end());
