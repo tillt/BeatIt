@@ -1,12 +1,12 @@
 //
-//  dbn_anchor.cpp
+//  grid_anchor.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "dbn_anchor.h"
+#include "grid_anchor.h"
 
 #include "beatit/logging.hpp"
 #include "beatit/post/helpers.h"

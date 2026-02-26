@@ -1,13 +1,13 @@
 //
-//  dbn_tempo.h
+//  grid_tempo_decision.h
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#ifndef BEATIT_INTERNAL_POSTPROCESS_DBN_TEMPO_DECISION_H
-#define BEATIT_INTERNAL_POSTPROCESS_DBN_TEMPO_DECISION_H
+#ifndef BEATIT_INTERNAL_POSTPROCESS_GRID_TEMPO_DECISION_H
+#define BEATIT_INTERNAL_POSTPROCESS_GRID_TEMPO_DECISION_H
 
 #include "beatit/config.h"
 #include "beatit/post/helpers.h"
@@ -97,4 +97,4 @@ void log_grid_tempo_decision(const GridTempoDecision& decision,
 
 } // namespace beatit::detail
 
-#endif // BEATIT_INTERNAL_POSTPROCESS_DBN_TEMPO_DECISION_H
+#endif // BEATIT_INTERNAL_POSTPROCESS_GRID_TEMPO_DECISION_H

@@ -1,19 +1,19 @@
 //
-//  dbn_decode.cpp
+//  dbn_apply.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "beatit/post/dbn_decode.h"
+#include "beatit/post/dbn_apply.h"
 
 #include "beatit/post/helpers.h"
 #include "beatit/post/result_ops.h"
 #include "beatit/post/window.h"
-#include "dbn_anchor.h"
-#include "dbn_grid.h"
-#include "dbn_tempo.h"
+#include "grid_anchor.h"
+#include "grid_projection.h"
+#include "grid_tempo_decision.h"
 
 #include <algorithm>
 #include <cstddef>

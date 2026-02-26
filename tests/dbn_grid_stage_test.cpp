@@ -6,7 +6,7 @@
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "post/dbn_grid.h"
+#include "post/grid_projection.h"
 
 #include <cmath>
 #include <iostream>

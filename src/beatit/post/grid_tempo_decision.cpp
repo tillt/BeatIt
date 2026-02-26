@@ -1,12 +1,12 @@
 //
-//  dbn_tempo.cpp
+//  grid_tempo_decision.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "dbn_tempo.h"
+#include "grid_tempo_decision.h"
 
 #include "beatit/post/tempo_fit.h"
 #include "beatit/post/window.h"

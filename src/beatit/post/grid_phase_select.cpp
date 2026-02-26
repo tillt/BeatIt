@@ -1,12 +1,12 @@
 //
-//  dbn_grid_phase.cpp
+//  grid_phase_select.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "dbn_grid.h"
+#include "grid_projection.h"
 
 #include "beatit/post/helpers.h"
 #include "beatit/post/result_ops.h"

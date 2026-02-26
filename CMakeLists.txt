@@ -122,12 +122,12 @@ set(BEATIT_LIB_SOURCES
     src/beatit/inference/coreml/metadata.mm
     src/beatit/post/pipeline.cpp
     src/beatit/post/helpers.cpp
-    src/beatit/post/dbn.cpp
-    src/beatit/post/dbn_decode.cpp
-    src/beatit/post/dbn_anchor.cpp
-    src/beatit/post/dbn_grid_phase.cpp
-    src/beatit/post/dbn_grid_synthesize.cpp
-    src/beatit/post/dbn_tempo.cpp
+    src/beatit/post/dbn_run.cpp
+    src/beatit/post/dbn_apply.cpp
+    src/beatit/post/grid_anchor.cpp
+    src/beatit/post/grid_phase_select.cpp
+    src/beatit/post/grid_synthesize.cpp
+    src/beatit/post/grid_tempo_decision.cpp
     src/beatit/post/logits.cpp
     src/beatit/post/grid_fill.cpp
     src/beatit/post/result_ops.cpp

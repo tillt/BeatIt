@@ -11,7 +11,7 @@
 #include "beatit/dbn/calmdad.h"
 
 #include "beatit/post/helpers.h"
-#include "beatit/post/dbn.h"
+#include "beatit/post/dbn_run.h"
 #include "beatit/post/result_ops.h"
 #include "beatit/post/logits.h"
 #include "beatit/post/tempo_fit.h"

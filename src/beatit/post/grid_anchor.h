@@ -1,13 +1,13 @@
 //
-//  dbn_anchor.h
+//  grid_anchor.h
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#ifndef BEATIT_INTERNAL_POSTPROCESS_DBN_GRID_ANCHOR_H
-#define BEATIT_INTERNAL_POSTPROCESS_DBN_GRID_ANCHOR_H
+#ifndef BEATIT_INTERNAL_POSTPROCESS_GRID_ANCHOR_H
+#define BEATIT_INTERNAL_POSTPROCESS_GRID_ANCHOR_H
 
 #include "beatit/config.h"
 #include "../dbn/beatit.h"
@@ -34,4 +34,4 @@ GridAnchorSeed seed_grid_anchor(DBNDecodeResult& decoded,
 
 } // namespace beatit::detail
 
-#endif // BEATIT_INTERNAL_POSTPROCESS_DBN_GRID_ANCHOR_H
+#endif // BEATIT_INTERNAL_POSTPROCESS_GRID_ANCHOR_H
