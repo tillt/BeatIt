@@ -132,6 +132,7 @@ set(BEATIT_LIB_SOURCES
     src/beatit/post/grid_fill.cpp
     src/beatit/post/result_ops.cpp
     src/beatit/post/tempo_fit.cpp
+    src/beatit/post/window_select.cpp
     src/beatit/post/window.cpp
     src/beatit/coreml/preset.cpp
     src/beatit/dbn/calmdad.cpp
