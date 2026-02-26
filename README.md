@@ -71,22 +71,6 @@ Use `./build/beatit --help` for the authoritative option list.
 
 ## Library Usage
 
-`analysis()` (single-shot):
-
-```cpp
-#include "beatit/analysis.h"
-#include "beatit/coreml_preset.h"
-
-beatit::CoreMLConfig cfg;
-if (auto preset = beatit::make_coreml_preset("beatthis")) {
-    preset->apply(cfg);
-}
-
-beatit::AnalysisResult result = beatit::analyze(samples, sample_rate, cfg);
-```
-
-Windowed provider flow (recommended integration pattern):
-
 ```cpp
 #include "beatit/stream.h"
 
@@ -103,6 +87,32 @@ if (stream.request_analysis_window(&start_s, &duration_s)) {
         stream.analyze_window(start_s, duration_s, total_duration_s, provider);
 }
 ```
+
+Contract notes:
+
+- `request_analysis_window(...)` returns the preferred seed window size/start.
+- `analyze_window(...)` is a single call from the integrator side.
+- In sparse mode, BeatIt may call `provider(start, duration, out_samples)` multiple times internally (left/right/interior probes) before returning the final result.
+- The provider must therefore be re-entrant for arbitrary `(start, duration)` requests within the file bounds.
+
+Provider contract:
+
+`BeatitStream::SampleProvider`:
+
+```cpp
+using SampleProvider =
+    std::function<std::size_t(double start_seconds,
+                              double duration_seconds,
+                              std::vector<float>* out_samples)>;
+```
+
+What BeatIt expects:
+
+- `start_seconds` / `duration_seconds` are absolute requests on the original file timeline.
+- Returned samples must be mono float PCM at the same sample rate used to construct `BeatitStream`.
+- The callback must fill `*out_samples` and return the exact valid sample count.
+- On out-of-range or read failure: clear `*out_samples` and return `0`.
+- The callback can be called multiple times per `analyze_window(...)` call in sparse mode, so keep it re-entrant and deterministic.
 
 ## Tests
 
