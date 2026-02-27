@@ -17,25 +17,25 @@
 namespace beatit {
 namespace detail {
 
-double apply_sparse_edge_scale(std::vector<unsigned long long>* beats,
+double apply_sparse_edge_scale(std::vector<unsigned long long>& beats,
                                double ratio,
                                double min_ratio,
                                double max_ratio,
                                double min_delta) {
-    if (!beats || beats->size() < 2) {
+    if (beats.size() < 2) {
         return 1.0;
     }
     const double clamped_ratio = std::clamp(ratio, min_ratio, max_ratio);
     if (std::abs(clamped_ratio - 1.0) < min_delta) {
         return 1.0;
     }
-    const long long anchor = static_cast<long long>(beats->front());
-    for (std::size_t i = 0; i < beats->size(); ++i) {
-        const long long current = static_cast<long long>((*beats)[i]);
+    const long long anchor = static_cast<long long>(beats.front());
+    for (std::size_t i = 0; i < beats.size(); ++i) {
+        const long long current = static_cast<long long>(beats[i]);
         const double rel = static_cast<double>(current - anchor);
         const long long adjusted =
             anchor + static_cast<long long>(std::llround(rel * clamped_ratio));
-        (*beats)[i] = static_cast<unsigned long long>(std::max<long long>(0, adjusted));
+        beats[i] = static_cast<unsigned long long>(std::max<long long>(0, adjusted));
     }
     return clamped_ratio;
 }
@@ -54,13 +54,13 @@ double compute_sparse_edge_ratio(const std::vector<unsigned long long>& beats,
     return 1.0 + (per_beat_adjust / base_step);
 }
 
-bool apply_sparse_uniform_shift(std::vector<unsigned long long>* beats, long long shift_frames) {
-    if (!beats || beats->empty() || shift_frames == 0) {
+bool apply_sparse_uniform_shift(std::vector<unsigned long long>& beats, long long shift_frames) {
+    if (beats.empty() || shift_frames == 0) {
         return false;
     }
-    for (std::size_t i = 0; i < beats->size(); ++i) {
-        const long long shifted = static_cast<long long>((*beats)[i]) + shift_frames;
-        (*beats)[i] = static_cast<unsigned long long>(std::max<long long>(0, shifted));
+    for (std::size_t i = 0; i < beats.size(); ++i) {
+        const long long shifted = static_cast<long long>(beats[i]) + shift_frames;
+        beats[i] = static_cast<unsigned long long>(std::max<long long>(0, shifted));
     }
     return true;
 }

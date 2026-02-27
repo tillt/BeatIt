@@ -194,7 +194,7 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
 
     const double ratio = compute_sparse_edge_ratio(*projected, intro, outro, sample_rate);
     const double applied_ratio =
-        apply_sparse_edge_scale(projected, ratio, 0.9995, 1.0005, 1e-5);
+        apply_sparse_edge_scale(*projected, ratio, 0.9995, 1.0005, 1e-5);
     if (applied_ratio == 1.0) {
         return;
     }
@@ -211,7 +211,7 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
             const double pass2_ratio =
                 compute_sparse_edge_ratio(candidate, post_intro, post_outro, sample_rate);
             const double pass2_applied =
-                apply_sparse_edge_scale(&candidate, pass2_ratio, 0.9997, 1.0003, 1e-6);
+                apply_sparse_edge_scale(candidate, pass2_ratio, 0.9997, 1.0003, 1e-6);
             if (pass2_applied != 1.0) {
                 auto candidate_measured =
                     measure_window_pair(candidate, first_window_start, last_window_start);
@@ -253,7 +253,7 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
             }
 
             std::vector<unsigned long long> candidate = *projected;
-            apply_sparse_uniform_shift(&candidate, shift_frames);
+            apply_sparse_uniform_shift(candidate, shift_frames);
             const auto measured =
                 measure_window_pair(candidate, first_window_start, last_window_start);
             const EdgeOffsetMetrics cand_intro = measured.first;
@@ -302,7 +302,7 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
         const double guard_ratio =
             compute_sparse_edge_ratio(candidate, global_intro, global_outro, sample_rate);
         const double guard_applied =
-            apply_sparse_edge_scale(&candidate, guard_ratio, ratio_min, ratio_max, 1e-6);
+            apply_sparse_edge_scale(candidate, guard_ratio, ratio_min, ratio_max, 1e-6);
         if (guard_applied == 1.0) {
             return;
         }
@@ -351,7 +351,7 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
             std::llround((clamped_shift_ms * sample_rate) / 1000.0));
         if (shift_frames != 0) {
             std::vector<unsigned long long> candidate = *projected;
-            apply_sparse_uniform_shift(&candidate, shift_frames);
+            apply_sparse_uniform_shift(candidate, shift_frames);
             const EdgeOffsetMetrics cand_intro =
                 measure_edge_offsets(candidate, bpm_hint, false, sample_rate, provider);
             const EdgeOffsetMetrics cand_outro =
