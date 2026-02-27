@@ -7,6 +7,7 @@
 //
 
 #include "beatit/post/result_ops.h"
+#include "beatit/post/helpers.h"
 #include "beatit/logging.hpp"
 
 #include <algorithm>
@@ -115,19 +116,7 @@ void fill_beats_from_frames(CoreMLResult& result,
                 : (analysis_latency_frames > 0 ? 0 : frame);
         result.beat_feature_frames.push_back(static_cast<unsigned long long>(output_frame));
         const std::size_t peak_frame = refine_frame_to_peak(frame, result.beat_activation, refine_window);
-
-        double frame_pos = static_cast<double>(peak_frame);
-        if (peak_frame > 0 && peak_frame + 1 < result.beat_activation.size()) {
-            const double prev = result.beat_activation[peak_frame - 1];
-            const double curr = result.beat_activation[peak_frame];
-            const double next = result.beat_activation[peak_frame + 1];
-            const double denom = prev - 2.0 * curr + next;
-            if (std::abs(denom) > 1e-9) {
-                double offset = 0.5 * (prev - next) / denom;
-                offset = std::max(-0.5, std::min(0.5, offset));
-                frame_pos += offset;
-            }
-        }
+        double frame_pos = interpolate_peak_position(result.beat_activation, peak_frame);
         if (analysis_latency_frames > 0) {
             frame_pos = std::max(0.0, frame_pos - analysis_latency_frames_f);
         }

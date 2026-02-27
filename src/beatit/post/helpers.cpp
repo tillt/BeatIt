@@ -16,7 +16,6 @@
 #include <unordered_map>
 
 namespace beatit::detail {
-namespace {
 
 double interpolate_peak_position(const std::vector<float>& activation, std::size_t frame) {
     double pos = static_cast<double>(frame);
@@ -108,8 +107,6 @@ void fill_interval_stats(IntervalStats& stats,
     stats.stdev_interval = std::sqrt(variance / static_cast<double>(intervals.size()));
     fill_bpm_bins(stats, intervals, fps, bpm_bin_width);
 }
-
-} // namespace
 
 std::vector<std::size_t> pick_peaks(const std::vector<float>& activation,
                                     float threshold,
