@@ -17,15 +17,15 @@
 namespace beatit {
 namespace {
 
-float hz_to_mel(float hz, CoreMLConfig::MelScale scale) {
-    if (scale == CoreMLConfig::MelScale::Slaney) {
+float hz_to_mel(float hz, BeatitConfig::MelScale scale) {
+    if (scale == BeatitConfig::MelScale::Slaney) {
         return 1127.01048f * std::log1p(hz / 700.0f);
     }
     return 2595.0f * std::log10(1.0f + hz / 700.0f);
 }
 
-float mel_to_hz(float mel, CoreMLConfig::MelScale scale) {
-    if (scale == CoreMLConfig::MelScale::Slaney) {
+float mel_to_hz(float mel, BeatitConfig::MelScale scale) {
+    if (scale == BeatitConfig::MelScale::Slaney) {
         return 700.0f * (std::exp(mel / 1127.01048f) - 1.0f);
     }
     return 700.0f * (std::pow(10.0f, mel / 2595.0f) - 1.0f);
@@ -36,7 +36,7 @@ std::vector<float> build_mel_filterbank(std::size_t mel_bins,
                                         std::size_t sample_rate,
                                         float f_min,
                                         float f_max,
-                                        CoreMLConfig::MelScale scale) {
+                                        BeatitConfig::MelScale scale) {
     std::vector<float> filters(mel_bins * fft_bins, 0.0f);
     if (mel_bins == 0 || fft_bins == 0 || sample_rate == 0) {
         return filters;
@@ -120,7 +120,7 @@ std::vector<float> resample_linear(const std::vector<float>& input,
 
 std::vector<float> compute_mel_features_torch(const std::vector<float>& samples,
                                               double sample_rate,
-                                              const CoreMLConfig& config,
+                                              const BeatitConfig& config,
                                               const torch::Device& device,
                                               std::size_t* out_frames,
                                               std::string* error) {
@@ -174,7 +174,7 @@ std::vector<float> compute_mel_features_torch(const std::vector<float>& samples,
     if (std::abs(config.power - 1.0f) > 1e-6f) {
         magnitude = magnitude.pow(2.0f);
     }
-    if (config.spectrogram_norm == CoreMLConfig::SpectrogramNorm::FrameLength) {
+    if (config.spectrogram_norm == BeatitConfig::SpectrogramNorm::FrameLength) {
         magnitude = magnitude * (1.0f / static_cast<float>(config.frame_size));
     }
 

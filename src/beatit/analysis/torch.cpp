@@ -9,10 +9,10 @@
 #include "beatit/analysis/torch_backend.h"
 
 #include "beatit/audio/mel_torch.h"
+#include "beatit/logging.hpp"
 
 #include <algorithm>
 #include <filesystem>
-#include <iostream>
 #include <string>
 #include <vector>
 
@@ -23,20 +23,16 @@ namespace beatit {
 
 CoreMLResult analyze_with_torch_activations(const std::vector<float>& samples,
                                             double sample_rate,
-                                            const CoreMLConfig& config) {
+                                            const BeatitConfig& config) {
     CoreMLResult result;
     if (config.torch_model_path.empty()) {
-        if (config.verbose) {
-            std::cerr << "Torch backend: missing model path.\n";
-        }
+        BEATIT_LOG_ERROR("Torch backend: missing model path.");
         return result;
     }
 
     const std::filesystem::path model_path(config.torch_model_path);
     if (!std::filesystem::exists(model_path)) {
-        if (config.verbose) {
-            std::cerr << "Torch backend: model not found: " << config.torch_model_path << "\n";
-        }
+        BEATIT_LOG_ERROR("Torch backend: model not found: " << config.torch_model_path);
         return result;
     }
 
@@ -47,38 +43,33 @@ CoreMLResult analyze_with_torch_activations(const std::vector<float>& samples,
 
     torch::jit::script::Module module;
     try {
-        if (config.verbose) {
-            std::cerr << "Torch backend: loading model=" << config.torch_model_path
-                      << " device=" << config.torch_device << "\n";
-        }
+        BEATIT_LOG_DEBUG("Torch backend: loading model="
+                         << config.torch_model_path
+                         << " device=" << config.torch_device);
         module = torch::jit::load(config.torch_model_path, torch::kCPU);
         module.to(torch::kFloat32);
         if (device.type() != torch::kCPU) {
             try {
                 module.to(device);
             } catch (const c10::Error& err) {
-                if (config.verbose) {
-                    std::string message = err.what();
-                    const std::size_t newline = message.find('\n');
-                    if (newline != std::string::npos) {
-                        message = message.substr(0, newline);
-                    }
-                    std::cerr << "Torch backend: device move failed, falling back to cpu: "
-                              << message << "\n";
+                std::string message = err.what();
+                const std::size_t newline = message.find('\n');
+                if (newline != std::string::npos) {
+                    message = message.substr(0, newline);
                 }
+                BEATIT_LOG_WARN(
+                    "Torch backend: device move failed, falling back to cpu: " << message);
                 device = torch::kCPU;
             }
         }
     } catch (const c10::Error& err) {
-        if (config.verbose) {
-            std::cerr << "Torch backend: failed to load model: " << err.what() << "\n";
-        }
+        BEATIT_LOG_ERROR("Torch backend: failed to load model: " << err.what());
         return result;
     }
 
     std::size_t frames = 0;
     std::vector<float> features;
-    if (config.mel_backend == CoreMLConfig::MelBackend::Torch) {
+    if (config.mel_backend == BeatitConfig::MelBackend::Torch) {
         std::string mel_error;
         features = compute_mel_features_torch(samples,
                                               sample_rate,
@@ -90,9 +81,7 @@ CoreMLResult analyze_with_torch_activations(const std::vector<float>& samples,
         features = compute_mel_features(samples, sample_rate, config, &frames);
     }
     if (features.empty() || frames == 0) {
-        if (config.verbose) {
-            std::cerr << "Torch backend: mel feature extraction failed.\n";
-        }
+        BEATIT_LOG_ERROR("Torch backend: mel feature extraction failed.");
         return result;
     }
 
@@ -102,18 +91,15 @@ CoreMLResult analyze_with_torch_activations(const std::vector<float>& samples,
     const std::size_t border =
         std::min(config.window_border_frames, window_frames / 2);
 
-    if (config.verbose) {
-        std::cerr << "Torch backend: mel_frames=" << frames
-                  << " window_frames=" << window_frames
-                  << " hop_frames=" << hop_frames
-                  << " border_frames=" << border
-                  << " mel_bins=" << config.mel_bins
-                  << " sample_rate=" << config.sample_rate
-                  << " hop_size=" << config.hop_size
-                  << " mel_backend="
-                  << (config.mel_backend == CoreMLConfig::MelBackend::Torch ? "torch" : "cpu")
-                  << "\n";
-    }
+    BEATIT_LOG_DEBUG("Torch backend: mel_frames=" << frames
+                     << " window_frames=" << window_frames
+                     << " hop_frames=" << hop_frames
+                     << " border_frames=" << border
+                     << " mel_bins=" << config.mel_bins
+                     << " sample_rate=" << config.sample_rate
+                     << " hop_size=" << config.hop_size
+                     << " mel_backend="
+                     << (config.mel_backend == BeatitConfig::MelBackend::Torch ? "torch" : "cpu"));
 
     result.beat_activation.assign(frames, -1.0f);
     result.downbeat_activation.assign(frames, -1.0f);
@@ -185,28 +171,22 @@ CoreMLResult analyze_with_torch_activations(const std::vector<float>& samples,
         inputs.emplace_back(input);
         try {
             c10::InferenceMode inference_guard(true);
-            if (config.verbose) {
-                std::cerr << "Torch backend: forward batch=" << batch_items.size()
-                          << " start_frame=" << batch_items.front().start << "\n";
-            }
+            BEATIT_LOG_DEBUG("Torch backend: forward batch=" << batch_items.size()
+                             << " start_frame=" << batch_items.front().start);
             output = module.forward(inputs);
         } catch (const c10::Error& err) {
-            if (config.verbose) {
-                std::cerr << "Torch backend: forward failed at frame=" << batch_items.front().start
-                          << " err=" << err.what() << "\n";
-            }
+            BEATIT_LOG_ERROR("Torch backend: forward failed at frame="
+                             << batch_items.front().start
+                             << " err=" << err.what());
             return CoreMLResult{};
         } catch (const std::exception& err) {
-            if (config.verbose) {
-                std::cerr << "Torch backend: forward exception at frame=" << batch_items.front().start
-                          << " err=" << err.what() << "\n";
-            }
+            BEATIT_LOG_ERROR("Torch backend: forward exception at frame="
+                             << batch_items.front().start
+                             << " err=" << err.what());
             return CoreMLResult{};
         } catch (...) {
-            if (config.verbose) {
-                std::cerr << "Torch backend: forward unknown exception at frame="
-                          << batch_items.front().start << "\n";
-            }
+            BEATIT_LOG_ERROR("Torch backend: forward unknown exception at frame="
+                             << batch_items.front().start);
             return CoreMLResult{};
         }
 
@@ -230,9 +210,7 @@ CoreMLResult analyze_with_torch_activations(const std::vector<float>& samples,
         }
 
         if (!beat_tensor.defined()) {
-            if (config.verbose) {
-                std::cerr << "Torch backend: unexpected output signature.\n";
-            }
+            BEATIT_LOG_ERROR("Torch backend: unexpected output signature.");
             return CoreMLResult{};
         }
 

@@ -21,6 +21,12 @@ struct BeatConstRegion {
     double beat_length = 0.0;
 };
 
+struct DownbeatPhaseSource {
+    bool use_model = false;
+    const std::vector<float>* activation = nullptr;
+    double coverage = 0.0;
+};
+
 double round_bpm_within_range(double min_bpm, double center_bpm, double max_bpm);
 
 std::vector<BeatConstRegion> retrieve_constant_regions(const std::vector<unsigned long long>& coarse_beats,
@@ -71,6 +77,29 @@ std::size_t last_active_frame(const std::vector<float>* energy,
 std::size_t first_active_frame(const std::vector<float>* energy,
                                std::size_t total_frames,
                                double active_energy_ratio);
+
+DownbeatPhaseSource choose_downbeat_phase_source(
+    const std::vector<unsigned long long>& beat_feature_frames,
+    const std::vector<float>* downbeat_activation,
+    const ConstantBeatRefinerConfig& refiner_config);
+
+void apply_marker_style(BeatEvent& event,
+                        std::size_t beat_index,
+                        std::size_t intro_beats_starting_at,
+                        std::size_t buildup_beats_starting_at,
+                        std::size_t teardown_beats_starting_at,
+                        std::size_t outro_beats_starting_at);
+
+void apply_alarm_style(BeatEvent& event,
+                       std::size_t beat_index,
+                       std::size_t intro_beats_starting_at,
+                       std::size_t buildup_beats_starting_at,
+                       std::size_t teardown_beats_starting_at,
+                       std::size_t outro_beats_starting_at);
+
+void summarize_found_stats(ConstantBeatResult& result);
+
+void fill_event_exports(ConstantBeatResult& result);
 
 } // namespace detail
 } // namespace beatit

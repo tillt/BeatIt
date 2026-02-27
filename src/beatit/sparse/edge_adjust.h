@@ -15,7 +15,7 @@
 namespace beatit {
 namespace detail {
 
-double apply_sparse_edge_scale(std::vector<unsigned long long>* beats,
+double apply_sparse_edge_scale(std::vector<unsigned long long>& beats,
                                double ratio,
                                double min_ratio,
                                double max_ratio,
@@ -25,6 +25,8 @@ double compute_sparse_edge_ratio(const std::vector<unsigned long long>& beats,
                                  const EdgeOffsetMetrics& first,
                                  const EdgeOffsetMetrics& last,
                                  double sample_rate);
+
+bool apply_sparse_uniform_shift(std::vector<unsigned long long>& beats, long long shift_frames);
 
 } // namespace detail
 } // namespace beatit

@@ -29,7 +29,7 @@ struct CanonicalCase {
 };
 
 bool stream_audio_to_beatit(const std::string& path,
-                            const beatit::CoreMLConfig& config,
+                            const beatit::BeatitConfig& config,
                             beatit::AnalysisResult* result,
                             double* input_sample_rate,
                             std::string* error) {
@@ -150,7 +150,7 @@ bool stream_audio_to_beatit(const std::string& path,
 }
 
 double downbeat_seconds_from_result(const beatit::AnalysisResult& result,
-                                    const beatit::CoreMLConfig& config) {
+                                    const beatit::BeatitConfig& config) {
     if (!result.coreml_downbeat_feature_frames.empty() && config.sample_rate > 0 && config.hop_size > 0) {
         const double frames = static_cast<double>(result.coreml_downbeat_feature_frames.front());
         const double seconds = (frames * config.hop_size) / config.sample_rate;
@@ -170,13 +170,14 @@ int main() {
     return 77;
 #endif
 
-    beatit::CoreMLConfig config;
+    beatit::BeatitConfig config;
     if (auto preset = beatit::make_coreml_preset("beatthis")) {
         preset->apply(config);
     }
     config.prepend_silence_seconds = 0.0;
-    if (const char* verbose = std::getenv("BEATIT_VERBOSE"); verbose && verbose[0] != '\0') {
-        config.verbose = true;
+    if (const char* log_level = std::getenv("BEATIT_LOG_LEVEL");
+        log_level && std::string(log_level) == "debug") {
+        config.log_verbosity = beatit::LogVerbosity::Debug;
     }
 
     std::filesystem::path test_root;
@@ -195,7 +196,7 @@ int main() {
         return 77;
     }
 
-    config.backend = beatit::CoreMLConfig::Backend::Torch;
+    config.backend = beatit::BeatitConfig::Backend::Torch;
     config.torch_model_path = model_path;
     config.use_dbn = true;
     config.dbn_use_downbeat = true;

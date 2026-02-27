@@ -1,15 +1,15 @@
 //
-//  dbn_grid.h
+//  grid_projection.h
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#ifndef BEATIT_INTERNAL_POSTPROCESS_DBN_GRID_STAGES_H
-#define BEATIT_INTERNAL_POSTPROCESS_DBN_GRID_STAGES_H
+#ifndef BEATIT_INTERNAL_POSTPROCESS_GRID_PROJECTION_H
+#define BEATIT_INTERNAL_POSTPROCESS_GRID_PROJECTION_H
 
-#include "beatit/coreml.h"
+#include "beatit/config.h"
 #include "../dbn/beatit.h"
 
 #include <cstddef>
@@ -35,7 +35,7 @@ struct GridProjectionState {
 void select_downbeat_phase(GridProjectionState& state,
                            DBNDecodeResult& decoded,
                            const CoreMLResult& result,
-                           const CoreMLConfig& config,
+                           const BeatitConfig& config,
                            bool quality_low,
                            bool downbeat_override_ok,
                            bool use_window,
@@ -46,10 +46,10 @@ void select_downbeat_phase(GridProjectionState& state,
 void synthesize_uniform_grid(GridProjectionState& state,
                              DBNDecodeResult& decoded,
                              const CoreMLResult& result,
-                             const CoreMLConfig& config,
+                             const BeatitConfig& config,
                              std::size_t used_frames,
                              double fps);
 
 } // namespace beatit::detail
 
-#endif // BEATIT_INTERNAL_POSTPROCESS_DBN_GRID_STAGES_H
+#endif // BEATIT_INTERNAL_POSTPROCESS_GRID_PROJECTION_H

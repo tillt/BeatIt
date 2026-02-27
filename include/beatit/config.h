@@ -1,13 +1,15 @@
 //
-//  coreml.h
+//  config.h
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-01-17.
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#ifndef BEATIT_COREML_H
-#define BEATIT_COREML_H
+#ifndef BEATIT_CONFIG_H
+#define BEATIT_CONFIG_H
+
+#include "beatit/logging.hpp"
 
 #include <cstddef>
 #include <string>
@@ -15,7 +17,7 @@
 
 namespace beatit {
 
-struct CoreMLConfig {
+struct BeatitConfig {
     enum class Backend {
         CoreML,
         BeatThisExternal,
@@ -126,7 +128,7 @@ struct CoreMLConfig {
     double debug_activations_start_s = -1.0;
     double debug_activations_end_s = -1.0;
     std::size_t debug_activations_max = 0;
-    bool verbose = false;
+    LogVerbosity log_verbosity = LogVerbosity::Info;
     bool profile = false;
     bool profile_per_window = false;
     std::string beatthis_python = "python3";
@@ -171,25 +173,25 @@ struct CoreMLMetadata {
 
 CoreMLResult analyze_with_coreml(const std::vector<float>& samples,
                                  double sample_rate,
-                                 const CoreMLConfig& config,
+                                 const BeatitConfig& config,
                                  float reference_bpm);
 
 CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activation,
                                             const std::vector<float>& downbeat_activation,
                                             const std::vector<float>* phase_energy,
-                                            const CoreMLConfig& config,
+                                            const BeatitConfig& config,
                                             double sample_rate,
                                             float reference_bpm,
                                             std::size_t last_active_frame = 0,
                                             std::size_t total_frames_full = 0);
 
-CoreMLMetadata load_coreml_metadata(const CoreMLConfig& config);
+CoreMLMetadata load_coreml_metadata(const BeatitConfig& config);
 
 std::vector<float> compute_mel_features(const std::vector<float>& samples,
                                         double sample_rate,
-                                        const CoreMLConfig& config,
+                                        const BeatitConfig& config,
                                         std::size_t* out_frames);
 
 } // namespace beatit
 
-#endif  // BEATIT_COREML_H
+#endif  // BEATIT_CONFIG_H

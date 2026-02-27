@@ -11,7 +11,7 @@
 #include <iostream>
 #include <vector>
 
-#include "beatit/coreml.h"
+#include "beatit/config.h"
 
 namespace {
 
@@ -37,7 +37,7 @@ bool expect_eq(std::size_t value, std::size_t expected, const char* label) {
 }  // namespace
 
 int main() {
-    beatit::CoreMLConfig config;
+    beatit::BeatitConfig config;
     config.sample_rate = 100;
     config.hop_size = 1;
     config.min_bpm = 118.0f;

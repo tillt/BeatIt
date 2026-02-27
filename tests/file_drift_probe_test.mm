@@ -466,7 +466,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    beatit::CoreMLConfig config;
+    beatit::BeatitConfig config;
     beatit::tests::apply_beatthis_coreml_test_config(config);
     config.model_path = model_path;
     config.use_dbn = true;
@@ -475,14 +475,14 @@ int main(int argc, char** argv) {
     config.sparse_probe_mode = true;
     if (const char* trace = std::getenv("BEATIT_WINDOW_TRACE")) {
         if (trace[0] != '\0' && trace[0] != '0') {
-            config.verbose = true;
+            config.log_verbosity = beatit::LogVerbosity::Debug;
             config.dbn_trace = true;
             config.profile = true;
         }
     }
     if (const char* force_cpu = std::getenv("BEATIT_TEST_CPU_ONLY")) {
         if (force_cpu[0] != '\0' && force_cpu[0] != '0') {
-            config.compute_units = beatit::CoreMLConfig::ComputeUnits::CPUOnly;
+            config.compute_units = beatit::BeatitConfig::ComputeUnits::CPUOnly;
         }
     }
 

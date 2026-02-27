@@ -9,7 +9,7 @@
 #pragma once
 
 #include "beatit/analysis.h"
-#include "beatit/coreml.h"
+#include "beatit/config.h"
 
 #include <cstddef>
 #include <functional>
@@ -40,7 +40,7 @@ struct SparseProbeObservation {
     double phase_abs_ms = 0.0;
 };
 
-AnalysisResult analyze_sparse_probe_window(const CoreMLConfig& original_config,
+AnalysisResult analyze_sparse_probe_window(const BeatitConfig& original_config,
                                            double sample_rate,
                                            double total_duration_seconds,
                                            const SparseSampleProvider& provider,

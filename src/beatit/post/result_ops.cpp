@@ -7,10 +7,11 @@
 //
 
 #include "beatit/post/result_ops.h"
+#include "beatit/post/helpers.h"
+#include "beatit/logging.hpp"
 
 #include <algorithm>
 #include <cmath>
-#include <iostream>
 
 namespace beatit::detail {
 
@@ -92,7 +93,7 @@ std::vector<std::size_t> apply_latency_to_frames(const std::vector<std::size_t>&
 
 void fill_beats_from_frames(CoreMLResult& result,
                             const std::vector<std::size_t>& frames,
-                            const CoreMLConfig& config,
+                            const BeatitConfig& config,
                             double sample_rate,
                             double hop_scale,
                             std::size_t analysis_latency_frames,
@@ -115,19 +116,7 @@ void fill_beats_from_frames(CoreMLResult& result,
                 : (analysis_latency_frames > 0 ? 0 : frame);
         result.beat_feature_frames.push_back(static_cast<unsigned long long>(output_frame));
         const std::size_t peak_frame = refine_frame_to_peak(frame, result.beat_activation, refine_window);
-
-        double frame_pos = static_cast<double>(peak_frame);
-        if (peak_frame > 0 && peak_frame + 1 < result.beat_activation.size()) {
-            const double prev = result.beat_activation[peak_frame - 1];
-            const double curr = result.beat_activation[peak_frame];
-            const double next = result.beat_activation[peak_frame + 1];
-            const double denom = prev - 2.0 * curr + next;
-            if (std::abs(denom) > 1e-9) {
-                double offset = 0.5 * (prev - next) / denom;
-                offset = std::max(-0.5, std::min(0.5, offset));
-                frame_pos += offset;
-            }
-        }
+        double frame_pos = interpolate_peak_position(result.beat_activation, peak_frame);
         if (analysis_latency_frames > 0) {
             frame_pos = std::max(0.0, frame_pos - analysis_latency_frames_f);
         }
@@ -166,7 +155,7 @@ void fill_beats_from_frames(CoreMLResult& result,
 }
 
 void fill_beats_from_bpm_grid_into(const std::vector<float>& beat_activation,
-                                   const CoreMLConfig& config,
+                                   const BeatitConfig& config,
                                    double sample_rate,
                                    double fps,
                                    double hop_scale,
@@ -202,16 +191,15 @@ void fill_beats_from_bpm_grid_into(const std::vector<float>& beat_activation,
                 ? static_cast<double>(std::max<long long>(0, start_sample_frame)) /
                     sample_rate
                 : 0.0;
-        std::cerr << "DBN grid project: start_frame=" << start_frame
-                  << " start_time=" << start_time
-                  << " bpm=" << bpm
-                  << " step_frames=" << step_frames
-                  << " total_frames=" << total_frames
-                  << " hop_size=" << config.hop_size
-                  << " hop_scale=" << hop_scale
-                  << " start_sample_frame=" << start_sample_frame
-                  << " start_time_adj=" << start_time_after_latency
-                  << "\n";
+        BEATIT_LOG_DEBUG("DBN grid project: start_frame=" << start_frame
+                         << " start_time=" << start_time
+                         << " bpm=" << bpm
+                         << " step_frames=" << step_frames
+                         << " total_frames=" << total_frames
+                         << " hop_size=" << config.hop_size
+                         << " hop_scale=" << hop_scale
+                         << " start_sample_frame=" << start_sample_frame
+                         << " start_time_adj=" << start_time_after_latency);
     }
 
     const double step_samples = (60.0 * sample_rate) / bpm;
@@ -287,17 +275,17 @@ void fill_beats_from_bpm_grid_into(const std::vector<float>& beat_activation,
 
     if (config.dbn_trace) {
         const std::size_t preview = std::min<std::size_t>(6, out_feature_frames.size());
-        std::cerr << "DBN grid beats head:";
+        auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
+        debug_stream << "DBN grid beats head:";
         for (std::size_t i = 0; i < preview; ++i) {
             const std::size_t frame = static_cast<std::size_t>(out_feature_frames[i]);
             const double time_s = static_cast<double>(frame) / fps;
-            std::cerr << " " << frame << "(" << time_s << "s)";
+            debug_stream << " " << frame << "(" << time_s << "s)";
         }
-        std::cerr << "\n";
-        std::cerr << "DBN grid beats total=" << out_feature_frames.size()
-                  << " backward=" << backward_count
-                  << " forward=" << forward_count
-                  << "\n";
+        debug_stream << "\n";
+        debug_stream << "DBN grid beats total=" << out_feature_frames.size()
+                     << " backward=" << backward_count
+                     << " forward=" << forward_count;
     }
 }
 

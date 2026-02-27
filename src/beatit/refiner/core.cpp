@@ -116,7 +116,7 @@ std::vector<BeatEvent> build_shakespear_markers(const std::vector<unsigned long 
                                                 const std::vector<float>* beat_activation,
                                                 double bpm,
                                                 double sample_rate,
-                                                const CoreMLConfig& config) {
+                                                const BeatitConfig& config) {
     std::vector<BeatEvent> events;
     if (beat_feature_frames.empty()) {
         return events;

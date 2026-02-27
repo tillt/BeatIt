@@ -14,6 +14,8 @@
 
 namespace beatit::detail {
 
+double interpolate_peak_position(const std::vector<float>& activation, std::size_t frame);
+
 struct IntervalStats {
     std::size_t count = 0;
     double min_interval = 0.0;

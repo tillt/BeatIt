@@ -1,14 +1,14 @@
 //
-//  dbn.cpp
+//  dbn_run.cpp
 //  BeatIt
 //
 //  Created by Till Toenshoff on 2026-02-22.
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "beatit/post/dbn.h"
+#include "beatit/post/dbn_run.h"
 
-#include "beatit/post/dbn_decode.h"
+#include "beatit/post/dbn_apply.h"
 #include "beatit/post/helpers.h"
 #include "beatit/post/result_ops.h"
 #include "beatit/post/tempo_fit.h"
@@ -31,20 +31,22 @@
 
 namespace beatit::detail {
 
-bool run_dbn_postprocess(CoreMLResult& result,
-                         const std::vector<float>* phase_energy,
-                         const CoreMLConfig& config,
-                         double sample_rate,
-                         float reference_bpm,
-                         std::size_t grid_total_frames,
-                         float min_bpm,
-                         float max_bpm,
-                         double fps,
-                         double hop_scale,
-                         std::size_t analysis_latency_frames,
-                         double analysis_latency_frames_f,
-                         double& dbn_ms,
-                         double peaks_ms) {
+bool run_dbn_postprocess(const DBNRunRequest& request) {
+    CoreMLResult& result = request.result;
+    const std::vector<float>* phase_energy = request.phase_energy;
+    const BeatitConfig& config = request.config;
+    const double sample_rate = request.sample_rate;
+    const float reference_bpm = request.reference_bpm;
+    const std::size_t grid_total_frames = request.grid_total_frames;
+    float min_bpm = request.min_bpm;
+    float max_bpm = request.max_bpm;
+    const double fps = request.fps;
+    const double hop_scale = request.hop_scale;
+    const std::size_t analysis_latency_frames = request.analysis_latency_frames;
+    const double analysis_latency_frames_f = request.analysis_latency_frames_f;
+    const double peaks_ms = request.peaks_ms;
+    double& dbn_ms = request.dbn_ms;
+
     const std::size_t used_frames = result.beat_activation.size();
     if (used_frames == 0) {
         return false;
@@ -126,15 +128,13 @@ bool run_dbn_postprocess(CoreMLResult& result,
                 local_downbeat_slice.assign(result.downbeat_activation.begin() + window_start,
                                             result.downbeat_activation.begin() + window_end);
             }
-            if (config.verbose) {
-                BEATIT_LOG_DEBUG("DBN window: start=" << window_start
-                                 << " end=" << window_end
-                                 << " frames=" << (window_end - window_start)
-                                 << " (" << ((window_end - window_start) / fps) << "s)"
-                                 << " selector="
-                                 << (window_energy ? "best-energy-phase" : "tempo")
-                                 << " energy=" << (window_energy ? "phase" : "beat"));
-            }
+            BEATIT_LOG_DEBUG("DBN window: start=" << window_start
+                             << " end=" << window_end
+                             << " frames=" << (window_end - window_start)
+                             << " (" << ((window_end - window_start) / fps) << "s)"
+                             << " selector="
+                             << (window_energy ? "best-energy-phase" : "tempo")
+                             << " energy=" << (window_energy ? "phase" : "beat"));
         }
         beat_slice = std::move(local_beat_slice);
         downbeat_slice = std::move(local_downbeat_slice);
@@ -218,7 +218,7 @@ bool run_dbn_postprocess(CoreMLResult& result,
     DBNDecodeResult decoded;
     const CalmdadDecoder calmdad_decoder(config);
     auto process_decode = [&] {
-        if (config.dbn_mode == CoreMLConfig::DBNMode::Calmdad) {
+        if (config.dbn_mode == BeatitConfig::DBNMode::Calmdad) {
             if (config.dbn_tempo_prior_weight > 0.0f) {
                 const double tolerance =
                     std::max(0.0, static_cast<double>(config.dbn_interval_tolerance));
@@ -247,13 +247,11 @@ bool run_dbn_postprocess(CoreMLResult& result,
                     min_bpm = static_cast<float>(prior_bpm * (1.0 - window_pct));
                     max_bpm = static_cast<float>(prior_bpm * (1.0 + window_pct));
                     clamp_bpm_range(min_bpm, max_bpm);
-                    if (config.verbose) {
-                        BEATIT_LOG_DEBUG("DBN calmdad prior: bpm=" << prior_bpm
-                                         << " peaks=" << prior_peaks.size()
-                                         << " window_pct=" << window_pct
-                                         << " clamp=[" << min_bpm << "," << max_bpm << "]");
-                    }
-                } else if (config.verbose) {
+                    BEATIT_LOG_DEBUG("DBN calmdad prior: bpm=" << prior_bpm
+                                     << " peaks=" << prior_peaks.size()
+                                     << " window_pct=" << window_pct
+                                     << " clamp=[" << min_bpm << "," << max_bpm << "]");
+                } else {
                     BEATIT_LOG_DEBUG("DBN calmdad prior: insufficient peaks for clamp");
                 }
             }

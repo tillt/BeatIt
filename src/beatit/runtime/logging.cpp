@@ -8,13 +8,13 @@
 
 #include "beatit/logging.hpp"
 
-#include "beatit/coreml.h"
+#include "beatit/config.h"
 
 namespace beatit {
 
 namespace {
 
-std::atomic<int> g_log_level{static_cast<int>(LogVerbosity::Warn)};
+std::atomic<int> g_log_level{static_cast<int>(LogVerbosity::Info)};
 
 } // namespace
 
@@ -26,16 +26,12 @@ LogVerbosity get_log_verbosity() {
     return static_cast<LogVerbosity>(g_log_level.load(std::memory_order_relaxed));
 }
 
-void set_log_verbosity_from_config(const CoreMLConfig& config) {
-    if (config.verbose) {
-        set_log_verbosity(LogVerbosity::Debug);
-        return;
+void set_log_verbosity_from_config(const BeatitConfig& config) {
+    LogVerbosity level = config.log_verbosity;
+    if (config.profile && static_cast<int>(level) < static_cast<int>(LogVerbosity::Info)) {
+        level = LogVerbosity::Info;
     }
-    if (config.profile) {
-        set_log_verbosity(LogVerbosity::Info);
-        return;
-    }
-    set_log_verbosity(LogVerbosity::Warn);
+    set_log_verbosity(level);
 }
 
 } // namespace beatit

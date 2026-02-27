@@ -17,16 +17,16 @@ namespace {
 
 class UnsupportedTorchInferenceBackend final : public InferenceBackend {
 public:
-    std::size_t max_batch_size(const CoreMLConfig& config) const override {
+    std::size_t max_batch_size(const BeatitConfig& config) const override {
         return std::max<std::size_t>(1, config.torch_batch_size);
     }
 
-    std::size_t border_frames(const CoreMLConfig& config) const override {
+    std::size_t border_frames(const BeatitConfig& config) const override {
         return config.window_border_frames;
     }
 
     bool infer_window(const std::vector<float>&,
-                      const CoreMLConfig&,
+                      const BeatitConfig&,
                       std::vector<float>*,
                       std::vector<float>*,
                       InferenceTiming*) override {

@@ -7,11 +7,10 @@
 //
 
 #include "beatit/analysis.h"
+#include "beatit/logging.hpp"
 
 #include <algorithm>
 #include <cmath>
-#include <cstdlib>
-#include <iostream>
 #include <vector>
 
 namespace beatit {
@@ -21,8 +20,6 @@ float estimate_bpm_from_beats(const std::vector<unsigned long long>& beat_sample
     if (beat_samples.size() < 2 || sample_rate <= 0.0) {
         return 0.0f;
     }
-
-    const bool debug_bpm = std::getenv("BEATIT_DEBUG_BPM") != nullptr;
 
     std::vector<double> intervals;
     intervals.reserve(beat_samples.size() - 1);
@@ -56,26 +53,22 @@ float estimate_bpm_from_beats(const std::vector<unsigned long long>& beat_sample
         return 0.0f;
     }
 
-    double beat_median = 0.0;
-    if (debug_bpm) {
-        std::vector<double> tmp = intervals;
-        std::nth_element(tmp.begin(), tmp.begin() + tmp.size() / 2, tmp.end());
-        beat_median = tmp[tmp.size() / 2];
-    }
+    std::vector<double> tmp = intervals;
+    std::nth_element(tmp.begin(), tmp.begin() + tmp.size() / 2, tmp.end());
+    const double beat_median = tmp[tmp.size() / 2];
 
     if (bar_intervals.size() >= 3) {
         std::sort(bar_intervals.begin(), bar_intervals.end());
         const double median = bar_intervals[bar_intervals.size() / 2];
         if (median > 0.0) {
-            if (debug_bpm) {
-                std::cerr << "BPM debug: bar_median=" << median
-                          << " bpm=" << (240.0 / median)
-                          << " beat_median=" << beat_median
-                          << " beat_bpm=" << (beat_median > 0.0 ? (60.0 / beat_median) : 0.0)
-                          << " bars=" << bar_intervals.size()
-                          << " beats=" << intervals.size()
-                          << " sample_rate=" << sample_rate << "\n";
-            }
+            auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
+            debug_stream << "BPM debug: bar_median=" << median
+                         << " bpm=" << (240.0 / median)
+                         << " beat_median=" << beat_median
+                         << " beat_bpm=" << (beat_median > 0.0 ? (60.0 / beat_median) : 0.0)
+                         << " bars=" << bar_intervals.size()
+                         << " beats=" << intervals.size()
+                         << " sample_rate=" << sample_rate;
             return static_cast<float>(240.0 / median);
         }
     }
@@ -90,12 +83,11 @@ float estimate_bpm_from_beats(const std::vector<unsigned long long>& beat_sample
     const std::size_t end = (count > trim) ? (count - trim) : count;
     if (end <= start) {
         const double median = intervals[count / 2];
-        if (debug_bpm) {
-            std::cerr << "BPM debug: beat_median=" << median
-                      << " bpm=" << (60.0 / median)
-                      << " beats=" << intervals.size()
-                      << " sample_rate=" << sample_rate << "\n";
-        }
+        auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
+        debug_stream << "BPM debug: beat_median=" << median
+                     << " bpm=" << (60.0 / median)
+                     << " beats=" << intervals.size()
+                     << " sample_rate=" << sample_rate;
         return median > 0.0 ? static_cast<float>(60.0 / median) : 0.0f;
     }
 
@@ -104,13 +96,12 @@ float estimate_bpm_from_beats(const std::vector<unsigned long long>& beat_sample
         sum += intervals[i];
     }
     const double avg = sum / static_cast<double>(end - start);
-    if (debug_bpm) {
-        std::cerr << "BPM debug: beat_trimmed_mean=" << avg
-                  << " bpm=" << (avg > 0.0 ? (60.0 / avg) : 0.0)
-                  << " trim=" << trim
-                  << " beats=" << intervals.size()
-                  << " sample_rate=" << sample_rate << "\n";
-    }
+    auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
+    debug_stream << "BPM debug: beat_trimmed_mean=" << avg
+                 << " bpm=" << (avg > 0.0 ? (60.0 / avg) : 0.0)
+                 << " trim=" << trim
+                 << " beats=" << intervals.size()
+                 << " sample_rate=" << sample_rate;
     if (avg <= 0.0) {
         return 0.0f;
     }
@@ -157,7 +148,7 @@ const std::vector<unsigned long long>& output_downbeat_feature_frames(const Anal
 
 void rebuild_output_beat_events(AnalysisResult& result,
                                 double sample_rate,
-                                const CoreMLConfig& config) {
+                                const BeatitConfig& config) {
     result.coreml_beat_events =
         build_shakespear_markers(output_beat_feature_frames(result),
                                  output_beat_sample_frames(result),

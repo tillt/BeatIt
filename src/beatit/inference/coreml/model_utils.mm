@@ -64,7 +64,7 @@ NSURL* compile_model_if_needed(NSURL* model_url, NSError** error) {
     return compiled_url ? compiled_url : model_url;
 }
 
-NSString* resolve_model_path(const CoreMLConfig& config) {
+NSString* resolve_model_path(const BeatitConfig& config) {
     NSString* model_path = nil;
     if (!config.model_path.empty()) {
         NSString* candidate = [NSString stringWithUTF8String:config.model_path.c_str()];
@@ -120,7 +120,7 @@ bool load_multiarray_from_features(MLMultiArray* array,
                                    const std::vector<float>& features,
                                    std::size_t frames,
                                    std::size_t mel_bins,
-                                   CoreMLConfig::InputLayout layout) {
+                                   BeatitConfig::InputLayout layout) {
     if (!array) {
         return false;
     }
@@ -136,7 +136,7 @@ bool load_multiarray_from_features(MLMultiArray* array,
     const auto* strides = array.strides;
     const auto* shape = array.shape;
     float* data = static_cast<float*>(array.dataPointer);
-    if (layout == CoreMLConfig::InputLayout::FramesByMels) {
+    if (layout == BeatitConfig::InputLayout::FramesByMels) {
         if (shape.count < 3) {
             return false;
         }
@@ -175,8 +175,8 @@ bool load_multiarray_from_features(MLMultiArray* array,
     return true;
 }
 
-CoreMLConfig::InputLayout infer_model_input_layout(MLModel* model,
-                                                   const CoreMLConfig& config) {
+BeatitConfig::InputLayout infer_model_input_layout(MLModel* model,
+                                                   const BeatitConfig& config) {
     if (!model) {
         return config.input_layout;
     }
@@ -198,10 +198,10 @@ CoreMLConfig::InputLayout infer_model_input_layout(MLModel* model,
 
     const NSUInteger rank = constraint.shape.count;
     if (rank >= 4) {
-        return CoreMLConfig::InputLayout::ChannelsFramesMels;
+        return BeatitConfig::InputLayout::ChannelsFramesMels;
     }
     if (rank == 3) {
-        return CoreMLConfig::InputLayout::FramesByMels;
+        return BeatitConfig::InputLayout::FramesByMels;
     }
     return config.input_layout;
 }

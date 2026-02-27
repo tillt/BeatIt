@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include "beatit/coreml.h"
+#include "beatit/config.h"
 
 #include <vector>
 
@@ -16,6 +16,6 @@ namespace beatit {
 
 CoreMLResult analyze_with_torch_activations(const std::vector<float>& samples,
                                             double sample_rate,
-                                            const CoreMLConfig& config);
+                                            const BeatitConfig& config);
 
 } // namespace beatit

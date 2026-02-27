@@ -6,10 +6,10 @@
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 #include "beatit/dbn/beatit.h"
+#include "beatit/logging.hpp"
 
 #include <algorithm>
 #include <cmath>
-#include <iostream>
 #include <limits>
 
 namespace beatit {
@@ -19,7 +19,7 @@ DBNDecodeResult decode_dbn_beats_beatit(const std::vector<float>& beat_activatio
                                         double fps,
                                         float min_bpm,
                                         float max_bpm,
-                                        const CoreMLConfig& config,
+                                        const BeatitConfig& config,
                                         float reference_bpm) {
     DBNDecodeResult result;
     if (beat_activation.empty() || fps <= 0.0) {
@@ -74,7 +74,7 @@ DBNDecodeResult decode_dbn_beats_beatit(const std::vector<float>& beat_activatio
         auto summarize_activation = [&](const std::vector<float>& activation,
                                         const char* label) {
             if (activation.empty() || first_window == 0) {
-                std::cerr << "DBN: " << label << " first2s: empty\n";
+                BEATIT_LOG_DEBUG("DBN: " << label << " first2s: empty");
                 return;
             }
             float min_val = activation[0];
@@ -91,28 +91,27 @@ DBNDecodeResult decode_dbn_beats_beatit(const std::vector<float>& beat_activatio
                 }
             }
             const double mean = sum / static_cast<double>(first_window);
-            std::cerr << "DBN: " << label << " first2s"
-                      << " frames=" << first_window
-                      << " min=" << min_val
-                      << " max=" << max_val
-                      << " mean=" << mean
-                      << " above_floor=" << above
-                      << " floor=" << activation_floor
-                      << "\n";
-            std::cerr << "DBN: " << label << " first2s hits:";
+            BEATIT_LOG_DEBUG("DBN: " << label << " first2s"
+                             << " frames=" << first_window
+                             << " min=" << min_val
+                             << " max=" << max_val
+                             << " mean=" << mean
+                             << " above_floor=" << above
+                             << " floor=" << activation_floor);
+            auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
+            debug_stream << "DBN: " << label << " first2s hits:";
             std::size_t printed = 0;
             for (std::size_t i = 0; i < first_window && printed < 8; ++i) {
                 const float v = activation[i];
                 if (v >= activation_floor) {
                     const double time_s = fps > 0.0 ? static_cast<double>(i) / fps : 0.0;
-                    std::cerr << " " << i << "(" << time_s << "s)->" << v;
+                    debug_stream << " " << i << "(" << time_s << "s)->" << v;
                     ++printed;
                 }
             }
             if (printed == 0) {
-                std::cerr << " none";
+                debug_stream << " none";
             }
-            std::cerr << "\n";
         };
         summarize_activation(beat_activation, "beat");
         summarize_activation(downbeat_activation, "downbeat");
@@ -120,7 +119,8 @@ DBNDecodeResult decode_dbn_beats_beatit(const std::vector<float>& beat_activatio
         auto preview_candidates = [&](const std::vector<std::size_t>& frames,
                                       const std::vector<float>& activation,
                                       const char* label) {
-            std::cerr << "DBN: " << label << " candidates head:";
+            auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
+            debug_stream << "DBN: " << label << " candidates head:";
             const std::size_t top = std::min<std::size_t>(8, frames.size());
             for (std::size_t i = 0; i < top; ++i) {
                 const std::size_t frame = frames[i];
@@ -129,9 +129,8 @@ DBNDecodeResult decode_dbn_beats_beatit(const std::vector<float>& beat_activatio
                 if (frame < activation.size()) {
                     value = activation[frame];
                 }
-                std::cerr << " " << frame << "(" << time_s << "s)->" << value;
+                debug_stream << " " << frame << "(" << time_s << "s)->" << value;
             }
-            std::cerr << "\n";
         };
         if (!use_all_candidates) {
             preview_candidates(candidates, beat_activation, "beat");
@@ -173,23 +172,20 @@ DBNDecodeResult decode_dbn_beats_beatit(const std::vector<float>& beat_activatio
         static_cast<std::size_t>(std::floor((max_bpm - min_bpm) / bpm_step)) + 1;
     const std::size_t phase_count = beats_per_bar;
 
-    if (config.verbose) {
-        std::cerr << "DBN config: all_candidates="
-                  << (use_all_candidates ? "true" : "false")
-                  << " raw_candidates=" << raw_candidate_count
-                  << " used_candidates=" << candidate_count
-                  << " pruned=" << pruned_count
-                  << " floor=" << activation_floor
-                  << " tol=" << tolerance
-                  << " max_cand=" << max_candidates
-                  << " bpm=[" << min_bpm << "," << max_bpm << "]"
-                  << " step=" << bpm_step
-                  << " tempos=" << tempo_count
-                  << " bpb=" << beats_per_bar
-                  << " reference_bpm=" << reference_bpm
-                  << " prior_weight=" << tempo_prior_weight
-                  << "\n";
-    }
+    BEATIT_LOG_DEBUG("DBN config: all_candidates="
+                     << (use_all_candidates ? "true" : "false")
+                     << " raw_candidates=" << raw_candidate_count
+                     << " used_candidates=" << candidate_count
+                     << " pruned=" << pruned_count
+                     << " floor=" << activation_floor
+                     << " tol=" << tolerance
+                     << " max_cand=" << max_candidates
+                     << " bpm=[" << min_bpm << "," << max_bpm << "]"
+                     << " step=" << bpm_step
+                     << " tempos=" << tempo_count
+                     << " bpb=" << beats_per_bar
+                     << " reference_bpm=" << reference_bpm
+                     << " prior_weight=" << tempo_prior_weight);
 
     std::vector<double> beat_log(beat_activation.size(), 0.0);
     for (std::size_t i = 0; i < beat_activation.size(); ++i) {

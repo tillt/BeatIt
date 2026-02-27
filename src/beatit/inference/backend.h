@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include "beatit/coreml.h"
+#include "beatit/config.h"
 
 #include <cstddef>
 #include <memory>
@@ -26,24 +26,24 @@ class InferenceBackend {
 public:
     virtual ~InferenceBackend() = default;
 
-    virtual std::size_t max_batch_size(const CoreMLConfig& config) const = 0;
-    virtual std::size_t border_frames(const CoreMLConfig& config) const = 0;
+    virtual std::size_t max_batch_size(const BeatitConfig& config) const = 0;
+    virtual std::size_t border_frames(const BeatitConfig& config) const = 0;
 
     virtual bool infer_window(const std::vector<float>& window,
-                              const CoreMLConfig& config,
+                              const BeatitConfig& config,
                               std::vector<float>* beat,
                               std::vector<float>* downbeat,
                               InferenceTiming* timing) = 0;
 
     virtual bool infer_windows(const std::vector<std::vector<float>>& windows,
-                               const CoreMLConfig& config,
+                               const BeatitConfig& config,
                                std::vector<std::vector<float>>* beats,
                                std::vector<std::vector<float>>* downbeats,
                                InferenceTiming* timing);
 };
 
 std::unique_ptr<InferenceBackend> make_inference_backend(
-    const CoreMLConfig& config);
+    const BeatitConfig& config);
 
 } // namespace detail
 } // namespace beatit

@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include "beatit/coreml.h"
+#include "beatit/config.h"
 #include "beatit/refiner.h"
 
 #include <cstddef>
@@ -41,17 +41,17 @@ struct AnalysisResult {
 
 AnalysisResult analyze(const std::vector<float>& samples,
                        double sample_rate,
-                       const CoreMLConfig& config);
+                       const BeatitConfig& config);
 
 // Diagnostics/helpers used by CLI tooling.
 float estimate_bpm_from_activation(const std::vector<float>& activation,
-                                   const CoreMLConfig& config,
+                                   const BeatitConfig& config,
                                    double sample_rate);
 float estimate_bpm_from_activation_autocorr(const std::vector<float>& activation,
-                                            const CoreMLConfig& config,
+                                            const BeatitConfig& config,
                                             double sample_rate);
 float estimate_bpm_from_activation_comb(const std::vector<float>& activation,
-                                        const CoreMLConfig& config,
+                                        const BeatitConfig& config,
                                         double sample_rate);
 float estimate_bpm_from_beats(const std::vector<unsigned long long>& beat_samples,
                               double sample_rate);
@@ -65,6 +65,6 @@ const std::vector<unsigned long long>& output_downbeat_feature_frames(const Anal
 
 void rebuild_output_beat_events(AnalysisResult& result,
                                 double sample_rate,
-                                const CoreMLConfig& config);
+                                const BeatitConfig& config);
 
 } // namespace beatit

@@ -15,7 +15,6 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
-#include <iostream>
 #include <string>
 #include <vector>
 
@@ -41,7 +40,7 @@ AnalysisResult BeatitStream::finalize() {
             const float* start_ptr = resampled_buffer_.data() + resampled_offset_;
             std::copy(start_ptr, start_ptr + std::min(available, window_samples), window.begin());
 
-            CoreMLConfig local_config = coreml_config_;
+            BeatitConfig local_config = coreml_config_;
             local_config.tempo_window_percent = 0.0f;
             local_config.prefer_double_time = false;
 
@@ -61,6 +60,9 @@ AnalysisResult BeatitStream::finalize() {
             perf_.finalize_infer_ms +=
                 std::chrono::duration<double, std::milli>(infer_end - infer_start).count();
             if (!ok) {
+                BEATIT_LOG_ERROR("Stream finalize inference failed."
+                                 << " backend=" << static_cast<int>(local_config.backend)
+                                 << " frame_offset=" << coreml_frame_offset_);
                 return result;
             }
             detail::trim_activation_to_frames(&beat_activation, local_config.fixed_frames);
@@ -79,7 +81,7 @@ AnalysisResult BeatitStream::finalize() {
         return result;
     }
 
-    CoreMLConfig base_config = coreml_config_;
+    BeatitConfig base_config = coreml_config_;
     base_config.tempo_window_percent = 0.0f;
     base_config.prefer_double_time = false;
     base_config.synthetic_fill = false;

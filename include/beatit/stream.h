@@ -9,7 +9,7 @@
 #pragma once
 
 #include "beatit/analysis.h"
-#include "beatit/coreml.h"
+#include "beatit/config.h"
 
 #include <chrono>
 #include <cstddef>
@@ -25,7 +25,7 @@ class InferenceBackend;
 class BeatitStream {
 public:
     BeatitStream(double sample_rate,
-                 const CoreMLConfig& coreml_config,
+                 const BeatitConfig& coreml_config,
                  bool enable_coreml = true);
     ~BeatitStream();
 
@@ -53,12 +53,30 @@ public:
 
 private:
     void reset_state(bool reset_tempo_anchor = false);
+    bool can_process_windows() const;
+    std::size_t current_window_samples() const;
+    std::size_t current_hop_samples() const;
+    std::vector<float> make_resampled_window(std::size_t start_offset,
+                                             std::size_t window_samples) const;
+    void merge_activation_window(std::size_t window_offset,
+                                 std::vector<float>& beat_activation,
+                                 std::vector<float>& downbeat_activation,
+                                 std::size_t border_frames);
+    void advance_window_offsets(std::size_t windows_advanced,
+                                std::size_t hop_samples,
+                                std::size_t window_samples);
     void process_coreml_windows();
     void process_torch_windows();
     void accumulate_phase_energy(std::size_t begin_sample, std::size_t end_sample);
+    AnalysisResult run_analysis_probe(const BeatitConfig& original_config,
+                                      double probe_start,
+                                      double probe_duration,
+                                      double total_duration_seconds,
+                                      const SampleProvider& provider,
+                                      double forced_reference_bpm = 0.0);
 
     double sample_rate_ = 0.0;
-    CoreMLConfig coreml_config_;
+    BeatitConfig coreml_config_;
     bool coreml_enabled_ = true;
     std::unique_ptr<detail::InferenceBackend> inference_backend_;
 

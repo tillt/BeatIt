@@ -1,5 +1,11 @@
 cmake_minimum_required(VERSION 3.20)
 
+if(APPLE)
+    # Let Apple Clang manage libc++ implicitly; avoid explicit CMake -lc++ injection.
+    set(CMAKE_CXX_STANDARD_LIBRARIES_INIT "")
+    set(CMAKE_OBJCXX_STANDARD_LIBRARIES_INIT "")
+endif()
+
 project(beatit
     VERSION 0.1.0
     DESCRIPTION "A Minimal BPM/beat tracker using CoreML. Lightweight, permissive."
@@ -71,6 +77,11 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+if(APPLE AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    # Avoid duplicate -lc++ on Apple Clang: driver already injects libc++.
+    set(CMAKE_OBJCXX_IMPLICIT_LINK_LIBRARIES "")
+endif()
+
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(BEATIT_USE_TORCH "Enable Torch backend" ON)
@@ -111,15 +122,17 @@ set(BEATIT_LIB_SOURCES
     src/beatit/inference/coreml/metadata.mm
     src/beatit/post/pipeline.cpp
     src/beatit/post/helpers.cpp
-    src/beatit/post/dbn.cpp
-    src/beatit/post/dbn_decode.cpp
-    src/beatit/post/dbn_anchor.cpp
-    src/beatit/post/dbn_grid.cpp
-    src/beatit/post/dbn_tempo.cpp
+    src/beatit/post/dbn_run.cpp
+    src/beatit/post/dbn_apply.cpp
+    src/beatit/post/grid_anchor.cpp
+    src/beatit/post/grid_phase_select.cpp
+    src/beatit/post/grid_synthesize.cpp
+    src/beatit/post/grid_tempo_decision.cpp
     src/beatit/post/logits.cpp
     src/beatit/post/grid_fill.cpp
     src/beatit/post/result_ops.cpp
     src/beatit/post/tempo_fit.cpp
+    src/beatit/post/window_select.cpp
     src/beatit/post/window.cpp
     src/beatit/coreml/preset.cpp
     src/beatit/dbn/calmdad.cpp
@@ -127,12 +140,15 @@ set(BEATIT_LIB_SOURCES
     src/beatit/dbn/beatit.cpp
     src/beatit/refiner/core.cpp
     src/beatit/refiner/constant.cpp
+    src/beatit/refiner/constant_phase.cpp
+    src/beatit/refiner/constant_support.cpp
     src/beatit/refiner/constant_regions.cpp
     src/beatit/inference/window_merge.cpp
     src/beatit/stream/finalize.cpp
     src/beatit/inference/backend_coreml.cpp
     src/beatit/sparse/probe.cpp
     src/beatit/sparse/probe_pick.cpp
+    src/beatit/sparse/probe_pick_helpers.cpp
     src/beatit/sparse/probe_score.cpp
     src/beatit/sparse/phase_metrics.cpp
     src/beatit/sparse/refinement.cpp
@@ -255,7 +271,7 @@ endif()
 if(APPLE)
     set(BEATIT_PUBLIC_HEADERS
         "${CMAKE_CURRENT_SOURCE_DIR}/include/beatit/analysis.h"
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/beatit/coreml.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/beatit/config.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/beatit/coreml_preset.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/beatit/logging.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/beatit/refiner.h"

@@ -13,7 +13,7 @@ namespace beatit {
 
 CoreMLResult analyze_with_torch_activations(const std::vector<float>&,
                                             double,
-                                            const CoreMLConfig&) {
+                                            const BeatitConfig&) {
     BEATIT_LOG_ERROR("Torch backend not enabled in this build.");
     return {};
 }

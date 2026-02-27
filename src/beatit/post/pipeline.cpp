@@ -6,12 +6,12 @@
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 
-#include "beatit/coreml.h"
+#include "beatit/config.h"
 #include "beatit/dbn/beatit.h"
 #include "beatit/dbn/calmdad.h"
 
 #include "beatit/post/helpers.h"
-#include "beatit/post/dbn.h"
+#include "beatit/post/dbn_run.h"
 #include "beatit/post/result_ops.h"
 #include "beatit/post/logits.h"
 #include "beatit/post/tempo_fit.h"
@@ -23,7 +23,6 @@
 #include <cmath>
 #include <cstddef>
 #include <iomanip>
-#include <iostream>
 #include <limits>
 #include <numeric>
 #include <string>
@@ -62,7 +61,7 @@ using detail::window_tempo_score;
 CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activation,
                                             const std::vector<float>& downbeat_activation,
                                             const std::vector<float>* phase_energy,
-                                            const CoreMLConfig& config,
+                                            const BeatitConfig& config,
                                             double sample_rate,
                                             float reference_bpm,
                                             std::size_t last_active_frame,
@@ -135,15 +134,16 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
         const double floor_value = epsilon / 2.0;
         std::size_t emitted = 0;
 
-        std::cerr << "Activation window: start=" << config.debug_activations_start_s
-                  << "s end=" << config.debug_activations_end_s
-                  << "s fps=" << fps
-                  << " hop=" << config.hop_size
-                  << " hop_scale=" << hop_scale
-                  << " frames=[" << start_frame << "," << end_frame << "]\n";
-        std::cerr << "Activations (frame,time_s,sample_frame,"
-                  << "beat_raw,downbeat_raw,beat_prob,downbeat_prob,combined)\n";
-        std::cerr << std::fixed << std::setprecision(6);
+        auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
+        debug_stream << std::fixed << std::setprecision(6);
+        debug_stream << "Activation window: start=" << config.debug_activations_start_s
+                     << "s end=" << config.debug_activations_end_s
+                     << "s fps=" << fps
+                     << " hop=" << config.hop_size
+                     << " hop_scale=" << hop_scale
+                     << " frames=[" << start_frame << "," << end_frame << "]\n";
+        debug_stream << "Activations (frame,time_s,sample_frame,"
+                     << "beat_raw,downbeat_raw,beat_prob,downbeat_prob,combined)\n";
         for (std::size_t frame = start_frame; frame <= end_frame; ++frame) {
             const float beat_raw = result.beat_activation[frame];
             const float downbeat_raw =
@@ -151,23 +151,24 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
             double beat_prob = beat_raw;
             double downbeat_prob = downbeat_raw;
             double combined = beat_raw;
-            if (config.dbn_mode == CoreMLConfig::DBNMode::Calmdad) {
+            if (config.dbn_mode == BeatitConfig::DBNMode::Calmdad) {
                 beat_prob = static_cast<double>(beat_raw) * (1.0 - epsilon) + floor_value;
                 downbeat_prob = static_cast<double>(downbeat_raw) * (1.0 - epsilon) + floor_value;
                 combined = std::max(floor_value, beat_prob - downbeat_prob);
             }
             const double time_s = static_cast<double>(frame) / fps;
             const double sample_pos = static_cast<double>(frame * config.hop_size) * hop_scale;
-            std::cerr << frame << "," << time_s << "," << static_cast<unsigned long long>(std::llround(sample_pos))
-                      << "," << beat_raw << "," << downbeat_raw
-                      << "," << beat_prob << "," << downbeat_prob << "," << combined << "\n";
+            debug_stream << frame << "," << time_s << ","
+                         << static_cast<unsigned long long>(std::llround(sample_pos))
+                         << "," << beat_raw << "," << downbeat_raw
+                         << "," << beat_prob << "," << downbeat_prob << "," << combined << "\n";
             if (config.debug_activations_max > 0 &&
                 ++emitted >= config.debug_activations_max) {
-                std::cerr << "Activations truncated at " << emitted << " rows\n";
+                debug_stream << "Activations truncated at " << emitted << " rows\n";
                 break;
             }
         }
-        std::cerr << std::defaultfloat;
+        debug_stream << std::defaultfloat;
     }
 
     constexpr std::size_t kRefineWindow = 2;
@@ -210,20 +211,23 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
             dbn_max_bpm = std::max(dbn_max_bpm, max_bpm_alt);
         }
         clamp_bpm_range(dbn_min_bpm, dbn_max_bpm);
-        if (detail::run_dbn_postprocess(result,
-                                        phase_energy,
-                                        config,
-                                        sample_rate,
-                                        reference_bpm,
-                                        grid_total_frames,
-                                        dbn_min_bpm,
-                                        dbn_max_bpm,
-                                        fps,
-                                        hop_scale,
-                                        analysis_latency_frames,
-                                        analysis_latency_frames_f,
-                                        dbn_ms,
-                                        peaks_ms)) {
+        const detail::DBNRunRequest dbn_request{
+            result,
+            phase_energy,
+            config,
+            sample_rate,
+            reference_bpm,
+            grid_total_frames,
+            dbn_min_bpm,
+            dbn_max_bpm,
+            fps,
+            hop_scale,
+            analysis_latency_frames,
+            analysis_latency_frames_f,
+            peaks_ms,
+            dbn_ms,
+        };
+        if (detail::run_dbn_postprocess(dbn_request)) {
             return result;
         }
     }

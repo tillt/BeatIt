@@ -18,6 +18,36 @@
 #include <vector>
 
 namespace beatit {
+namespace {
+
+bool uses_sparse_dynamic_windowing(const BeatitConfig& config) {
+    return config.sparse_probe_mode && config.dbn_window_seconds > 0.0;
+}
+
+void clamp_probe_bpm_range(BeatitConfig* config,
+                           const BeatitConfig& original_config,
+                           double reference_bpm) {
+    if (!config || reference_bpm <= 0.0) {
+        return;
+    }
+
+    const float hard_min = std::max(1.0f, original_config.min_bpm);
+    const float hard_max = std::max(hard_min + 1.0f, original_config.max_bpm);
+    float local_min = static_cast<float>(reference_bpm * 0.99);
+    float local_max = static_cast<float>(reference_bpm * 1.01);
+    local_min = std::max(hard_min, local_min);
+    local_max = std::min(hard_max, local_max);
+    if (local_max <= local_min) {
+        local_min = std::max(hard_min, static_cast<float>(reference_bpm * 0.985));
+        local_max = std::min(hard_max, static_cast<float>(reference_bpm * 1.015));
+    }
+    if (local_max > local_min) {
+        config->min_bpm = local_min;
+        config->max_bpm = local_max;
+    }
+}
+
+} // namespace
 
 BeatitStream::~BeatitStream() = default;
 
@@ -45,12 +75,56 @@ void BeatitStream::reset_state(bool reset_tempo_anchor) {
     perf_ = {};
 }
 
+bool BeatitStream::can_process_windows() const {
+    return coreml_enabled_ && coreml_config_.fixed_frames > 0 && inference_backend_;
+}
+
+std::size_t BeatitStream::current_window_samples() const {
+    return coreml_config_.frame_size +
+           (coreml_config_.fixed_frames - 1) * coreml_config_.hop_size;
+}
+
+std::size_t BeatitStream::current_hop_samples() const {
+    return coreml_config_.window_hop_frames * coreml_config_.hop_size;
+}
+
+std::vector<float> BeatitStream::make_resampled_window(std::size_t start_offset,
+                                                       std::size_t window_samples) const {
+    const float* start_ptr = resampled_buffer_.data() + start_offset;
+    return std::vector<float>(start_ptr, start_ptr + window_samples);
+}
+
+void BeatitStream::merge_activation_window(std::size_t window_offset,
+                                           std::vector<float>& beat_activation,
+                                           std::vector<float>& downbeat_activation,
+                                           std::size_t border_frames) {
+    detail::trim_activation_to_frames(&beat_activation, coreml_config_.fixed_frames);
+    detail::trim_activation_to_frames(&downbeat_activation, coreml_config_.fixed_frames);
+    detail::merge_window_activations(&coreml_beat_activation_,
+                                     &coreml_downbeat_activation_,
+                                     window_offset,
+                                     coreml_config_.fixed_frames,
+                                     beat_activation,
+                                     downbeat_activation,
+                                     border_frames);
+}
+
+void BeatitStream::advance_window_offsets(std::size_t windows_advanced,
+                                          std::size_t hop_samples,
+                                          std::size_t window_samples) {
+    resampled_offset_ += hop_samples * windows_advanced;
+    coreml_frame_offset_ += coreml_config_.window_hop_frames * windows_advanced;
+
+    if (resampled_offset_ > window_samples) {
+        resampled_buffer_.erase(resampled_buffer_.begin(),
+                                resampled_buffer_.begin() + static_cast<long>(resampled_offset_));
+        resampled_offset_ = 0;
+    }
+}
+
 bool BeatitStream::request_analysis_window(double* start_seconds,
                                            double* duration_seconds) const {
-    const bool sparse_dynamic =
-        coreml_config_.sparse_probe_mode &&
-        coreml_config_.dbn_window_seconds > 0.0;
-    if (sparse_dynamic) {
+    if (uses_sparse_dynamic_windowing(coreml_config_)) {
         // Sparse mode always operates on probe-sized windows.
         if (start_seconds) {
             *start_seconds = 0.0;
@@ -71,9 +145,6 @@ bool BeatitStream::request_analysis_window(double* start_seconds,
                      ? coreml_config_.dbn_window_start_seconds
                      : coreml_config_.analysis_start_seconds);
     const double duration = coreml_config_.max_analysis_seconds;
-    if (duration <= 0.0) {
-        return false;
-    }
 
     if (start_seconds) {
         *start_seconds = start;
@@ -93,63 +164,29 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
         return result;
     }
 
-    CoreMLConfig original_config = coreml_config_;
-    auto run_probe = [&](double probe_start,
-                         double probe_duration,
-                         double forced_reference_bpm = 0.0) -> AnalysisResult {
-        reset_state(true);
-        coreml_config_ = original_config;
-        if (coreml_config_.sparse_probe_mode) {
-            // Sparse mode is intentionally single-switch for callers.
-            coreml_config_.use_dbn = true;
-        }
-        coreml_config_.analysis_start_seconds = 0.0;
-        coreml_config_.dbn_window_start_seconds = 0.0;
-        coreml_config_.max_analysis_seconds = 0.0;
-        if (forced_reference_bpm > 0.0) {
-            tempo_reference_bpm_ = forced_reference_bpm;
-            tempo_reference_valid_ = true;
-            const float hard_min = std::max(1.0f, original_config.min_bpm);
-            const float hard_max = std::max(hard_min + 1.0f, original_config.max_bpm);
-            float local_min = static_cast<float>(forced_reference_bpm * 0.99);
-            float local_max = static_cast<float>(forced_reference_bpm * 1.01);
-            local_min = std::max(hard_min, local_min);
-            local_max = std::min(hard_max, local_max);
-            if (local_max <= local_min) {
-                local_min = std::max(hard_min, static_cast<float>(forced_reference_bpm * 0.985));
-                local_max = std::min(hard_max, static_cast<float>(forced_reference_bpm * 1.015));
-            }
-            if (local_max > local_min) {
-                coreml_config_.min_bpm = local_min;
-                coreml_config_.max_bpm = local_max;
-            }
-        }
-
-        std::vector<float> window_samples;
-        const std::size_t received =
-            provider(std::max(0.0, probe_start), probe_duration, &window_samples);
-        if (received > 0 && window_samples.size() >= received) {
-            push(window_samples.data(), received);
-        } else if (!window_samples.empty()) {
-            push(window_samples.data(), window_samples.size());
-        }
-
-        if (total_duration_seconds > 0.0 && sample_rate_ > 0.0) {
-            const double sample_count = std::ceil(total_duration_seconds * sample_rate_);
-            total_seen_samples_ = static_cast<std::size_t>(std::max(0.0, sample_count));
-        }
-        return finalize();
-    };
-
+    BeatitConfig original_config = coreml_config_;
     const bool sparse_dynamic =
-        original_config.sparse_probe_mode &&
-        original_config.dbn_window_seconds > 0.0 &&
-        total_duration_seconds > 0.0;
+        uses_sparse_dynamic_windowing(original_config) && total_duration_seconds > 0.0;
     if (!sparse_dynamic) {
-        result = run_probe(start_seconds, duration_seconds);
+        result = run_analysis_probe(original_config,
+                                    start_seconds,
+                                    duration_seconds,
+                                    total_duration_seconds,
+                                    provider);
         coreml_config_ = original_config;
         return result;
     }
+
+    auto run_probe = [&](double probe_start,
+                         double probe_duration,
+                         double forced_reference_bpm = 0.0) -> AnalysisResult {
+        return run_analysis_probe(original_config,
+                                  probe_start,
+                                  probe_duration,
+                                  total_duration_seconds,
+                                  provider,
+                                  forced_reference_bpm);
+    };
 
     result = detail::analyze_sparse_probe_window(
         original_config,
@@ -162,6 +199,44 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
 
     coreml_config_ = original_config;
     return result;
+}
+
+AnalysisResult BeatitStream::run_analysis_probe(const BeatitConfig& original_config,
+                                                double probe_start,
+                                                double probe_duration,
+                                                double total_duration_seconds,
+                                                const SampleProvider& provider,
+                                                double forced_reference_bpm) {
+    reset_state(true);
+    coreml_config_ = original_config;
+    if (coreml_config_.sparse_probe_mode) {
+        // Sparse mode is intentionally single-switch for callers.
+        coreml_config_.use_dbn = true;
+    }
+    coreml_config_.analysis_start_seconds = 0.0;
+    coreml_config_.dbn_window_start_seconds = 0.0;
+    coreml_config_.max_analysis_seconds = 0.0;
+
+    if (forced_reference_bpm > 0.0) {
+        tempo_reference_bpm_ = forced_reference_bpm;
+        tempo_reference_valid_ = true;
+        clamp_probe_bpm_range(&coreml_config_, original_config, forced_reference_bpm);
+    }
+
+    std::vector<float> window_samples;
+    const std::size_t received =
+        provider(std::max(0.0, probe_start), probe_duration, &window_samples);
+    if (received > 0 && window_samples.size() >= received) {
+        push(window_samples.data(), received);
+    } else if (!window_samples.empty()) {
+        push(window_samples.data(), window_samples.size());
+    }
+
+    if (total_duration_seconds > 0.0 && sample_rate_ > 0.0) {
+        const double sample_count = std::ceil(total_duration_seconds * sample_rate_);
+        total_seen_samples_ = static_cast<std::size_t>(std::max(0.0, sample_count));
+    }
+    return finalize();
 }
 
 void BeatitStream::LinearResampler::push(const float* input,
@@ -194,7 +269,7 @@ void BeatitStream::LinearResampler::push(const float* input,
 }
 
 BeatitStream::BeatitStream(double sample_rate,
-                           const CoreMLConfig& coreml_config,
+                           const BeatitConfig& coreml_config,
                            bool enable_coreml)
     : sample_rate_(sample_rate),
       coreml_config_(coreml_config),
@@ -216,18 +291,15 @@ BeatitStream::BeatitStream(double sample_rate,
 }
 
 void BeatitStream::process_coreml_windows() {
-    if (!coreml_enabled_ || coreml_config_.fixed_frames == 0 || !inference_backend_) {
+    if (!can_process_windows()) {
         return;
     }
 
-    const std::size_t window_samples =
-        coreml_config_.frame_size + (coreml_config_.fixed_frames - 1) * coreml_config_.hop_size;
-    const std::size_t hop_samples = coreml_config_.window_hop_frames * coreml_config_.hop_size;
+    const std::size_t window_samples = current_window_samples();
+    const std::size_t hop_samples = current_hop_samples();
 
     while (resampled_buffer_.size() - resampled_offset_ >= window_samples) {
-        std::vector<float> window(window_samples, 0.0f);
-        const float* start_ptr = resampled_buffer_.data() + resampled_offset_;
-        std::copy(start_ptr, start_ptr + window_samples, window.begin());
+        std::vector<float> window = make_resampled_window(resampled_offset_, window_samples);
 
         const auto infer_start = std::chrono::steady_clock::now();
         std::vector<float> beat_activation;
@@ -245,41 +317,26 @@ void BeatitStream::process_coreml_windows() {
             std::chrono::duration<double, std::milli>(infer_end - infer_start).count();
         perf_.window_count += 1;
         if (!ok) {
+            BEATIT_LOG_ERROR("Stream inference failed in process_coreml_windows."
+                             << " backend=" << static_cast<int>(coreml_config_.backend)
+                             << " frame_offset=" << coreml_frame_offset_);
             return;
         }
-        detail::trim_activation_to_frames(&beat_activation, coreml_config_.fixed_frames);
-        detail::trim_activation_to_frames(&downbeat_activation, coreml_config_.fixed_frames);
-
-        detail::merge_window_activations(&coreml_beat_activation_,
-                                         &coreml_downbeat_activation_,
-                                         coreml_frame_offset_,
-                                         coreml_config_.fixed_frames,
-                                         beat_activation,
-                                         downbeat_activation,
-                                         0);
-
-        resampled_offset_ += hop_samples;
-        coreml_frame_offset_ += coreml_config_.window_hop_frames;
-
-        if (resampled_offset_ > window_samples) {
-            resampled_buffer_.erase(resampled_buffer_.begin(),
-                                    resampled_buffer_.begin() + static_cast<long>(resampled_offset_));
-            resampled_offset_ = 0;
-        }
+        merge_activation_window(coreml_frame_offset_, beat_activation, downbeat_activation, 0);
+        advance_window_offsets(1, hop_samples, window_samples);
     }
 }
 
 void BeatitStream::process_torch_windows() {
-    if (!coreml_enabled_ || coreml_config_.fixed_frames == 0 || !inference_backend_) {
+    if (!can_process_windows()) {
         return;
     }
-    if (coreml_config_.backend != CoreMLConfig::Backend::Torch) {
+    if (coreml_config_.backend != BeatitConfig::Backend::Torch) {
         return;
     }
 
-    const std::size_t window_samples =
-        coreml_config_.frame_size + (coreml_config_.fixed_frames - 1) * coreml_config_.hop_size;
-    const std::size_t hop_samples = coreml_config_.window_hop_frames * coreml_config_.hop_size;
+    const std::size_t window_samples = current_window_samples();
+    const std::size_t hop_samples = current_hop_samples();
     const std::size_t border = std::min(inference_backend_->border_frames(coreml_config_),
                                         coreml_config_.fixed_frames / 2);
     const std::size_t batch_size = std::max<std::size_t>(
@@ -293,11 +350,8 @@ void BeatitStream::process_torch_windows() {
         std::vector<std::vector<float>> windows;
         windows.reserve(batch_count);
         for (std::size_t w = 0; w < batch_count; ++w) {
-            std::vector<float> window(window_samples, 0.0f);
-            const float* start_ptr =
-                resampled_buffer_.data() + resampled_offset_ + w * hop_samples;
-            std::copy(start_ptr, start_ptr + window_samples, window.begin());
-            windows.push_back(std::move(window));
+            windows.push_back(
+                make_resampled_window(resampled_offset_ + w * hop_samples, window_samples));
         }
 
         std::vector<std::vector<float>> beat_activations;
@@ -317,6 +371,9 @@ void BeatitStream::process_torch_windows() {
             std::chrono::duration<double, std::milli>(infer_end - infer_start).count();
         perf_.window_count += batch_count;
         if (!ok) {
+            BEATIT_LOG_ERROR("Stream inference failed in process_torch_windows."
+                             << " batch_count=" << batch_count
+                             << " frame_offset=" << coreml_frame_offset_);
             return;
         }
 
@@ -324,28 +381,12 @@ void BeatitStream::process_torch_windows() {
             auto& beat_activation = beat_activations[w];
             auto& downbeat_activation = downbeat_activations[w];
 
-            detail::trim_activation_to_frames(&beat_activation, coreml_config_.fixed_frames);
-            detail::trim_activation_to_frames(&downbeat_activation, coreml_config_.fixed_frames);
-
             const std::size_t window_offset =
                 coreml_frame_offset_ + w * coreml_config_.window_hop_frames;
-            detail::merge_window_activations(&coreml_beat_activation_,
-                                             &coreml_downbeat_activation_,
-                                             window_offset,
-                                             coreml_config_.fixed_frames,
-                                             beat_activation,
-                                             downbeat_activation,
-                                             border);
+            merge_activation_window(window_offset, beat_activation, downbeat_activation, border);
         }
 
-        resampled_offset_ += hop_samples * batch_count;
-        coreml_frame_offset_ += coreml_config_.window_hop_frames * batch_count;
-
-        if (resampled_offset_ > window_samples) {
-            resampled_buffer_.erase(resampled_buffer_.begin(),
-                                    resampled_buffer_.begin() + static_cast<long>(resampled_offset_));
-            resampled_offset_ = 0;
-        }
+        advance_window_offsets(batch_count, hop_samples, window_samples);
     }
 }
 
@@ -435,7 +476,7 @@ void BeatitStream::push(const float* samples, std::size_t count) {
     const std::size_t after_size = resampled_buffer_.size();
     accumulate_phase_energy(before_size, after_size);
     const auto process_start = std::chrono::steady_clock::now();
-    if (coreml_config_.backend == CoreMLConfig::Backend::Torch) {
+    if (coreml_config_.backend == BeatitConfig::Backend::Torch) {
         process_torch_windows();
     } else {
         process_coreml_windows();

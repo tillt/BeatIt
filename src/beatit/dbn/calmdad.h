@@ -11,7 +11,7 @@
 #ifndef BEATIT_DBN_CALMDAD_H
 #define BEATIT_DBN_CALMDAD_H
 
-#include "beatit/coreml.h"
+#include "beatit/config.h"
 
 #include <cstddef>
 #include <limits>
@@ -56,7 +56,7 @@ struct CalmdadSparseDecodeRequest {
 
 class CalmdadDecoder {
 public:
-    explicit CalmdadDecoder(const CoreMLConfig& config);
+    explicit CalmdadDecoder(const BeatitConfig& config);
 
     DBNDecodeResult decode(const CalmdadDecodeRequest& request) const;
     DBNPathResult decode_sparse(const CalmdadSparseDecodeRequest& request) const;
@@ -68,7 +68,7 @@ public:
                                                   float activation_floor);
 
 private:
-    CoreMLConfig config_;
+    BeatitConfig config_;
 };
 
 }  // namespace beatit
