@@ -18,6 +18,36 @@
 #include <vector>
 
 namespace beatit {
+namespace {
+
+bool uses_sparse_dynamic_windowing(const BeatitConfig& config) {
+    return config.sparse_probe_mode && config.dbn_window_seconds > 0.0;
+}
+
+void clamp_probe_bpm_range(BeatitConfig* config,
+                           const BeatitConfig& original_config,
+                           double reference_bpm) {
+    if (!config || reference_bpm <= 0.0) {
+        return;
+    }
+
+    const float hard_min = std::max(1.0f, original_config.min_bpm);
+    const float hard_max = std::max(hard_min + 1.0f, original_config.max_bpm);
+    float local_min = static_cast<float>(reference_bpm * 0.99);
+    float local_max = static_cast<float>(reference_bpm * 1.01);
+    local_min = std::max(hard_min, local_min);
+    local_max = std::min(hard_max, local_max);
+    if (local_max <= local_min) {
+        local_min = std::max(hard_min, static_cast<float>(reference_bpm * 0.985));
+        local_max = std::min(hard_max, static_cast<float>(reference_bpm * 1.015));
+    }
+    if (local_max > local_min) {
+        config->min_bpm = local_min;
+        config->max_bpm = local_max;
+    }
+}
+
+} // namespace
 
 BeatitStream::~BeatitStream() = default;
 
@@ -60,10 +90,8 @@ std::size_t BeatitStream::current_hop_samples() const {
 
 std::vector<float> BeatitStream::make_resampled_window(std::size_t start_offset,
                                                        std::size_t window_samples) const {
-    std::vector<float> window(window_samples, 0.0f);
     const float* start_ptr = resampled_buffer_.data() + start_offset;
-    std::copy(start_ptr, start_ptr + window_samples, window.begin());
-    return window;
+    return std::vector<float>(start_ptr, start_ptr + window_samples);
 }
 
 void BeatitStream::merge_activation_window(std::size_t window_offset,
@@ -96,10 +124,7 @@ void BeatitStream::advance_window_offsets(std::size_t windows_advanced,
 
 bool BeatitStream::request_analysis_window(double* start_seconds,
                                            double* duration_seconds) const {
-    const bool sparse_dynamic =
-        coreml_config_.sparse_probe_mode &&
-        coreml_config_.dbn_window_seconds > 0.0;
-    if (sparse_dynamic) {
+    if (uses_sparse_dynamic_windowing(coreml_config_)) {
         // Sparse mode always operates on probe-sized windows.
         if (start_seconds) {
             *start_seconds = 0.0;
@@ -120,9 +145,6 @@ bool BeatitStream::request_analysis_window(double* start_seconds,
                      ? coreml_config_.dbn_window_start_seconds
                      : coreml_config_.analysis_start_seconds);
     const double duration = coreml_config_.max_analysis_seconds;
-    if (duration <= 0.0) {
-        return false;
-    }
 
     if (start_seconds) {
         *start_seconds = start;
@@ -143,62 +165,28 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
     }
 
     BeatitConfig original_config = coreml_config_;
-    auto run_probe = [&](double probe_start,
-                         double probe_duration,
-                         double forced_reference_bpm = 0.0) -> AnalysisResult {
-        reset_state(true);
-        coreml_config_ = original_config;
-        if (coreml_config_.sparse_probe_mode) {
-            // Sparse mode is intentionally single-switch for callers.
-            coreml_config_.use_dbn = true;
-        }
-        coreml_config_.analysis_start_seconds = 0.0;
-        coreml_config_.dbn_window_start_seconds = 0.0;
-        coreml_config_.max_analysis_seconds = 0.0;
-        if (forced_reference_bpm > 0.0) {
-            tempo_reference_bpm_ = forced_reference_bpm;
-            tempo_reference_valid_ = true;
-            const float hard_min = std::max(1.0f, original_config.min_bpm);
-            const float hard_max = std::max(hard_min + 1.0f, original_config.max_bpm);
-            float local_min = static_cast<float>(forced_reference_bpm * 0.99);
-            float local_max = static_cast<float>(forced_reference_bpm * 1.01);
-            local_min = std::max(hard_min, local_min);
-            local_max = std::min(hard_max, local_max);
-            if (local_max <= local_min) {
-                local_min = std::max(hard_min, static_cast<float>(forced_reference_bpm * 0.985));
-                local_max = std::min(hard_max, static_cast<float>(forced_reference_bpm * 1.015));
-            }
-            if (local_max > local_min) {
-                coreml_config_.min_bpm = local_min;
-                coreml_config_.max_bpm = local_max;
-            }
-        }
-
-        std::vector<float> window_samples;
-        const std::size_t received =
-            provider(std::max(0.0, probe_start), probe_duration, &window_samples);
-        if (received > 0 && window_samples.size() >= received) {
-            push(window_samples.data(), received);
-        } else if (!window_samples.empty()) {
-            push(window_samples.data(), window_samples.size());
-        }
-
-        if (total_duration_seconds > 0.0 && sample_rate_ > 0.0) {
-            const double sample_count = std::ceil(total_duration_seconds * sample_rate_);
-            total_seen_samples_ = static_cast<std::size_t>(std::max(0.0, sample_count));
-        }
-        return finalize();
-    };
-
     const bool sparse_dynamic =
-        original_config.sparse_probe_mode &&
-        original_config.dbn_window_seconds > 0.0 &&
-        total_duration_seconds > 0.0;
+        uses_sparse_dynamic_windowing(original_config) && total_duration_seconds > 0.0;
     if (!sparse_dynamic) {
-        result = run_probe(start_seconds, duration_seconds);
+        result = run_analysis_probe(original_config,
+                                    start_seconds,
+                                    duration_seconds,
+                                    total_duration_seconds,
+                                    provider);
         coreml_config_ = original_config;
         return result;
     }
+
+    auto run_probe = [&](double probe_start,
+                         double probe_duration,
+                         double forced_reference_bpm = 0.0) -> AnalysisResult {
+        return run_analysis_probe(original_config,
+                                  probe_start,
+                                  probe_duration,
+                                  total_duration_seconds,
+                                  provider,
+                                  forced_reference_bpm);
+    };
 
     result = detail::analyze_sparse_probe_window(
         original_config,
@@ -211,6 +199,44 @@ AnalysisResult BeatitStream::analyze_window(double start_seconds,
 
     coreml_config_ = original_config;
     return result;
+}
+
+AnalysisResult BeatitStream::run_analysis_probe(const BeatitConfig& original_config,
+                                                double probe_start,
+                                                double probe_duration,
+                                                double total_duration_seconds,
+                                                const SampleProvider& provider,
+                                                double forced_reference_bpm) {
+    reset_state(true);
+    coreml_config_ = original_config;
+    if (coreml_config_.sparse_probe_mode) {
+        // Sparse mode is intentionally single-switch for callers.
+        coreml_config_.use_dbn = true;
+    }
+    coreml_config_.analysis_start_seconds = 0.0;
+    coreml_config_.dbn_window_start_seconds = 0.0;
+    coreml_config_.max_analysis_seconds = 0.0;
+
+    if (forced_reference_bpm > 0.0) {
+        tempo_reference_bpm_ = forced_reference_bpm;
+        tempo_reference_valid_ = true;
+        clamp_probe_bpm_range(&coreml_config_, original_config, forced_reference_bpm);
+    }
+
+    std::vector<float> window_samples;
+    const std::size_t received =
+        provider(std::max(0.0, probe_start), probe_duration, &window_samples);
+    if (received > 0 && window_samples.size() >= received) {
+        push(window_samples.data(), received);
+    } else if (!window_samples.empty()) {
+        push(window_samples.data(), window_samples.size());
+    }
+
+    if (total_duration_seconds > 0.0 && sample_rate_ > 0.0) {
+        const double sample_count = std::ceil(total_duration_seconds * sample_rate_);
+        total_seen_samples_ = static_cast<std::size_t>(std::max(0.0, sample_count));
+    }
+    return finalize();
 }
 
 void BeatitStream::LinearResampler::push(const float* input,

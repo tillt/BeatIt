@@ -68,6 +68,12 @@ private:
     void process_coreml_windows();
     void process_torch_windows();
     void accumulate_phase_energy(std::size_t begin_sample, std::size_t end_sample);
+    AnalysisResult run_analysis_probe(const BeatitConfig& original_config,
+                                      double probe_start,
+                                      double probe_duration,
+                                      double total_duration_seconds,
+                                      const SampleProvider& provider,
+                                      double forced_reference_bpm = 0.0);
 
     double sample_rate_ = 0.0;
     BeatitConfig coreml_config_;
