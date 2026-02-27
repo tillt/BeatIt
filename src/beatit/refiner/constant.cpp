@@ -13,7 +13,6 @@
 #include <vector>
 
 namespace beatit {
-namespace detail {
 
 ConstantBeatResult refine_constant_beats(const std::vector<unsigned long long>& beat_feature_frames,
                                          std::size_t total_frames,
@@ -193,5 +192,4 @@ ConstantBeatResult refine_constant_beats(const std::vector<unsigned long long>& 
     return result;
 }
 
-} // namespace detail
 } // namespace beatit

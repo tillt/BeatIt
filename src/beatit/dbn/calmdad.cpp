@@ -6,7 +6,7 @@
 //  Copyright © 2026 Till Toenshoff. All rights reserved.
 //
 // CALMDAD Analyzes Latent Meter Dynamics And Downbeats.
-// DBN-based beat and downbeat decoder.
+// A DBN-based beat and downbeat decoder.
 //
 #include "beatit/dbn/calmdad.h"
 #include "beatit/logging.hpp"
