@@ -54,5 +54,16 @@ double compute_sparse_edge_ratio(const std::vector<unsigned long long>& beats,
     return 1.0 + (per_beat_adjust / base_step);
 }
 
+bool apply_sparse_uniform_shift(std::vector<unsigned long long>* beats, long long shift_frames) {
+    if (!beats || beats->empty() || shift_frames == 0) {
+        return false;
+    }
+    for (std::size_t i = 0; i < beats->size(); ++i) {
+        const long long shifted = static_cast<long long>((*beats)[i]) + shift_frames;
+        (*beats)[i] = static_cast<unsigned long long>(std::max<long long>(0, shifted));
+    }
+    return true;
+}
+
 } // namespace detail
 } // namespace beatit

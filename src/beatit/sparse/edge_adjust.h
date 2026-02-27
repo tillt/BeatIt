@@ -26,5 +26,7 @@ double compute_sparse_edge_ratio(const std::vector<unsigned long long>& beats,
                                  const EdgeOffsetMetrics& last,
                                  double sample_rate);
 
+bool apply_sparse_uniform_shift(std::vector<unsigned long long>* beats, long long shift_frames);
+
 } // namespace detail
 } // namespace beatit

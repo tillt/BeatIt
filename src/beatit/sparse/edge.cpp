@@ -47,6 +47,11 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
         return !(v[0] == '0' || v[0] == 'f' || v[0] == 'F' ||
                  v[0] == 'n' || v[0] == 'N');
     }();
+    const auto has_valid_metrics = [](const EdgeOffsetMetrics& metrics, std::size_t min_count = 8) {
+        return metrics.count >= min_count &&
+               std::isfinite(metrics.median_ms) &&
+               std::isfinite(metrics.mad_ms);
+    };
 
     std::vector<unsigned long long>* projected = nullptr;
     if (!result.coreml_beat_projected_sample_frames.empty()) {
@@ -183,8 +188,7 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
             break;
         }
     }
-    if (intro.count < 8 || outro.count < 8 ||
-        !std::isfinite(intro.median_ms) || !std::isfinite(outro.median_ms)) {
+    if (!has_valid_metrics(intro) || !has_valid_metrics(outro)) {
         return;
     }
 
@@ -201,8 +205,7 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
         auto measured = measure_window_pair(*projected, first_window_start, last_window_start);
         post_intro = measured.first;
         post_outro = measured.second;
-        if (post_intro.count >= 8 && post_outro.count >= 8 &&
-            std::isfinite(post_intro.median_ms) && std::isfinite(post_outro.median_ms)) {
+        if (has_valid_metrics(post_intro) && has_valid_metrics(post_outro)) {
             const double post_delta = std::abs(post_outro.median_ms - post_intro.median_ms);
             std::vector<unsigned long long> candidate = *projected;
             const double pass2_ratio =
@@ -214,8 +217,7 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
                     measure_window_pair(candidate, first_window_start, last_window_start);
                 const EdgeOffsetMetrics cand_intro = candidate_measured.first;
                 const EdgeOffsetMetrics cand_outro = candidate_measured.second;
-                if (cand_intro.count >= 8 && cand_outro.count >= 8 &&
-                    std::isfinite(cand_intro.median_ms) && std::isfinite(cand_outro.median_ms)) {
+                if (has_valid_metrics(cand_intro) && has_valid_metrics(cand_outro)) {
                     const double cand_delta = std::abs(cand_outro.median_ms - cand_intro.median_ms);
                     const bool improves_delta = cand_delta <= post_delta;
                     const bool keeps_intro =
@@ -234,8 +236,7 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
         [&](const EdgeOffsetMetrics& base_intro,
             const EdgeOffsetMetrics& base_outro,
             double max_beat_fraction) {
-            if (base_intro.count < 8 || base_outro.count < 8 ||
-                !std::isfinite(base_intro.median_ms) || !std::isfinite(base_outro.median_ms)) {
+            if (!has_valid_metrics(base_intro) || !has_valid_metrics(base_outro)) {
                 return false;
             }
             if ((base_intro.median_ms * base_outro.median_ms) <= 0.0) {
@@ -252,16 +253,12 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
             }
 
             std::vector<unsigned long long> candidate = *projected;
-            for (std::size_t i = 0; i < candidate.size(); ++i) {
-                const long long shifted = static_cast<long long>(candidate[i]) + shift_frames;
-                candidate[i] = static_cast<unsigned long long>(std::max<long long>(0, shifted));
-            }
+            apply_sparse_uniform_shift(&candidate, shift_frames);
             const auto measured =
                 measure_window_pair(candidate, first_window_start, last_window_start);
             const EdgeOffsetMetrics cand_intro = measured.first;
             const EdgeOffsetMetrics cand_outro = measured.second;
-            if (cand_intro.count < 8 || cand_outro.count < 8 ||
-                !std::isfinite(cand_intro.median_ms) || !std::isfinite(cand_outro.median_ms)) {
+            if (!has_valid_metrics(cand_intro) || !has_valid_metrics(cand_outro)) {
                 return false;
             }
 
@@ -284,73 +281,67 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
     EdgeOffsetMetrics global_intro = measure_edge_offsets(*projected, bpm_hint, false, sample_rate, provider);
     EdgeOffsetMetrics global_outro = measure_edge_offsets(*projected, bpm_hint, true, sample_rate, provider);
     double global_guard_ratio = 1.0;
-    if (global_intro.count >= 8 && global_outro.count >= 8 &&
-        std::isfinite(global_intro.median_ms) && std::isfinite(global_outro.median_ms)) {
-        const double global_delta = std::abs(global_outro.median_ms - global_intro.median_ms);
-        if (global_delta > 30.0) {
-            std::vector<unsigned long long> candidate = *projected;
-            const double guard_ratio =
-                compute_sparse_edge_ratio(candidate, global_intro, global_outro, sample_rate);
-            const double guard_applied =
-                apply_sparse_edge_scale(&candidate, guard_ratio, 0.99985, 1.00015, 1e-6);
-            if (guard_applied != 1.0) {
-                const EdgeOffsetMetrics cand_intro =
-                    measure_edge_offsets(candidate, bpm_hint, false, sample_rate, provider);
-                const EdgeOffsetMetrics cand_outro =
-                    measure_edge_offsets(candidate, bpm_hint, true, sample_rate, provider);
-                if (cand_intro.count >= 8 && cand_outro.count >= 8 &&
-                    std::isfinite(cand_intro.median_ms) && std::isfinite(cand_outro.median_ms)) {
-                    const double cand_delta =
-                        std::abs(cand_outro.median_ms - cand_intro.median_ms);
-                    const bool improves_delta = cand_delta <= (global_delta - 1.0);
-                    const bool keeps_intro =
-                        std::abs(cand_intro.median_ms) <= (std::abs(global_intro.median_ms) + 4.0);
-                    if (improves_delta && keeps_intro) {
-                        *projected = std::move(candidate);
-                        global_intro = cand_intro;
-                        global_outro = cand_outro;
-                        global_guard_ratio = guard_applied;
-                    }
-                }
-            }
+    const auto try_global_guard = [&](double min_delta_ms,
+                                      double max_delta_ms,
+                                      double ratio_min,
+                                      double ratio_max,
+                                      double improve_margin_ms,
+                                      double intro_margin_ms,
+                                      double worst_margin_ms,
+                                      bool check_worst) {
+        if (!has_valid_metrics(global_intro) || !has_valid_metrics(global_outro)) {
+            return;
         }
-    }
-    if (global_intro.count >= 8 && global_outro.count >= 8 &&
-        std::isfinite(global_intro.median_ms) && std::isfinite(global_outro.median_ms)) {
         const double global_delta = std::abs(global_outro.median_ms - global_intro.median_ms);
-        if (global_delta > 60.0 && global_delta <= 120.0) {
-            std::vector<unsigned long long> candidate = *projected;
-            const double guard_ratio =
-                compute_sparse_edge_ratio(candidate, global_intro, global_outro, sample_rate);
-            const double guard_applied =
-                apply_sparse_edge_scale(&candidate, guard_ratio, 0.9996, 1.0004, 1e-6);
-            if (guard_applied != 1.0) {
-                const EdgeOffsetMetrics cand_intro =
-                    measure_edge_offsets(candidate, bpm_hint, false, sample_rate, provider);
-                const EdgeOffsetMetrics cand_outro =
-                    measure_edge_offsets(candidate, bpm_hint, true, sample_rate, provider);
-                if (cand_intro.count >= 8 && cand_outro.count >= 8 &&
-                    std::isfinite(cand_intro.median_ms) && std::isfinite(cand_outro.median_ms)) {
-                    const double cand_delta =
-                        std::abs(cand_outro.median_ms - cand_intro.median_ms);
-                    const double base_worst =
-                        std::max(std::abs(global_intro.median_ms), std::abs(global_outro.median_ms));
-                    const double cand_worst =
-                        std::max(std::abs(cand_intro.median_ms), std::abs(cand_outro.median_ms));
-                    const bool improves_delta = cand_delta + 2.0 < global_delta;
-                    const bool keeps_worst_reasonable = cand_worst <= (base_worst + 10.0);
-                    if (improves_delta && keeps_worst_reasonable) {
-                        *projected = std::move(candidate);
-                        global_intro = cand_intro;
-                        global_outro = cand_outro;
-                        global_guard_ratio = guard_applied;
-                    }
-                }
-            }
+        if (global_delta <= min_delta_ms ||
+            (std::isfinite(max_delta_ms) && global_delta > max_delta_ms)) {
+            return;
         }
-    }
-    if (global_intro.count >= 8 && global_outro.count >= 8 &&
-        std::isfinite(global_intro.median_ms) && std::isfinite(global_outro.median_ms) &&
+
+        std::vector<unsigned long long> candidate = *projected;
+        const double guard_ratio =
+            compute_sparse_edge_ratio(candidate, global_intro, global_outro, sample_rate);
+        const double guard_applied =
+            apply_sparse_edge_scale(&candidate, guard_ratio, ratio_min, ratio_max, 1e-6);
+        if (guard_applied == 1.0) {
+            return;
+        }
+
+        const EdgeOffsetMetrics cand_intro =
+            measure_edge_offsets(candidate, bpm_hint, false, sample_rate, provider);
+        const EdgeOffsetMetrics cand_outro =
+            measure_edge_offsets(candidate, bpm_hint, true, sample_rate, provider);
+        if (!has_valid_metrics(cand_intro) || !has_valid_metrics(cand_outro)) {
+            return;
+        }
+
+        const double cand_delta = std::abs(cand_outro.median_ms - cand_intro.median_ms);
+        const bool improves_delta = cand_delta <= (global_delta - improve_margin_ms);
+        bool keeps_shape = false;
+        if (check_worst) {
+            const double base_worst =
+                std::max(std::abs(global_intro.median_ms), std::abs(global_outro.median_ms));
+            const double cand_worst =
+                std::max(std::abs(cand_intro.median_ms), std::abs(cand_outro.median_ms));
+            keeps_shape = cand_worst <= (base_worst + worst_margin_ms);
+        } else {
+            keeps_shape = std::abs(cand_intro.median_ms) <=
+                          (std::abs(global_intro.median_ms) + intro_margin_ms);
+        }
+
+        if (!improves_delta || !keeps_shape) {
+            return;
+        }
+
+        *projected = std::move(candidate);
+        global_intro = cand_intro;
+        global_outro = cand_outro;
+        global_guard_ratio = guard_applied;
+    };
+    try_global_guard(30.0, std::numeric_limits<double>::infinity(), 0.99985, 1.00015, 1.0, 4.0, 0.0, false);
+    try_global_guard(60.0, 120.0, 0.9996, 1.0004, 2.0, 0.0, 10.0, true);
+
+    if (has_valid_metrics(global_intro) && has_valid_metrics(global_outro) &&
         (global_intro.median_ms * global_outro.median_ms) > 0.0) {
         const double mean_ms = 0.5 * (global_intro.median_ms + global_outro.median_ms);
         const double beat_ms = 60000.0 / std::max(1e-6, bpm_hint);
@@ -360,18 +351,12 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
             std::llround((clamped_shift_ms * sample_rate) / 1000.0));
         if (shift_frames != 0) {
             std::vector<unsigned long long> candidate = *projected;
-            for (std::size_t i = 0; i < candidate.size(); ++i) {
-                const long long shifted =
-                    static_cast<long long>(candidate[i]) + shift_frames;
-                candidate[i] =
-                    static_cast<unsigned long long>(std::max<long long>(0, shifted));
-            }
+            apply_sparse_uniform_shift(&candidate, shift_frames);
             const EdgeOffsetMetrics cand_intro =
                 measure_edge_offsets(candidate, bpm_hint, false, sample_rate, provider);
             const EdgeOffsetMetrics cand_outro =
                 measure_edge_offsets(candidate, bpm_hint, true, sample_rate, provider);
-            if (cand_intro.count >= 8 && cand_outro.count >= 8 &&
-                std::isfinite(cand_intro.median_ms) && std::isfinite(cand_outro.median_ms)) {
+            if (has_valid_metrics(cand_intro) && has_valid_metrics(cand_outro)) {
                 const double base_worst =
                     std::max(std::abs(global_intro.median_ms), std::abs(global_outro.median_ms));
                 const double cand_worst =
@@ -403,13 +388,11 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
     const auto pre_middle_pair = measure_middle_windows(projected_before_refit);
     const auto post_middle_pair = measure_middle_windows(*projected);
     const double pre_global_delta_ms =
-        (pre_global_intro.count >= 8 && pre_global_outro.count >= 8 &&
-         std::isfinite(pre_global_intro.median_ms) && std::isfinite(pre_global_outro.median_ms))
+        (has_valid_metrics(pre_global_intro) && has_valid_metrics(pre_global_outro))
             ? std::abs(pre_global_outro.median_ms - pre_global_intro.median_ms)
             : std::numeric_limits<double>::infinity();
     const double post_global_delta_ms =
-        (global_intro.count >= 8 && global_outro.count >= 8 &&
-         std::isfinite(global_intro.median_ms) && std::isfinite(global_outro.median_ms))
+        (has_valid_metrics(global_intro) && has_valid_metrics(global_outro))
             ? std::abs(global_outro.median_ms - global_intro.median_ms)
             : std::numeric_limits<double>::infinity();
     const double pre_between_abs_ms = pre_middle_pair.first.median_abs_ms;
