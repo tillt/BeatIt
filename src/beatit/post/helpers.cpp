@@ -16,6 +16,100 @@
 #include <unordered_map>
 
 namespace beatit::detail {
+namespace {
+
+double interpolate_peak_position(const std::vector<float>& activation, std::size_t frame) {
+    double pos = static_cast<double>(frame);
+    if (frame > 0 && frame + 1 < activation.size()) {
+        const double prev = activation[frame - 1];
+        const double curr = activation[frame];
+        const double next = activation[frame + 1];
+        const double denom = prev - 2.0 * curr + next;
+        if (std::abs(denom) > 1e-9) {
+            double offset = 0.5 * (prev - next) / denom;
+            offset = std::max(-0.5, std::min(0.5, offset));
+            pos += offset;
+        }
+    }
+    return pos;
+}
+
+std::vector<double> interpolated_peak_positions(const std::vector<float>& activation,
+                                                const std::vector<std::size_t>& peaks) {
+    std::vector<double> positions;
+    positions.reserve(peaks.size());
+    for (std::size_t frame : peaks) {
+        positions.push_back(interpolate_peak_position(activation, frame));
+    }
+    return positions;
+}
+
+std::vector<double> positive_intervals(const std::vector<double>& positions) {
+    std::vector<double> intervals;
+    intervals.reserve(positions.size() > 1 ? positions.size() - 1 : 0);
+    for (std::size_t i = 1; i < positions.size(); ++i) {
+        if (positions[i] > positions[i - 1]) {
+            intervals.push_back(positions[i] - positions[i - 1]);
+        }
+    }
+    return intervals;
+}
+
+void fill_bpm_bins(IntervalStats& stats,
+                   const std::vector<double>& intervals,
+                   double fps,
+                   double bpm_bin_width) {
+    if (bpm_bin_width <= 0.0 || fps <= 0.0) {
+        return;
+    }
+    std::unordered_map<int, int> bin_counts;
+    for (double interval : intervals) {
+        if (interval <= 0.0) {
+            continue;
+        }
+        const double bpm = (60.0 * fps) / interval;
+        const int bin = static_cast<int>(std::llround(bpm / bpm_bin_width));
+        bin_counts[bin] += 1;
+    }
+    std::vector<std::pair<double, int>> bins;
+    bins.reserve(bin_counts.size());
+    for (const auto& entry : bin_counts) {
+        bins.emplace_back(entry.first * bpm_bin_width, entry.second);
+    }
+    std::sort(bins.begin(), bins.end(),
+              [](const auto& a, const auto& b) { return a.second > b.second; });
+    const std::size_t keep = std::min<std::size_t>(5, bins.size());
+    bins.resize(keep);
+    stats.top_bpm_bins = std::move(bins);
+}
+
+void fill_interval_stats(IntervalStats& stats,
+                         const std::vector<double>& intervals,
+                         double fps,
+                         double bpm_bin_width) {
+    if (intervals.empty()) {
+        return;
+    }
+    stats.count = intervals.size();
+    stats.min_interval = *std::min_element(intervals.begin(), intervals.end());
+    stats.max_interval = *std::max_element(intervals.begin(), intervals.end());
+    stats.mean_interval = std::accumulate(intervals.begin(), intervals.end(), 0.0) /
+                          static_cast<double>(intervals.size());
+    std::vector<double> sorted = intervals;
+    const std::size_t mid = sorted.size() / 2;
+    std::nth_element(sorted.begin(), sorted.begin() + static_cast<long>(mid), sorted.end());
+    stats.median_interval = sorted[mid];
+
+    double variance = 0.0;
+    for (double value : intervals) {
+        const double diff = value - stats.mean_interval;
+        variance += diff * diff;
+    }
+    stats.stdev_interval = std::sqrt(variance / static_cast<double>(intervals.size()));
+    fill_bpm_bins(stats, intervals, fps, bpm_bin_width);
+}
+
+} // namespace
 
 std::vector<std::size_t> pick_peaks(const std::vector<float>& activation,
                                     float threshold,
@@ -92,31 +186,8 @@ double median_interval_frames_interpolated(const std::vector<float>& activation,
     if (peaks.size() < 2 || activation.empty()) {
         return 0.0;
     }
-    std::vector<double> positions;
-    positions.reserve(peaks.size());
-    for (std::size_t frame : peaks) {
-        double pos = static_cast<double>(frame);
-        if (frame > 0 && frame + 1 < activation.size()) {
-            const double prev = activation[frame - 1];
-            const double curr = activation[frame];
-            const double next = activation[frame + 1];
-            const double denom = prev - 2.0 * curr + next;
-            if (std::abs(denom) > 1e-9) {
-                double offset = 0.5 * (prev - next) / denom;
-                offset = std::max(-0.5, std::min(0.5, offset));
-                pos += offset;
-            }
-        }
-        positions.push_back(pos);
-    }
-
-    std::vector<double> intervals;
-    intervals.reserve(positions.size() - 1);
-    for (std::size_t i = 1; i < positions.size(); ++i) {
-        if (positions[i] > positions[i - 1]) {
-            intervals.push_back(positions[i] - positions[i - 1]);
-        }
-    }
+    const std::vector<double> positions = interpolated_peak_positions(activation, peaks);
+    std::vector<double> intervals = positive_intervals(positions);
     if (intervals.empty()) {
         return 0.0;
     }
@@ -131,23 +202,7 @@ double regression_interval_frames_interpolated(const std::vector<float>& activat
         return 0.0;
     }
 
-    std::vector<double> positions;
-    positions.reserve(peaks.size());
-    for (std::size_t frame : peaks) {
-        double pos = static_cast<double>(frame);
-        if (frame > 0 && frame + 1 < activation.size()) {
-            const double prev = activation[frame - 1];
-            const double curr = activation[frame];
-            const double next = activation[frame + 1];
-            const double denom = prev - 2.0 * curr + next;
-            if (std::abs(denom) > 1e-9) {
-                double offset = 0.5 * (prev - next) / denom;
-                offset = std::max(-0.5, std::min(0.5, offset));
-                pos += offset;
-            }
-        }
-        positions.push_back(pos);
-    }
+    const std::vector<double> positions = interpolated_peak_positions(activation, peaks);
 
     const double n = static_cast<double>(positions.size());
     double sum_x = 0.0;
@@ -200,74 +255,13 @@ IntervalStats interval_stats_interpolated(const std::vector<float>& activation,
         return stats;
     }
 
-    std::vector<double> positions;
-    positions.reserve(peaks.size());
-    for (std::size_t frame : peaks) {
-        double pos = static_cast<double>(frame);
-        if (frame > 0 && frame + 1 < activation.size()) {
-            const double prev = activation[frame - 1];
-            const double curr = activation[frame];
-            const double next = activation[frame + 1];
-            const double denom = prev - 2.0 * curr + next;
-            if (std::abs(denom) > 1e-9) {
-                double offset = 0.5 * (prev - next) / denom;
-                offset = std::max(-0.5, std::min(0.5, offset));
-                pos += offset;
-            }
-        }
-        positions.push_back(pos);
-    }
-
-    std::vector<double> intervals;
-    intervals.reserve(positions.size() - 1);
-    for (std::size_t i = 1; i < positions.size(); ++i) {
-        if (positions[i] > positions[i - 1]) {
-            intervals.push_back(positions[i] - positions[i - 1]);
-        }
-    }
+    const std::vector<double> positions = interpolated_peak_positions(activation, peaks);
+    std::vector<double> intervals = positive_intervals(positions);
     if (intervals.empty()) {
         return stats;
     }
 
-    stats.count = intervals.size();
-    stats.min_interval = *std::min_element(intervals.begin(), intervals.end());
-    stats.max_interval = *std::max_element(intervals.begin(), intervals.end());
-    stats.mean_interval = std::accumulate(intervals.begin(), intervals.end(), 0.0) /
-        static_cast<double>(intervals.size());
-    std::vector<double> sorted = intervals;
-    const std::size_t mid = sorted.size() / 2;
-    std::nth_element(sorted.begin(), sorted.begin() + static_cast<long>(mid), sorted.end());
-    stats.median_interval = sorted[mid];
-
-    double variance = 0.0;
-    for (double value : intervals) {
-        const double diff = value - stats.mean_interval;
-        variance += diff * diff;
-    }
-    stats.stdev_interval = std::sqrt(variance / static_cast<double>(intervals.size()));
-
-    if (bpm_bin_width > 0.0) {
-        std::unordered_map<int, int> bin_counts;
-        for (double interval : intervals) {
-            if (interval <= 0.0) {
-                continue;
-            }
-            const double bpm = (60.0 * fps) / interval;
-            const int bin = static_cast<int>(std::llround(bpm / bpm_bin_width));
-            bin_counts[bin] += 1;
-        }
-        std::vector<std::pair<double, int>> bins;
-        bins.reserve(bin_counts.size());
-        for (const auto& entry : bin_counts) {
-            bins.emplace_back(entry.first * bpm_bin_width, entry.second);
-        }
-        std::sort(bins.begin(), bins.end(),
-                  [](const auto& a, const auto& b) { return a.second > b.second; });
-        const std::size_t keep = std::min<std::size_t>(5, bins.size());
-        bins.resize(keep);
-        stats.top_bpm_bins = std::move(bins);
-    }
-
+    fill_interval_stats(stats, intervals, fps, bpm_bin_width);
     return stats;
 }
 
@@ -290,45 +284,7 @@ IntervalStats interval_stats_frames(const std::vector<std::size_t>& frames,
         return stats;
     }
 
-    stats.count = intervals.size();
-    stats.min_interval = *std::min_element(intervals.begin(), intervals.end());
-    stats.max_interval = *std::max_element(intervals.begin(), intervals.end());
-    stats.mean_interval = std::accumulate(intervals.begin(), intervals.end(), 0.0) /
-        static_cast<double>(intervals.size());
-    std::vector<double> sorted = intervals;
-    const std::size_t mid = sorted.size() / 2;
-    std::nth_element(sorted.begin(), sorted.begin() + static_cast<long>(mid), sorted.end());
-    stats.median_interval = sorted[mid];
-
-    double variance = 0.0;
-    for (double value : intervals) {
-        const double diff = value - stats.mean_interval;
-        variance += diff * diff;
-    }
-    stats.stdev_interval = std::sqrt(variance / static_cast<double>(intervals.size()));
-
-    if (bpm_bin_width > 0.0) {
-        std::unordered_map<int, int> bin_counts;
-        for (double interval : intervals) {
-            if (interval <= 0.0) {
-                continue;
-            }
-            const double bpm = (60.0 * fps) / interval;
-            const int bin = static_cast<int>(std::llround(bpm / bpm_bin_width));
-            bin_counts[bin] += 1;
-        }
-        std::vector<std::pair<double, int>> bins;
-        bins.reserve(bin_counts.size());
-        for (const auto& entry : bin_counts) {
-            bins.emplace_back(entry.first * bpm_bin_width, entry.second);
-        }
-        std::sort(bins.begin(), bins.end(),
-                  [](const auto& a, const auto& b) { return a.second > b.second; });
-        const std::size_t keep = std::min<std::size_t>(5, bins.size());
-        bins.resize(keep);
-        stats.top_bpm_bins = std::move(bins);
-    }
-
+    fill_interval_stats(stats, intervals, fps, bpm_bin_width);
     return stats;
 }
 
