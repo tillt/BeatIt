@@ -18,7 +18,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdlib>
 #include <limits>
 #include <utility>
 #include <vector>
@@ -26,15 +25,6 @@
 namespace beatit {
 namespace detail {
 namespace {
-
-bool sparse_edge_second_pass_enabled() {
-    const char* value = std::getenv("BEATIT_EDGE_REFIT_SECOND_PASS");
-    if (!value || value[0] == '\0') {
-        return true;
-    }
-    return !(value[0] == '0' || value[0] == 'f' || value[0] == 'F' ||
-             value[0] == 'n' || value[0] == 'N');
-}
 
 bool has_valid_edge_metrics(const EdgeOffsetMetrics& metrics, std::size_t min_count = 8) {
     return metrics.count >= min_count &&
@@ -67,8 +57,6 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
     if (sample_rate <= 0.0 || probes.empty() || probe_duration <= 0.0) {
         return;
     }
-
-    const bool second_pass_enabled = sparse_edge_second_pass_enabled();
 
     std::vector<unsigned long long>* projected = nullptr;
     if (!result.coreml_beat_projected_sample_frames.empty()) {
@@ -212,7 +200,7 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
 
     EdgeOffsetMetrics post_intro = intro;
     EdgeOffsetMetrics post_outro = outro;
-    if (second_pass_enabled) {
+    {
         auto measured = measure_window_pair(*projected, first_window_start, last_window_start);
         post_intro = measured.first;
         post_outro = measured.second;
@@ -427,7 +415,6 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
     const double err_delta_frames =
         ((outro.median_ms - intro.median_ms) * sample_rate) / 1000.0;
     BEATIT_LOG_DEBUG("Sparse edge refit:"
-                     << " second_pass=" << (second_pass_enabled ? 1 : 0)
                      << " first_probe_start_s=" << first_probe_start
                      << " last_probe_start_s=" << last_probe_start
                      << " first_window_start_s=" << first_window_start
