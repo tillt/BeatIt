@@ -118,98 +118,20 @@ void select_downbeat_phase(GridProjectionState& state,
             }
         }
         if (config.dbn_trace && allow_downbeat_phase) {
-            const std::size_t limit =
-                phase_window_end > phase_window_start ? (phase_window_end - phase_window_start) : 0;
-            const std::size_t beat_preview = std::min<std::size_t>(12, result.beat_activation.size());
             auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
-            debug_stream << "DBN: beat head:";
-            for (std::size_t i = 0; i < beat_preview; ++i) {
-                debug_stream << " " << i << "->" << result.beat_activation[i];
-            }
-            debug_stream << "\n";
-            const std::size_t preview = std::min<std::size_t>(12, result.downbeat_activation.size());
-            debug_stream << "DBN: downbeat head:";
-            for (std::size_t i = 0; i < preview; ++i) {
-                debug_stream << " " << i << "->" << result.downbeat_activation[i];
-            }
-            debug_stream << "\n";
-            debug_stream << "DBN: downbeat max=" << state.max_downbeat
-                         << " beat max=" << max_beat
+            debug_stream << "DBN: phase selection window=["
+                         << phase_window_start << "," << phase_window_end << ")"
+                         << " downbeat_max=" << state.max_downbeat
+                         << " beat_max=" << max_beat
                          << " activation_floor=" << state.activation_floor
+                         << " has_phase_peaks=" << (has_phase_peaks ? 1 : 0)
                          << "\n";
-            struct Peak {
-                float value;
-                std::size_t frame;
-            };
-            std::vector<Peak> peaks;
-            const std::size_t start = (phase_window_start + 1 < phase_window_end)
-                ? (phase_window_start + 1)
-                : phase_window_start;
-            const std::size_t end =
-                phase_window_end > 1 ? phase_window_end - 1 : phase_window_end;
-            for (std::size_t i = start; i <= end; ++i) {
-                const float prev = result.downbeat_activation[i - 1];
-                const float curr = result.downbeat_activation[i];
-                const float next = result.downbeat_activation[i + 1];
-                if (curr >= prev && curr >= next) {
-                    peaks.push_back({curr, i});
-                }
-            }
-            std::sort(peaks.begin(),
-                      peaks.end(),
-                      [](const Peak& a, const Peak& b) { return a.value > b.value; });
-            debug_stream << "DBN: downbeat peaks (phase window "
-                         << phase_window_start << "-" << phase_window_end << "):";
-            const std::size_t top = std::min<std::size_t>(5, peaks.size());
-            for (std::size_t i = 0; i < top; ++i) {
-                debug_stream << " " << peaks[i].frame << "->" << peaks[i].value;
-            }
-            debug_stream << "\n";
-            std::vector<Peak> global_peaks;
-            const std::size_t global_end =
-                result.downbeat_activation.empty() ? 0 : used_frames > 1 ? used_frames - 1 : 0;
-            for (std::size_t i = start; i <= global_end; ++i) {
-                const float prev = result.downbeat_activation[i - 1];
-                const float curr = result.downbeat_activation[i];
-                const float next = result.downbeat_activation[i + 1];
-                if (curr >= prev && curr >= next) {
-                    global_peaks.push_back({curr, i});
-                }
-            }
-            std::sort(global_peaks.begin(),
-                      global_peaks.end(),
-                      [](const Peak& a, const Peak& b) { return a.value > b.value; });
-            debug_stream << "DBN: downbeat peaks (global top):";
-            const std::size_t global_top = std::min<std::size_t>(6, global_peaks.size());
-            for (std::size_t i = 0; i < global_top; ++i) {
-                const std::size_t frame = global_peaks[i].frame;
-                const double time_s = fps > 0.0 ? static_cast<double>(frame) / fps : 0.0;
-                debug_stream << " " << frame << "(" << time_s << "s)"
-                             << "->" << global_peaks[i].value;
-            }
-            debug_stream << "\n";
-            debug_stream << "DBN: phase peaks for selection (beat-only, strict): "
-                         << (has_phase_peaks ? "picked" : "none")
-                         << " (limit=" << limit << ")\n";
         }
     }
     const float downbeat_threshold =
         state.max_downbeat > 0.0f
             ? static_cast<float>(state.max_downbeat * config.dbn_downbeat_phase_peak_ratio)
             : 0.0f;
-    struct PhaseDebug {
-        std::size_t phase = 0;
-        double score = -std::numeric_limits<double>::infinity();
-        std::size_t first_frame = 0;
-        std::size_t hits = 0;
-        double mean = 0.0;
-        double delay_penalty = 0.0;
-        const char* source = "none";
-    };
-    std::vector<PhaseDebug> phase_debug;
-    if (config.dbn_trace) {
-        phase_debug.reserve(state.bpb);
-    }
     for (std::size_t candidate_phase = 0; candidate_phase < state.bpb; ++candidate_phase) {
         const auto projected =
             project_downbeats_from_beats(decoded.beat_frames, state.bpb, candidate_phase);
@@ -222,7 +144,6 @@ void select_downbeat_phase(GridProjectionState& state,
         const auto& phase_frames = projected_onsets.empty() ? projected : projected_onsets;
         double score = -std::numeric_limits<double>::infinity();
         std::size_t hits = 0;
-        double mean = 0.0;
         const char* source = "none";
 
         if (phase_window_frames > 0 && !allow_downbeat_phase) {
@@ -245,7 +166,6 @@ void select_downbeat_phase(GridProjectionState& state,
                 if (weight > 0.0) {
                     score = (sum / weight);
                     hits = static_cast<std::size_t>(weight);
-                    mean = score;
                     source = "beat_peak_mask";
                 }
             } else {
@@ -270,7 +190,6 @@ void select_downbeat_phase(GridProjectionState& state,
                 if (weight > 0.0) {
                     score = (sum / weight);
                     hits = static_cast<std::size_t>(weight);
-                    mean = score;
                     source = "beat_threshold";
                 }
             }
@@ -297,7 +216,6 @@ void select_downbeat_phase(GridProjectionState& state,
             if (weight > 0.0) {
                 score = (sum / weight);
                 hits = static_cast<std::size_t>(weight + 0.5);
-                mean = score;
                 source = "downbeat_window_decay";
             }
         }
@@ -338,7 +256,6 @@ void select_downbeat_phase(GridProjectionState& state,
             }
             const double penalty = 0.01 * static_cast<double>(phase_frames.front());
             score = sum - penalty;
-            mean = (max_checks > 0) ? (sum / static_cast<double>(max_checks)) : 0.0;
             source = allow_downbeat_phase ? "fallback_downbeat" : "fallback_beat";
         }
         double delay_penalty = 0.0;
@@ -355,61 +272,12 @@ void select_downbeat_phase(GridProjectionState& state,
             state.best_score = score;
             state.best_phase = candidate_phase;
         }
-        if (config.dbn_trace) {
-            PhaseDebug entry;
-            entry.phase = candidate_phase;
-            entry.score = score;
-            entry.first_frame = phase_frames.front();
-            entry.hits = hits;
-            entry.mean = mean;
-            entry.delay_penalty = delay_penalty;
-            entry.source = source;
-            phase_debug.push_back(entry);
-        }
     }
     BEATIT_LOG_DEBUG("DBN: phase_window_frames=" << phase_window_frames
                      << " max_downbeat=" << state.max_downbeat
                      << " threshold=" << downbeat_threshold
                      << " best_phase=" << state.best_phase
                      << " best_score=" << state.best_score);
-    if (config.dbn_trace && !phase_debug.empty()) {
-        std::vector<PhaseDebug> sorted = phase_debug;
-        std::sort(sorted.begin(),
-                  sorted.end(),
-                  [](const PhaseDebug& a, const PhaseDebug& b) { return a.score > b.score; });
-        const PhaseDebug& top = sorted.front();
-        const PhaseDebug* runner = (sorted.size() > 1) ? &sorted[1] : nullptr;
-        auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
-        debug_stream << "DBN: phase winner="
-                     << top.phase
-                     << " score=" << top.score
-                     << " first=" << top.first_frame
-                     << " hits=" << top.hits
-                     << " mean=" << top.mean
-                     << " penalty=" << top.delay_penalty
-                     << " src=" << top.source;
-        if (runner) {
-            debug_stream << " runner=" << runner->phase
-                         << " score=" << runner->score
-                         << " first=" << runner->first_frame
-                         << " hits=" << runner->hits
-                         << " mean=" << runner->mean
-                         << " penalty=" << runner->delay_penalty
-                         << " src=" << runner->source;
-        }
-        debug_stream << "\n";
-        debug_stream << "DBN: phase candidates:";
-        for (const auto& entry : phase_debug) {
-            debug_stream << " p" << entry.phase
-                         << " score=" << entry.score
-                         << " first=" << entry.first_frame
-                         << " hits=" << entry.hits
-                         << " mean=" << entry.mean
-                         << " penalty=" << entry.delay_penalty
-                         << " src=" << entry.source;
-        }
-        debug_stream << "\n";
-    }
     decoded.downbeat_frames =
         project_downbeats_from_beats(decoded.beat_frames, state.bpb, state.best_phase);
     if (config.dbn_trace) {
