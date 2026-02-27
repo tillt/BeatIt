@@ -140,6 +140,7 @@ set(BEATIT_LIB_SOURCES
     src/beatit/dbn/beatit.cpp
     src/beatit/refiner/core.cpp
     src/beatit/refiner/constant.cpp
+    src/beatit/refiner/constant_phase.cpp
     src/beatit/refiner/constant_support.cpp
     src/beatit/refiner/constant_regions.cpp
     src/beatit/inference/window_merge.cpp
