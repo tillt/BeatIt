@@ -25,6 +25,35 @@
 
 namespace beatit {
 namespace detail {
+namespace {
+
+bool sparse_edge_second_pass_enabled() {
+    const char* value = std::getenv("BEATIT_EDGE_REFIT_SECOND_PASS");
+    if (!value || value[0] == '\0') {
+        return true;
+    }
+    return !(value[0] == '0' || value[0] == 'f' || value[0] == 'F' ||
+             value[0] == 'n' || value[0] == 'N');
+}
+
+bool has_valid_edge_metrics(const EdgeOffsetMetrics& metrics, std::size_t min_count = 8) {
+    return metrics.count >= min_count &&
+           std::isfinite(metrics.median_ms) &&
+           std::isfinite(metrics.mad_ms);
+}
+
+bool is_usable_edge_window(const EdgeOffsetMetrics& metrics) {
+    return metrics.count >= 10 &&
+           std::isfinite(metrics.median_ms) &&
+           std::isfinite(metrics.mad_ms) &&
+           metrics.mad_ms <= 120.0;
+}
+
+double worst_abs_median_ms(const EdgeOffsetMetrics& first, const EdgeOffsetMetrics& last) {
+    return std::max(std::abs(first.median_ms), std::abs(last.median_ms));
+}
+
+} // namespace
 
 void apply_sparse_waveform_edge_refit(AnalysisResult& result,
                                       const SparseWaveformRefitParams& params) {
@@ -39,19 +68,7 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
         return;
     }
 
-    const bool second_pass_enabled = []() {
-        const char* v = std::getenv("BEATIT_EDGE_REFIT_SECOND_PASS");
-        if (!v || v[0] == '\0') {
-            return true;
-        }
-        return !(v[0] == '0' || v[0] == 'f' || v[0] == 'F' ||
-                 v[0] == 'n' || v[0] == 'N');
-    }();
-    const auto has_valid_metrics = [](const EdgeOffsetMetrics& metrics, std::size_t min_count = 8) {
-        return metrics.count >= min_count &&
-               std::isfinite(metrics.median_ms) &&
-               std::isfinite(metrics.mad_ms);
-    };
+    const bool second_pass_enabled = sparse_edge_second_pass_enabled();
 
     std::vector<unsigned long long>* projected = nullptr;
     if (!result.coreml_beat_projected_sample_frames.empty()) {
@@ -148,12 +165,6 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
             measure_edge_offsets(first_window_beats, bpm_hint, false, sample_rate, provider),
             measure_edge_offsets(last_window_beats, bpm_hint, true, sample_rate, provider)};
     };
-    auto window_usable = [](const EdgeOffsetMetrics& m) {
-        return m.count >= 10 &&
-               std::isfinite(m.median_ms) &&
-               std::isfinite(m.mad_ms) &&
-               m.mad_ms <= 120.0;
-    };
     const double shift_step = std::clamp(probe_duration * 0.25, 5.0, 20.0);
     double first_window_start = first_probe_start;
     double last_window_start = last_probe_start;
@@ -164,8 +175,8 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
         auto pair = measure_window_pair(*projected, first_window_start, last_window_start);
         intro = pair.first;
         outro = pair.second;
-        const bool intro_ok = window_usable(intro);
-        const bool outro_ok = window_usable(outro);
+        const bool intro_ok = is_usable_edge_window(intro);
+        const bool outro_ok = is_usable_edge_window(outro);
         if (intro_ok && outro_ok) {
             break;
         }
@@ -188,7 +199,7 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
             break;
         }
     }
-    if (!has_valid_metrics(intro) || !has_valid_metrics(outro)) {
+    if (!has_valid_edge_metrics(intro) || !has_valid_edge_metrics(outro)) {
         return;
     }
 
@@ -205,7 +216,7 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
         auto measured = measure_window_pair(*projected, first_window_start, last_window_start);
         post_intro = measured.first;
         post_outro = measured.second;
-        if (has_valid_metrics(post_intro) && has_valid_metrics(post_outro)) {
+        if (has_valid_edge_metrics(post_intro) && has_valid_edge_metrics(post_outro)) {
             const double post_delta = std::abs(post_outro.median_ms - post_intro.median_ms);
             std::vector<unsigned long long> candidate = *projected;
             const double pass2_ratio =
@@ -217,7 +228,8 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
                     measure_window_pair(candidate, first_window_start, last_window_start);
                 const EdgeOffsetMetrics cand_intro = candidate_measured.first;
                 const EdgeOffsetMetrics cand_outro = candidate_measured.second;
-                if (has_valid_metrics(cand_intro) && has_valid_metrics(cand_outro)) {
+                if (has_valid_edge_metrics(cand_intro) &&
+                    has_valid_edge_metrics(cand_outro)) {
                     const double cand_delta = std::abs(cand_outro.median_ms - cand_intro.median_ms);
                     const bool improves_delta = cand_delta <= post_delta;
                     const bool keeps_intro =
@@ -236,7 +248,8 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
         [&](const EdgeOffsetMetrics& base_intro,
             const EdgeOffsetMetrics& base_outro,
             double max_beat_fraction) {
-            if (!has_valid_metrics(base_intro) || !has_valid_metrics(base_outro)) {
+            if (!has_valid_edge_metrics(base_intro) ||
+                !has_valid_edge_metrics(base_outro)) {
                 return false;
             }
             if ((base_intro.median_ms * base_outro.median_ms) <= 0.0) {
@@ -258,14 +271,13 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
                 measure_window_pair(candidate, first_window_start, last_window_start);
             const EdgeOffsetMetrics cand_intro = measured.first;
             const EdgeOffsetMetrics cand_outro = measured.second;
-            if (!has_valid_metrics(cand_intro) || !has_valid_metrics(cand_outro)) {
+            if (!has_valid_edge_metrics(cand_intro) ||
+                !has_valid_edge_metrics(cand_outro)) {
                 return false;
             }
 
-            const double base_worst =
-                std::max(std::abs(base_intro.median_ms), std::abs(base_outro.median_ms));
-            const double cand_worst =
-                std::max(std::abs(cand_intro.median_ms), std::abs(cand_outro.median_ms));
+            const double base_worst = worst_abs_median_ms(base_intro, base_outro);
+            const double cand_worst = worst_abs_median_ms(cand_intro, cand_outro);
             if (cand_worst + 5.0 < base_worst) {
                 *projected = std::move(candidate);
                 return true;
@@ -289,7 +301,8 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
                                       double intro_margin_ms,
                                       double worst_margin_ms,
                                       bool check_worst) {
-        if (!has_valid_metrics(global_intro) || !has_valid_metrics(global_outro)) {
+        if (!has_valid_edge_metrics(global_intro) ||
+            !has_valid_edge_metrics(global_outro)) {
             return;
         }
         const double global_delta = std::abs(global_outro.median_ms - global_intro.median_ms);
@@ -311,7 +324,8 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
             measure_edge_offsets(candidate, bpm_hint, false, sample_rate, provider);
         const EdgeOffsetMetrics cand_outro =
             measure_edge_offsets(candidate, bpm_hint, true, sample_rate, provider);
-        if (!has_valid_metrics(cand_intro) || !has_valid_metrics(cand_outro)) {
+        if (!has_valid_edge_metrics(cand_intro) ||
+            !has_valid_edge_metrics(cand_outro)) {
             return;
         }
 
@@ -319,10 +333,8 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
         const bool improves_delta = cand_delta <= (global_delta - improve_margin_ms);
         bool keeps_shape = false;
         if (check_worst) {
-            const double base_worst =
-                std::max(std::abs(global_intro.median_ms), std::abs(global_outro.median_ms));
-            const double cand_worst =
-                std::max(std::abs(cand_intro.median_ms), std::abs(cand_outro.median_ms));
+            const double base_worst = worst_abs_median_ms(global_intro, global_outro);
+            const double cand_worst = worst_abs_median_ms(cand_intro, cand_outro);
             keeps_shape = cand_worst <= (base_worst + worst_margin_ms);
         } else {
             keeps_shape = std::abs(cand_intro.median_ms) <=
@@ -341,7 +353,8 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
     try_global_guard(30.0, std::numeric_limits<double>::infinity(), 0.99985, 1.00015, 1.0, 4.0, 0.0, false);
     try_global_guard(60.0, 120.0, 0.9996, 1.0004, 2.0, 0.0, 10.0, true);
 
-    if (has_valid_metrics(global_intro) && has_valid_metrics(global_outro) &&
+    if (has_valid_edge_metrics(global_intro) &&
+        has_valid_edge_metrics(global_outro) &&
         (global_intro.median_ms * global_outro.median_ms) > 0.0) {
         const double mean_ms = 0.5 * (global_intro.median_ms + global_outro.median_ms);
         const double beat_ms = 60000.0 / std::max(1e-6, bpm_hint);
@@ -356,11 +369,10 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
                 measure_edge_offsets(candidate, bpm_hint, false, sample_rate, provider);
             const EdgeOffsetMetrics cand_outro =
                 measure_edge_offsets(candidate, bpm_hint, true, sample_rate, provider);
-            if (has_valid_metrics(cand_intro) && has_valid_metrics(cand_outro)) {
-                const double base_worst =
-                    std::max(std::abs(global_intro.median_ms), std::abs(global_outro.median_ms));
-                const double cand_worst =
-                    std::max(std::abs(cand_intro.median_ms), std::abs(cand_outro.median_ms));
+            if (has_valid_edge_metrics(cand_intro) &&
+                has_valid_edge_metrics(cand_outro)) {
+                const double base_worst = worst_abs_median_ms(global_intro, global_outro);
+                const double cand_worst = worst_abs_median_ms(cand_intro, cand_outro);
                 if (cand_worst + 5.0 < base_worst) {
                     *projected = std::move(candidate);
                     global_intro = cand_intro;
@@ -388,11 +400,11 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
     const auto pre_middle_pair = measure_middle_windows(projected_before_refit);
     const auto post_middle_pair = measure_middle_windows(*projected);
     const double pre_global_delta_ms =
-        (has_valid_metrics(pre_global_intro) && has_valid_metrics(pre_global_outro))
+        (has_valid_edge_metrics(pre_global_intro) && has_valid_edge_metrics(pre_global_outro))
             ? std::abs(pre_global_outro.median_ms - pre_global_intro.median_ms)
             : std::numeric_limits<double>::infinity();
     const double post_global_delta_ms =
-        (has_valid_metrics(global_intro) && has_valid_metrics(global_outro))
+        (has_valid_edge_metrics(global_intro) && has_valid_edge_metrics(global_outro))
             ? std::abs(global_outro.median_ms - global_intro.median_ms)
             : std::numeric_limits<double>::infinity();
     const double pre_between_abs_ms = pre_middle_pair.first.median_abs_ms;
