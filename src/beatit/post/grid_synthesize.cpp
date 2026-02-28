@@ -27,25 +27,6 @@ struct OffsetSample {
     double offset = 0.0;
 };
 
-std::vector<std::size_t> collect_beat_peaks(const std::vector<float>& activation, float floor) {
-    std::vector<std::size_t> peaks;
-    peaks.reserve(activation.size() / 8);
-    if (activation.size() < 3) {
-        return peaks;
-    }
-
-    const std::size_t end = activation.size() - 1;
-    for (std::size_t i = 1; i < end; ++i) {
-        const float prev = activation[i - 1];
-        const float curr = activation[i];
-        const float next = activation[i + 1];
-        if (curr >= floor && curr >= prev && curr >= next) {
-            peaks.push_back(i);
-        }
-    }
-    return peaks;
-}
-
 std::size_t nearest_peak_frame(const std::vector<std::size_t>& peaks, std::size_t frame) {
     auto it = std::lower_bound(peaks.begin(), peaks.end(), frame);
     if (it == peaks.end()) {
@@ -203,7 +184,7 @@ void synthesize_uniform_grid(GridProjectionState& state,
     }
     if (state.step_frames > 1.0 && result.beat_activation.size() >= 64) {
         std::vector<std::size_t> beat_peaks =
-            collect_beat_peaks(result.beat_activation, state.activation_floor);
+            collect_activation_peaks(result.beat_activation, state.activation_floor);
         if (beat_peaks.size() >= 16) {
             std::vector<OffsetSample> samples;
             samples.reserve(256);

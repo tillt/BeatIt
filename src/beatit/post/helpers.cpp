@@ -17,6 +17,26 @@
 
 namespace beatit::detail {
 
+std::vector<std::size_t> collect_activation_peaks(const std::vector<float>& activation,
+                                                  float floor) {
+    std::vector<std::size_t> peaks;
+    peaks.reserve(activation.size() / 8);
+    if (activation.size() < 3) {
+        return peaks;
+    }
+
+    const std::size_t end = activation.size() - 1;
+    for (std::size_t i = 1; i < end; ++i) {
+        const float prev = activation[i - 1];
+        const float curr = activation[i];
+        const float next = activation[i + 1];
+        if (curr >= floor && curr >= prev && curr >= next) {
+            peaks.push_back(i);
+        }
+    }
+    return peaks;
+}
+
 namespace {
 
 double median_value(std::vector<double>& values) {
@@ -307,24 +327,6 @@ void trace_grid_peak_alignment(const std::vector<std::size_t>& beat_grid,
     if (fps <= 0.0) {
         return;
     }
-    auto collect_peaks = [](const std::vector<float>& activation,
-                            float floor,
-                            std::vector<std::size_t>& peaks_out) {
-        peaks_out.clear();
-        if (activation.size() < 3) {
-            return;
-        }
-        const std::size_t end = activation.size() - 1;
-        for (std::size_t i = 1; i < end; ++i) {
-            const float prev = activation[i - 1];
-            const float curr = activation[i];
-            const float next = activation[i + 1];
-            if (curr >= floor && curr >= prev && curr >= next) {
-                peaks_out.push_back(i);
-            }
-        }
-    };
-
     auto compute_offsets = [&](const std::vector<std::size_t>& grid,
                                const std::vector<std::size_t>& peaks,
                                const char* label) {
@@ -370,8 +372,8 @@ void trace_grid_peak_alignment(const std::vector<std::size_t>& beat_grid,
 
     std::vector<std::size_t> beat_peaks;
     std::vector<std::size_t> downbeat_peaks;
-    collect_peaks(beat_activation, activation_floor, beat_peaks);
-    collect_peaks(downbeat_activation, activation_floor, downbeat_peaks);
+    beat_peaks = collect_activation_peaks(beat_activation, activation_floor);
+    downbeat_peaks = collect_activation_peaks(downbeat_activation, activation_floor);
     compute_offsets(beat_grid, beat_peaks, "beat");
     compute_offsets(downbeat_grid, downbeat_peaks, "downbeat");
 }
