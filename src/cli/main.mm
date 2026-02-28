@@ -177,7 +177,34 @@ std::string derive_model_variant(const beatit::BeatitConfig& config) {
     return model_name.substr(split + 1);
 }
 
-std::string default_model_version_string() {
+std::string compact_cli_version_string() {
+    const std::string version = beatit::version_string();
+    const std::size_t suffix = version.find('-');
+    if (suffix == std::string::npos) {
+        return version;
+    }
+    return version.substr(0, suffix);
+}
+
+std::string normalize_model_label(std::string label, const std::string& variant) {
+    const std::string tracking_suffix = " - Beat Tracking";
+    if (label.size() >= tracking_suffix.size() &&
+        label.compare(label.size() - tracking_suffix.size(),
+                      tracking_suffix.size(),
+                      tracking_suffix) == 0) {
+        label.erase(label.size() - tracking_suffix.size());
+    }
+
+    const std::string parenthesized_variant = "(" + variant + ")";
+    const std::size_t variant_pos = label.find(parenthesized_variant);
+    if (!variant.empty() && variant != "unknown" && variant_pos != std::string::npos) {
+        label.replace(variant_pos, parenthesized_variant.size(), variant);
+    }
+
+    return label;
+}
+
+std::string default_model_label_string() {
     beatit::BeatitConfig config;
     if (auto preset = beatit::make_coreml_preset("beatthis")) {
         preset->apply(config);
@@ -190,9 +217,7 @@ std::string default_model_version_string() {
     const std::string model_version =
         !metadata.version.empty() ? metadata.version : derive_model_variant(config);
 
-    std::ostringstream stream;
-    stream << "model " << model_name << " v" << model_version;
-    return stream.str();
+    return normalize_model_label(model_name, model_version);
 }
 
 bool parse_args(int argc, char** argv, CliOptions* options) {
@@ -555,8 +580,8 @@ int main(int argc, char** argv) {
     if (argc == 2) {
         const std::string arg = argv[1];
         if (arg == "--version" || arg == "-v") {
-            std::cout << "BeatIt " << beatit::version_string()
-                      << " (" << default_model_version_string() << ")\n";
+            std::cout << "BeatIt " << compact_cli_version_string()
+                      << " (" << default_model_label_string() << ")\n";
             return 0;
         }
     }
