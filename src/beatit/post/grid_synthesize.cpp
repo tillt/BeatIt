@@ -20,6 +20,67 @@
 
 namespace beatit::detail {
 
+namespace {
+
+struct OffsetSample {
+    std::size_t beat_index = 0;
+    double offset = 0.0;
+};
+
+std::vector<std::size_t> collect_beat_peaks(const std::vector<float>& activation, float floor) {
+    std::vector<std::size_t> peaks;
+    peaks.reserve(activation.size() / 8);
+    if (activation.size() < 3) {
+        return peaks;
+    }
+
+    const std::size_t end = activation.size() - 1;
+    for (std::size_t i = 1; i < end; ++i) {
+        const float prev = activation[i - 1];
+        const float curr = activation[i];
+        const float next = activation[i + 1];
+        if (curr >= floor && curr >= prev && curr >= next) {
+            peaks.push_back(i);
+        }
+    }
+    return peaks;
+}
+
+std::size_t nearest_peak_frame(const std::vector<std::size_t>& peaks, std::size_t frame) {
+    auto it = std::lower_bound(peaks.begin(), peaks.end(), frame);
+    if (it == peaks.end()) {
+        return peaks.back();
+    }
+
+    std::size_t nearest = *it;
+    if (it != peaks.begin()) {
+        const std::size_t prev = *(it - 1);
+        if (frame - prev < nearest - frame) {
+            nearest = prev;
+        }
+    }
+    return nearest;
+}
+
+double median_offset_window(const std::vector<OffsetSample>& samples,
+                            std::size_t begin,
+                            std::size_t count) {
+    std::vector<double> values;
+    values.reserve(count);
+    const std::size_t end = std::min(samples.size(), begin + count);
+    for (std::size_t i = begin; i < end; ++i) {
+        values.push_back(samples[i].offset);
+    }
+    if (values.empty()) {
+        return 0.0;
+    }
+    auto mid = values.begin() + static_cast<long>(values.size() / 2);
+    std::nth_element(values.begin(), mid, values.end());
+    return *mid;
+}
+
+} // namespace
+
 void synthesize_uniform_grid(GridProjectionState& state,
                              DBNDecodeResult& decoded,
                              const CoreMLResult& result,
@@ -135,24 +196,9 @@ void synthesize_uniform_grid(GridProjectionState& state,
         grid_start = 0.0;
     }
     if (state.step_frames > 1.0 && result.beat_activation.size() >= 64) {
-        std::vector<std::size_t> beat_peaks;
-        beat_peaks.reserve(result.beat_activation.size() / 8);
-        if (result.beat_activation.size() >= 3) {
-            const std::size_t end = result.beat_activation.size() - 1;
-            for (std::size_t i = 1; i < end; ++i) {
-                const float prev = result.beat_activation[i - 1];
-                const float curr = result.beat_activation[i];
-                const float next = result.beat_activation[i + 1];
-                if (curr >= state.activation_floor && curr >= prev && curr >= next) {
-                    beat_peaks.push_back(i);
-                }
-            }
-        }
+        std::vector<std::size_t> beat_peaks =
+            collect_beat_peaks(result.beat_activation, state.activation_floor);
         if (beat_peaks.size() >= 16) {
-            struct OffsetSample {
-                std::size_t beat_index = 0;
-                double offset = 0.0;
-            };
             std::vector<OffsetSample> samples;
             samples.reserve(256);
             double cursor_fit = grid_start;
@@ -161,19 +207,7 @@ void synthesize_uniform_grid(GridProjectionState& state,
                 const long long frame_ll = static_cast<long long>(std::llround(cursor_fit));
                 if (frame_ll >= 0) {
                     const std::size_t frame = static_cast<std::size_t>(frame_ll);
-                    auto it = std::lower_bound(beat_peaks.begin(), beat_peaks.end(), frame);
-                    std::size_t nearest = beat_peaks.front();
-                    if (it == beat_peaks.end()) {
-                        nearest = beat_peaks.back();
-                    } else {
-                        nearest = *it;
-                        if (it != beat_peaks.begin()) {
-                            const std::size_t prev = *(it - 1);
-                            if (frame - prev < nearest - frame) {
-                                nearest = prev;
-                            }
-                        }
-                    }
+                    const std::size_t nearest = nearest_peak_frame(beat_peaks, frame);
                     const double max_dist = state.step_frames * 0.45;
                     const double dist =
                         std::abs(static_cast<double>(nearest) - static_cast<double>(frame));
@@ -188,25 +222,10 @@ void synthesize_uniform_grid(GridProjectionState& state,
                 beat_index += 1;
             }
             if (samples.size() >= 32) {
-                auto median_of_offsets =
-                    [](const std::vector<OffsetSample>& src, std::size_t begin, std::size_t count) {
-                        std::vector<double> values;
-                        values.reserve(count);
-                        const std::size_t end = std::min(src.size(), begin + count);
-                        for (std::size_t i = begin; i < end; ++i) {
-                            values.push_back(src[i].offset);
-                        }
-                        if (values.empty()) {
-                            return 0.0;
-                        }
-                        auto mid = values.begin() + static_cast<long>(values.size() / 2);
-                        std::nth_element(values.begin(), mid, values.end());
-                        return *mid;
-                    };
                 const std::size_t edge = std::min<std::size_t>(32, samples.size() / 2);
-                const double start_offset = median_of_offsets(samples, 0, edge);
+                const double start_offset = median_offset_window(samples, 0, edge);
                 const std::size_t tail_begin = samples.size() - edge;
-                const double end_offset = median_of_offsets(samples, tail_begin, edge);
+                const double end_offset = median_offset_window(samples, tail_begin, edge);
                 const std::size_t start_index = samples.front().beat_index;
                 const std::size_t end_index = samples.back().beat_index;
                 const double index_delta = static_cast<double>(end_index - start_index);
