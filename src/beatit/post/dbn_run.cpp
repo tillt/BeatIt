@@ -167,6 +167,12 @@ DBNWindowSelection select_dbn_processing_window(const CoreMLResult& result,
     return selection;
 }
 
+struct DBNDecodeOutcome {
+    DBNDecodeResult decoded;
+    float min_bpm = 0.0f;
+    float max_bpm = 0.0f;
+};
+
 void apply_calmdad_prior_clamp(float& min_bpm,
                                float& max_bpm,
                                const std::vector<float>& activation,
@@ -217,6 +223,54 @@ void apply_calmdad_prior_clamp(float& min_bpm,
                      << " peaks=" << prior_peaks.size()
                      << " window_pct=" << window_pct
                      << " clamp=[" << min_bpm << "," << max_bpm << "]");
+}
+
+DBNDecodeOutcome run_dbn_decode(const CoreMLResult& result,
+                                const DBNWindowSelection& window_selection,
+                                const BeatitConfig& config,
+                                const CalmdadDecoder& calmdad_decoder,
+                                double fps,
+                                float reference_bpm,
+                                float min_bpm,
+                                float max_bpm,
+                                float hard_min_bpm,
+                                float hard_max_bpm) {
+    DBNDecodeOutcome outcome;
+    outcome.min_bpm = min_bpm;
+    outcome.max_bpm = max_bpm;
+
+    const std::vector<float>& beat_activation =
+        window_selection.use_window ? window_selection.beat_slice : result.beat_activation;
+    const std::vector<float>& downbeat_activation =
+        window_selection.use_window ? window_selection.downbeat_slice : result.downbeat_activation;
+
+    if (config.dbn_mode == BeatitConfig::DBNMode::Calmdad) {
+        apply_calmdad_prior_clamp(outcome.min_bpm,
+                                  outcome.max_bpm,
+                                  beat_activation,
+                                  config,
+                                  fps,
+                                  hard_min_bpm,
+                                  hard_max_bpm);
+        outcome.decoded = calmdad_decoder.decode({
+            beat_activation,
+            downbeat_activation,
+            fps,
+            outcome.min_bpm,
+            outcome.max_bpm,
+            config.dbn_bpm_step,
+        });
+        return outcome;
+    }
+
+    outcome.decoded = decode_dbn_beats_beatit(beat_activation,
+                                              downbeat_activation,
+                                              fps,
+                                              outcome.min_bpm,
+                                              outcome.max_bpm,
+                                              config,
+                                              reference_bpm);
+    return outcome;
 }
 
 } // namespace
@@ -273,49 +327,28 @@ bool run_dbn_postprocess(const DBNRunRequest& request) {
         }
     };
 
-    DBNDecodeResult decoded;
     const CalmdadDecoder calmdad_decoder(config);
-    auto process_decode = [&] {
-        const std::vector<float>& beat_activation =
-            use_window ? beat_slice : result.beat_activation;
-        const std::vector<float>& downbeat_activation =
-            use_window ? downbeat_slice : result.downbeat_activation;
-
-        if (config.dbn_mode == BeatitConfig::DBNMode::Calmdad) {
-            apply_calmdad_prior_clamp(min_bpm,
-                                      max_bpm,
-                                      beat_activation,
-                                      config,
-                                      fps,
-                                      hard_min_bpm,
-                                      hard_max_bpm);
-            decoded = calmdad_decoder.decode({
-                beat_activation,
-                downbeat_activation,
-                fps,
-                min_bpm,
-                max_bpm,
-                config.dbn_bpm_step,
-            });
-        } else {
-            decoded = decode_dbn_beats_beatit(beat_activation,
-                                              downbeat_activation,
-                                              fps,
-                                              min_bpm,
-                                              max_bpm,
-                                              config,
-                                              reference_bpm);
-        }
-    };
 
     if (fps > 0.0) {
         process_quality_gate();
     }
 
     const auto dbn_start = std::chrono::steady_clock::now();
-    process_decode();
+    DBNDecodeOutcome decode_outcome = run_dbn_decode(result,
+                                                     window_selection,
+                                                     config,
+                                                     calmdad_decoder,
+                                                     fps,
+                                                     reference_bpm,
+                                                     min_bpm,
+                                                     max_bpm,
+                                                     hard_min_bpm,
+                                                     hard_max_bpm);
     const auto dbn_end = std::chrono::steady_clock::now();
     dbn_ms += std::chrono::duration<double, std::milli>(dbn_end - dbn_start).count();
+    DBNDecodeResult& decoded = decode_outcome.decoded;
+    min_bpm = decode_outcome.min_bpm;
+    max_bpm = decode_outcome.max_bpm;
 
     if (!decoded.beat_frames.empty()) {
         const DBNProcessingContext processing_ctx{
