@@ -97,7 +97,7 @@ void print_usage(const char* exe) {
         << "  --dump-events             Print beat/downbeat events for inspection\n"
         << "  --cpu-only                Force CoreML CPU-only execution\n"
         << "  --model-info              Print CoreML model metadata\n"
-        << "  --info                    Print decoded audio stats and profiling\n"
+        << "  --info                    Enable profiling and extra technical output\n"
         << "  -v, --version             Show BeatIt version\n"
         << "  -h, --help                Show this help\n"
         << "\n"
@@ -537,39 +537,22 @@ bool load_audio_with_extaudio(const std::string& path, double target_sample_rate
     return true;
 }
 
-void print_audio_info(const AudioData& audio, const std::string& source) {
-    if (audio.sample_rate <= 0.0) {
-        std::cerr << "Decoded audio (" << source << "): invalid sample rate\n";
-        return;
-    }
-    const double seconds = static_cast<double>(audio.samples.size()) / audio.sample_rate;
-    std::cerr << "Decoded audio (" << source << "): " << audio.samples.size()
-              << " samples, " << audio.sample_rate << " Hz, "
-              << seconds << " sec";
-    if (audio.has_reported_frames) {
-        const double reported_seconds = static_cast<double>(audio.reported_frames) / audio.sample_rate;
-        const double ratio = audio.reported_frames > 0
-                                 ? static_cast<double>(audio.samples.size()) /
-                                       static_cast<double>(audio.reported_frames)
-                                 : 0.0;
-        std::cerr << " (reported: " << audio.reported_frames
-                  << " frames, " << reported_seconds << " sec, "
-                  << "decoded " << static_cast<int>(ratio * 100.0) << "%)";
-    }
-    std::cerr << "\n";
-}
-
 bool load_audio_file(const std::string& path,
                      double target_sample_rate,
-                     bool info,
                      AudioData* output) {
     if (!load_audio_with_extaudio(path, target_sample_rate, output)) {
         return false;
     }
 
-    if (info) {
-        print_audio_info(*output, "ExtAudioFile");
+    if (output->sample_rate <= 0.0) {
+        std::cout << "Decoded audio: invalid sample rate\n";
+        return false;
     }
+    const double seconds = static_cast<double>(output->samples.size()) / output->sample_rate;
+    std::cout << "Decoded audio: " << output->samples.size()
+              << " samples, " << output->sample_rate << " Hz, "
+              << seconds << " sec";
+    std::cout << "\n";
 
     return true;
 }
@@ -593,7 +576,7 @@ int main(int argc, char** argv) {
 
     AudioData audio;
     const auto decode_start = std::chrono::steady_clock::now();
-    if (!load_audio_file(options.input_path, options.target_sample_rate, options.info, &audio)) {
+    if (!load_audio_file(options.input_path, options.target_sample_rate, &audio)) {
         return 1;
     }
     const auto decode_end = std::chrono::steady_clock::now();
@@ -840,7 +823,14 @@ int main(int argc, char** argv) {
         return stream.str();
     };
 
-    std::cout << "Tempo = " << format_fixed(result.estimated_bpm, 4) << " BPM\n";
+    if (!std::isfinite(result.estimated_bpm) ||
+        result.estimated_bpm <= 0.0 ||
+        beat_sample_frames.size() < 2) {
+        std::cerr << "Analysis: could not determine tempo.\n";
+        return 1;
+    }
+
+    std::cout << "Tempo: " << format_fixed(result.estimated_bpm, 4) << " BPM\n";
     const bool debug_enabled = beatit_should_log("debug");
 
     if (!downbeat_feature_frames.empty()) {
@@ -859,7 +849,7 @@ int main(int argc, char** argv) {
             downbeat_s = static_cast<double>(downbeat_feature_frame) / fps;
         }
 
-        std::cout << "Downbeat = " << format_fixed(downbeat_s, 3) << " seconds\n";
+        std::cout << "Downbeat: " << format_fixed(downbeat_s, 3) << " sec\n";
 
         if (debug_enabled) {
             const auto& beat_frames = result.coreml_beat_feature_frames;
