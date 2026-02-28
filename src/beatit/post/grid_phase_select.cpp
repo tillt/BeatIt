@@ -25,6 +25,12 @@ namespace beatit::detail {
 
 namespace {
 
+struct PhaseScore {
+    double score = -std::numeric_limits<double>::infinity();
+    std::size_t hits = 0;
+    const char* source = "none";
+};
+
 std::size_t onset_from_peak(const std::vector<float>& activation,
                             std::size_t peak_frame,
                             float onset_ratio,
@@ -59,6 +65,56 @@ std::vector<std::size_t> build_onset_frames(const std::vector<std::size_t>& fram
         out.push_back(onset_from_peak(activation, frame, onset_ratio, onset_max_back));
     }
     detail::dedupe_frames(out);
+    return out;
+}
+
+PhaseScore fallback_phase_score(const std::vector<std::size_t>& phase_frames,
+                                const CoreMLResult& result,
+                                bool allow_downbeat_phase,
+                                float downbeat_peak_ratio,
+                                float max_downbeat) {
+    PhaseScore out;
+    const std::size_t max_checks = std::min<std::size_t>(phase_frames.size(), 3);
+    double sum = 0.0;
+
+    if (allow_downbeat_phase) {
+        const float threshold =
+            max_downbeat > 0.0f ? static_cast<float>(max_downbeat * downbeat_peak_ratio) : 0.0f;
+        for (std::size_t i = 0; i < max_checks; ++i) {
+            const std::size_t frame = phase_frames[i];
+            if (frame < result.downbeat_activation.size()) {
+                const float value = result.downbeat_activation[frame];
+                if (value >= threshold) {
+                    sum += value;
+                    out.hits += 1;
+                }
+            }
+        }
+        if (out.hits == 0) {
+            for (std::size_t i = 0; i < max_checks; ++i) {
+                const std::size_t frame = phase_frames[i];
+                if (frame < result.downbeat_activation.size()) {
+                    sum += result.downbeat_activation[frame];
+                }
+            }
+            out.hits = max_checks;
+        }
+        out.source = "fallback_downbeat";
+    } else {
+        for (std::size_t i = 0; i < max_checks; ++i) {
+            const std::size_t frame = phase_frames[i];
+            if (frame < result.beat_activation.size()) {
+                sum += result.beat_activation[frame];
+            }
+        }
+        out.hits = max_checks;
+        out.source = "fallback_beat";
+    }
+
+    if (out.hits > 0) {
+        const double penalty = 0.01 * static_cast<double>(phase_frames.front());
+        out.score = sum - penalty;
+    }
     return out;
 }
 
@@ -154,9 +210,7 @@ void select_downbeat_phase(GridProjectionState& state,
         const auto projected_onsets =
             build_onset_frames(projected, onset_activation, onset_ratio, onset_max_back);
         const auto& phase_frames = projected_onsets.empty() ? projected : projected_onsets;
-        double score = -std::numeric_limits<double>::infinity();
-        std::size_t hits = 0;
-        const char* source = "none";
+        PhaseScore candidate;
 
         if (phase_window_frames > 0 && !allow_downbeat_phase) {
             if (has_phase_peaks) {
@@ -176,9 +230,9 @@ void select_downbeat_phase(GridProjectionState& state,
                     }
                 }
                 if (weight > 0.0) {
-                    score = (sum / weight);
-                    hits = static_cast<std::size_t>(weight);
-                    source = "beat_peak_mask";
+                    candidate.score = (sum / weight);
+                    candidate.hits = static_cast<std::size_t>(weight);
+                    candidate.source = "beat_peak_mask";
                 }
             } else {
                 double sum = 0.0;
@@ -200,9 +254,9 @@ void select_downbeat_phase(GridProjectionState& state,
                     }
                 }
                 if (weight > 0.0) {
-                    score = (sum / weight);
-                    hits = static_cast<std::size_t>(weight);
-                    source = "beat_threshold";
+                    candidate.score = (sum / weight);
+                    candidate.hits = static_cast<std::size_t>(weight);
+                    candidate.source = "beat_threshold";
                 }
             }
         } else if (phase_window_frames > 0 && allow_downbeat_phase) {
@@ -226,62 +280,30 @@ void select_downbeat_phase(GridProjectionState& state,
                 }
             }
             if (weight > 0.0) {
-                score = (sum / weight);
-                hits = static_cast<std::size_t>(weight + 0.5);
-                source = "downbeat_window_decay";
+                candidate.score = (sum / weight);
+                candidate.hits = static_cast<std::size_t>(weight + 0.5);
+                candidate.source = "downbeat_window_decay";
             }
         }
-        if (!std::isfinite(score)) {
-            const std::size_t max_checks = std::min<std::size_t>(phase_frames.size(), 3);
-            double sum = 0.0;
-            if (allow_downbeat_phase) {
-                const float threshold = state.max_downbeat > 0.0f
-                    ? static_cast<float>(state.max_downbeat * config.dbn_downbeat_phase_peak_ratio)
-                    : 0.0f;
-                for (std::size_t i = 0; i < max_checks; ++i) {
-                    const std::size_t frame = phase_frames[i];
-                    if (frame < result.downbeat_activation.size()) {
-                        const float value = result.downbeat_activation[frame];
-                        if (value >= threshold) {
-                            sum += value;
-                            hits += 1;
-                        }
-                    }
-                }
-                if (hits == 0) {
-                    for (std::size_t i = 0; i < max_checks; ++i) {
-                        const std::size_t frame = phase_frames[i];
-                        if (frame < result.downbeat_activation.size()) {
-                            sum += result.downbeat_activation[frame];
-                        }
-                    }
-                    hits = max_checks;
-                }
-            } else {
-                for (std::size_t i = 0; i < max_checks; ++i) {
-                    const std::size_t frame = phase_frames[i];
-                    if (frame < result.beat_activation.size()) {
-                        sum += result.beat_activation[frame];
-                    }
-                }
-                hits = max_checks;
-            }
-            const double penalty = 0.01 * static_cast<double>(phase_frames.front());
-            score = sum - penalty;
-            source = allow_downbeat_phase ? "fallback_downbeat" : "fallback_beat";
+        if (!std::isfinite(candidate.score)) {
+            candidate = fallback_phase_score(phase_frames,
+                                             result,
+                                             allow_downbeat_phase,
+                                             config.dbn_downbeat_phase_peak_ratio,
+                                             state.max_downbeat);
         }
         double delay_penalty = 0.0;
         if (max_delay_frames > 0 && phase_frames.front() > max_delay_frames &&
-            std::strncmp(source, "fallback", 8) != 0 &&
+            std::strncmp(candidate.source, "fallback", 8) != 0 &&
             !(quality_low &&
-              (std::strncmp(source, "beat_peak_mask", 14) == 0 ||
-               std::strncmp(source, "beat_threshold", 14) == 0))) {
+              (std::strncmp(candidate.source, "beat_peak_mask", 14) == 0 ||
+               std::strncmp(candidate.source, "beat_threshold", 14) == 0))) {
             const double delay = static_cast<double>(phase_frames.front() - max_delay_frames);
             delay_penalty = delay * 1000.0;
-            score -= delay_penalty;
+            candidate.score -= delay_penalty;
         }
-        if (score > state.best_score) {
-            state.best_score = score;
+        if (candidate.score > state.best_score) {
+            state.best_score = candidate.score;
             state.best_phase = candidate_phase;
         }
     }
