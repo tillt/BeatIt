@@ -151,16 +151,12 @@ GridTempoDecision compute_grid_tempo_decision(const GridTempoDecisionInput& inpu
                                                      downbeat_peaks,
                                                      input.fps,
                                                      0.2);
-        diag.has_downbeat_stats = true;
     }
     if (input.config.dbn_trace) {
-        diag.stats_computed = true;
         diag.tempo_stats = interval_stats_interpolated(tempo_activation, tempo_peaks, input.fps, 0.2);
         diag.decoded_stats = interval_stats_frames(input.decoded.beat_frames, input.fps, 0.2);
         diag.decoded_filtered_stats = interval_stats_frames(filtered_beats, input.fps, 0.2);
-        if (diag.has_downbeat_stats) {
-            diag.downbeat_stats = downbeat_stats;
-        }
+        diag.downbeat_stats = downbeat_stats;
     }
 
     const double bpm_from_fit = bpm_from_linear_fit(filtered_beats, input.fps);
@@ -264,7 +260,7 @@ GridTempoDecision compute_grid_tempo_decision(const GridTempoDecisionInput& inpu
 void log_grid_tempo_decision(const GridTempoDecision& decision,
                              const GridTempoDecisionInput& input) {
     const auto& d = decision.diagnostics;
-    if (input.config.dbn_trace && d.stats_computed) {
+    if (input.config.dbn_trace) {
         auto print_stats = [&](const char* label, const IntervalStats& stats) {
             if (stats.count == 0 || stats.median_interval <= 0.0) {
                 BEATIT_LOG_DEBUG("DBN stats: " << label << " empty");
@@ -290,9 +286,7 @@ void log_grid_tempo_decision(const GridTempoDecision& decision,
             }
         };
         print_stats("tempo_peaks", d.tempo_stats);
-        if (d.has_downbeat_stats) {
-            print_stats("downbeat_peaks", d.downbeat_stats);
-        }
+        print_stats("downbeat_peaks", d.downbeat_stats);
         print_stats("decoded_beats", d.decoded_stats);
         print_stats("decoded_beats_filtered", d.decoded_filtered_stats);
     }

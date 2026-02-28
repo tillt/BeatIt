@@ -27,9 +27,6 @@ struct GridTempoDecision {
         IntervalStats decoded_filtered_stats;
         IntervalStats downbeat_stats;
 
-        bool has_downbeat_stats = false;
-        bool stats_computed = false;
-
         double bpm_from_peaks = 0.0;
         double bpm_from_peaks_median = 0.0;
         double bpm_from_peaks_reg = 0.0;
