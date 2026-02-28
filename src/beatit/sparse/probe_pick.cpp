@@ -155,17 +155,13 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
 
     const bool has_distinct_right = max_allowed_start > min_allowed_start + 0.5;
     if (seed_right_first && has_distinct_right) {
-        ProbeResult right_probe = seek_quality_probe(context, max_allowed_start, false);
-        push_unique_probe(probes, std::move(right_probe));
+        push_quality_probe(probes, context, max_allowed_start, false);
     }
 
-    ProbeResult left_probe = seek_quality_probe(context, min_allowed_start, true);
-    const double anchor_start = left_probe.start;
-    push_unique_probe(probes, std::move(left_probe));
+    const double anchor_start = push_quality_probe(probes, context, min_allowed_start, true);
 
     if (!seed_right_first && has_distinct_right) {
-        ProbeResult right_probe = seek_quality_probe(context, max_allowed_start, false);
-        push_unique_probe(probes, std::move(right_probe));
+        push_quality_probe(probes, context, max_allowed_start, false);
     }
 
     const double middle_start =

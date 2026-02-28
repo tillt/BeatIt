@@ -64,6 +64,11 @@ ProbeResult seek_quality_probe(const ProbeBuildContext& context,
                                double seed_start,
                                bool shift_right);
 
+double push_quality_probe(std::vector<ProbeResult>& probes,
+                          const ProbeBuildContext& context,
+                          double seed_start,
+                          bool shift_right);
+
 double centered_probe_start(double total_duration_seconds,
                             double probe_duration,
                             double max_allowed_start);
