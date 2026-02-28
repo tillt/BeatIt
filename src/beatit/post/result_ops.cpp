@@ -21,6 +21,24 @@ std::size_t clamp_subtract(std::size_t value, std::size_t amount) {
     return (value > amount) ? (value - amount) : 0;
 }
 
+void dedupe_frames_with_tolerance(std::vector<std::size_t>& frames, std::size_t tolerance) {
+    if (frames.empty()) {
+        return;
+    }
+
+    std::size_t write = 1;
+    std::size_t last = frames[0];
+    for (std::size_t i = 1; i < frames.size(); ++i) {
+        const std::size_t current = frames[i];
+        if (current <= last + tolerance) {
+            continue;
+        }
+        frames[write++] = current;
+        last = current;
+    }
+    frames.resize(write);
+}
+
 double feature_to_sample_position(double feature_frame,
                                   const BeatitConfig& config,
                                   double hop_scale) {
@@ -80,41 +98,15 @@ std::size_t refine_frame_to_peak(std::size_t frame,
 }
 
 void dedupe_frames(std::vector<std::size_t>& frames) {
-    if (frames.empty()) {
-        return;
-    }
-    std::size_t write = 1;
-    std::size_t last = frames[0];
-    for (std::size_t i = 1; i < frames.size(); ++i) {
-        const std::size_t current = frames[i];
-        if (current <= last) {
-            continue;
-        }
-        frames[write++] = current;
-        last = current;
-    }
-    frames.resize(write);
+    dedupe_frames_with_tolerance(frames, 0);
 }
 
 void dedupe_frames_tolerant(std::vector<std::size_t>& frames, std::size_t tolerance) {
-    if (frames.empty()) {
-        return;
-    }
     if (tolerance == 0) {
         dedupe_frames(frames);
         return;
     }
-    std::size_t write = 1;
-    std::size_t last = frames[0];
-    for (std::size_t i = 1; i < frames.size(); ++i) {
-        const std::size_t current = frames[i];
-        if (current <= last + tolerance) {
-            continue;
-        }
-        frames[write++] = current;
-        last = current;
-    }
-    frames.resize(write);
+    dedupe_frames_with_tolerance(frames, tolerance);
 }
 
 std::vector<std::size_t> apply_latency_to_frames(const std::vector<std::size_t>& frames,
@@ -125,11 +117,7 @@ std::vector<std::size_t> apply_latency_to_frames(const std::vector<std::size_t>&
     std::vector<std::size_t> adjusted;
     adjusted.reserve(frames.size());
     for (std::size_t frame : frames) {
-        if (frame > analysis_latency_frames) {
-            adjusted.push_back(frame - analysis_latency_frames);
-        } else {
-            adjusted.push_back(0);
-        }
+        adjusted.push_back(clamp_subtract(frame, analysis_latency_frames));
     }
     dedupe_frames(adjusted);
     return adjusted;
