@@ -156,7 +156,7 @@ DBNPathResult decode_dbn_beats_candidate(const std::vector<double>& beat_log,
                                          bool use_downbeat,
                                          double transition_reward,
                                          double tempo_change_penalty,
-                                         const BeatitConfig& config) {
+                                         bool use_all_candidates) {
     DBNPathResult result;
     if (beat_log.empty() || fps <= 0.0) {
         return result;
@@ -165,7 +165,7 @@ DBNPathResult decode_dbn_beats_candidate(const std::vector<double>& beat_log,
     const std::size_t candidate_count = beat_log.size();
     if (candidate_count < 2) {
         result.decoded.beat_frames = CalmdadDecoder::viterbi_beats(
-            config.dbn_use_all_candidates
+            use_all_candidates
                 ? std::vector<float>(beat_log.begin(), beat_log.end())
                 : std::vector<float>(),
             fps,
@@ -376,7 +376,7 @@ DBNDecodeResult CalmdadDecoder::decode(const CalmdadDecodeRequest& request) cons
             use_downbeat,
             transition_reward,
             tempo_change_penalty,
-            config_);
+            config_.dbn_use_all_candidates);
         if (path.best_score > best_path.best_score) {
             best_path = std::move(path);
             best_bpb = bpb;
