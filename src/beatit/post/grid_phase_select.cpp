@@ -283,10 +283,6 @@ void select_downbeat_phase(GridProjectionState& state,
                          << "\n";
         }
     }
-    const float downbeat_threshold =
-        state.max_downbeat > 0.0f
-            ? static_cast<float>(state.max_downbeat * config.dbn_downbeat_phase_peak_ratio)
-            : 0.0f;
     for (std::size_t candidate_phase = 0; candidate_phase < state.bpb; ++candidate_phase) {
         const auto projected =
             project_downbeats_from_beats(decoded.beat_frames, state.bpb, candidate_phase);
@@ -340,7 +336,11 @@ void select_downbeat_phase(GridProjectionState& state,
     }
     BEATIT_LOG_DEBUG("DBN: phase_window_frames=" << phase_window_frames
                      << " max_downbeat=" << state.max_downbeat
-                     << " threshold=" << downbeat_threshold
+                     << " threshold="
+                     << (state.max_downbeat > 0.0f
+                             ? static_cast<float>(state.max_downbeat *
+                                                  config.dbn_downbeat_phase_peak_ratio)
+                             : 0.0f)
                      << " best_phase=" << state.best_phase
                      << " best_score=" << state.best_score);
     decoded.downbeat_frames =
