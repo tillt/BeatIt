@@ -24,6 +24,15 @@ struct GridAnchorSeed {
     float activation_floor = 0.0f;
 };
 
+std::size_t choose_seed_start_peak(const GridAnchorSeed& anchor,
+                                   const DBNDecodeResult& decoded);
+
+double choose_grid_start_frame(const GridAnchorSeed& anchor,
+                               const DBNDecodeResult& decoded,
+                               bool reliable_downbeat_start,
+                               double step_frames,
+                               double fps);
+
 GridAnchorSeed seed_grid_anchor(DBNDecodeResult& decoded,
                                 const CoreMLResult& result,
                                 const BeatitConfig& config,

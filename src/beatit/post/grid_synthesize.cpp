@@ -8,6 +8,8 @@
 
 #include "grid_projection.h"
 
+#include "grid_anchor.h"
+
 #include "beatit/post/helpers.h"
 #include "beatit/post/result_ops.h"
 #include "beatit/post/window.h"
@@ -114,40 +116,18 @@ void synthesize_uniform_grid(GridProjectionState& state,
         }
     }
 
-    const bool have_downbeat_start = !decoded.downbeat_frames.empty();
     const bool reliable_downbeat_start =
-        have_downbeat_start && state.max_downbeat > state.activation_floor;
-    const std::size_t start = reliable_downbeat_start
-        ? decoded.downbeat_frames.front()
-        : std::min(decoded.beat_frames.front(),
-                   std::min(state.earliest_peak, state.earliest_downbeat_peak));
-    double grid_start = static_cast<double>(start);
-    if (state.earliest_downbeat_peak > 0 && state.earliest_downbeat_peak < start) {
-        grid_start = static_cast<double>(state.earliest_downbeat_peak);
-    }
-    if (!reliable_downbeat_start && config.dbn_grid_start_strong_peak &&
-        state.strongest_peak_value >= state.activation_floor) {
-        grid_start = static_cast<double>(state.strongest_peak);
-    }
-    if (!reliable_downbeat_start && config.dbn_grid_align_downbeat_peak &&
-        state.earliest_downbeat_peak > 0 && state.step_frames > 1.0) {
-        const double offset = static_cast<double>(state.earliest_downbeat_peak) - grid_start;
-        const double half_step = state.step_frames * 0.5;
-        if (std::abs(offset) <= half_step) {
-            const double adjusted = grid_start + offset;
-            if (adjusted >= 0.0) {
-                grid_start = adjusted;
-            }
-        } else if (state.earliest_downbeat_peak < grid_start) {
-            // If the first downbeat peak is clearly earlier, bias the grid to it.
-            grid_start = static_cast<double>(state.earliest_downbeat_peak);
-        }
-    }
-    if (config.dbn_grid_start_advance_seconds > 0.0f && fps > 0.0) {
-        const double frames_per_second = fps;
-        grid_start -=
-            static_cast<double>(config.dbn_grid_start_advance_seconds) * frames_per_second;
-    }
+        !decoded.downbeat_frames.empty() && state.max_downbeat > state.activation_floor;
+    const GridAnchorSeed anchor{state.earliest_peak,
+                                state.earliest_downbeat_peak,
+                                state.strongest_peak,
+                                state.strongest_peak_value,
+                                state.activation_floor};
+    double grid_start = choose_grid_start_frame(anchor,
+                                                decoded,
+                                                reliable_downbeat_start,
+                                                state.step_frames,
+                                                fps);
     if (!reliable_downbeat_start && state.step_frames > 1.0 &&
         result.beat_activation.size() >= 8) {
         const double alt_start = grid_start + (0.5 * state.step_frames);
@@ -249,12 +229,11 @@ void synthesize_uniform_grid(GridProjectionState& state,
                                   state.activation_floor,
                                   fps);
     }
-    BEATIT_LOG_DEBUG("DBN grid: start=" << start
+    BEATIT_LOG_DEBUG("DBN grid: start=" << decoded.beat_frames.front()
                      << " grid_start=" << grid_start
                      << " strongest_peak=" << state.strongest_peak
                      << " strongest_peak_value=" << state.strongest_peak_value
-                     << " earliest_downbeat_peak=" << state.earliest_downbeat_peak
-                     << " advance_s=" << config.dbn_grid_start_advance_seconds);
+                     << " earliest_downbeat_peak=" << state.earliest_downbeat_peak);
 }
 
 } // namespace beatit::detail

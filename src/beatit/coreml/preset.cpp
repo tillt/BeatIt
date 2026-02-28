@@ -92,9 +92,6 @@ public:
         config.dbn_project_grid = true;
         config.dbn_grid_global_fit = true;
         config.dbn_trace = false;
-        config.dbn_grid_align_downbeat_peak = true;
-        config.dbn_grid_start_strong_peak = true;
-        config.dbn_grid_start_advance_seconds = 0.06f;
         config.max_analysis_seconds = 0.0;
         config.dbn_window_start_seconds = 0.0;
         config.sparse_probe_mode = true;

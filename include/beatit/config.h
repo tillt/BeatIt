@@ -118,9 +118,6 @@ struct BeatitConfig {
     bool sparse_probe_mode = false;
     // Fit one global linear beat grid (frame ~= a + i*b) before projection.
     bool dbn_grid_global_fit = false;
-    bool dbn_grid_align_downbeat_peak = true;
-    bool dbn_grid_start_strong_peak = true;
-    float dbn_grid_start_advance_seconds = 0.06f;
     double max_analysis_seconds = 60.0;
     double prepend_silence_seconds = 1.0;
     double debug_activations_start_s = -1.0;

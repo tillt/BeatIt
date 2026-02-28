@@ -40,10 +40,6 @@ bool test_uniform_grid_synthesis() {
 
     beatit::BeatitConfig config;
     config.dbn_grid_global_fit = false;
-    config.dbn_grid_start_strong_peak = false;
-    config.dbn_grid_align_downbeat_peak = false;
-    config.dbn_grid_start_advance_seconds = 0.0f;
-
     beatit::detail::GridProjectionState state;
     state.bpb = 4;
     state.best_phase = 0;
