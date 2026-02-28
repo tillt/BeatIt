@@ -11,7 +11,6 @@
 #include "beatit/sparse/probe_pick.h"
 #include "probe_score.h"
 
-#include <utility>
 #include <vector>
 
 namespace beatit {
@@ -76,10 +75,6 @@ bool should_add_disagreement_probe(const std::vector<ProbeResult>& probes,
 double select_repair_start(const std::vector<ProbeResult>& probes,
                            const ProbeMetricsSnapshot& metrics,
                            double fallback_start);
-
-std::pair<double, double> probe_start_extents(const std::vector<ProbeResult>& probes,
-                                              double fallback_min,
-                                              double fallback_max);
 
 ProbeWindowStarts compute_probe_window_starts(const std::vector<ProbeResult>& probes,
                                               double min_allowed_start,

@@ -131,21 +131,6 @@ double select_repair_start(const std::vector<ProbeResult>& probes,
     return probes[best_mode_index].start;
 }
 
-std::pair<double, double> probe_start_extents(const std::vector<ProbeResult>& probes,
-                                              double fallback_min,
-                                              double fallback_max) {
-    if (probes.empty()) {
-        return {fallback_min, fallback_max};
-    }
-    double min_start = probes.front().start;
-    double max_start = probes.front().start;
-    for (const auto& probe : probes) {
-        min_start = std::min(min_start, probe.start);
-        max_start = std::max(max_start, probe.start);
-    }
-    return {min_start, max_start};
-}
-
 ProbeWindowStarts compute_probe_window_starts(const std::vector<ProbeResult>& probes,
                                               double min_allowed_start,
                                               double max_allowed_start) {
@@ -153,10 +138,17 @@ ProbeWindowStarts compute_probe_window_starts(const std::vector<ProbeResult>& pr
         return std::clamp(start_s, min_allowed_start, max_allowed_start);
     };
 
-    const auto extents = probe_start_extents(probes, min_allowed_start, max_allowed_start);
     ProbeWindowStarts starts;
-    starts.left = extents.first;
-    starts.right = extents.second;
+    starts.left = min_allowed_start;
+    starts.right = max_allowed_start;
+    if (!probes.empty()) {
+        starts.left = probes.front().start;
+        starts.right = probes.front().start;
+        for (const auto& probe : probes) {
+            starts.left = std::min(starts.left, probe.start);
+            starts.right = std::max(starts.right, probe.start);
+        }
+    }
     starts.middle = clamp_start(0.5 * (starts.left + starts.right));
     starts.between = clamp_start(0.5 * (starts.left + starts.middle));
     return starts;

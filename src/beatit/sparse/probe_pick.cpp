@@ -131,7 +131,6 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
         quality_shift_step,
         max_quality_shifts
     };
-    double left_anchor_start = min_allowed_start;
 
     std::vector<ProbeResult> probes;
     probes.reserve(3);
@@ -144,7 +143,7 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
     }
 
     ProbeResult left_probe = seek_quality_probe(context, min_allowed_start, true);
-    left_anchor_start = left_probe.start;
+    const double anchor_start = left_probe.start;
     push_unique_probe(probes, std::move(left_probe));
 
     if (!seed_right_first && has_distinct_right) {
@@ -178,7 +177,6 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
                                           provider);
     }
 
-    const double anchor_start = left_anchor_start;
     DecisionOutcome selection = make_selection_decision(probes, metrics);
     SelectedProbeDiagnostics diagnostics;
     bool interior_probe_added = false;
