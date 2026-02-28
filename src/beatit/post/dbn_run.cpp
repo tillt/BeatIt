@@ -31,6 +31,80 @@
 
 namespace beatit::detail {
 
+namespace {
+
+struct DBNQualityMetrics {
+    bool valid = false;
+    double qpar = 0.0;
+    double qkur = 0.0;
+    double qmax = 0.0;
+    std::size_t min_lag = 0;
+    std::size_t max_lag = 0;
+};
+
+DBNQualityMetrics calculate_dbn_quality_metrics(const std::vector<float>& activation,
+                                                double fps,
+                                                float min_bpm,
+                                                float max_bpm) {
+    DBNQualityMetrics metrics;
+    if (activation.size() < 16 || fps <= 0.0) {
+        return metrics;
+    }
+
+    const double min_bpm_q = std::max(1.0, static_cast<double>(min_bpm));
+    const double max_bpm_q = std::max(min_bpm_q + 1.0, static_cast<double>(max_bpm));
+    metrics.min_lag =
+        static_cast<std::size_t>(std::max(1.0, std::floor((60.0 * fps) / max_bpm_q)));
+    const std::size_t max_lag =
+        static_cast<std::size_t>(std::max<double>(metrics.min_lag + 1,
+                                                  std::ceil((60.0 * fps) / min_bpm_q)));
+    metrics.max_lag = std::min<std::size_t>(max_lag, activation.size() - 1);
+    if (metrics.max_lag <= metrics.min_lag) {
+        return metrics;
+    }
+
+    std::vector<double> salience;
+    salience.reserve(metrics.max_lag - metrics.min_lag + 1);
+    for (std::size_t lag = metrics.min_lag; lag <= metrics.max_lag; ++lag) {
+        double sum = 0.0;
+        std::size_t count = 0;
+        for (std::size_t i = lag; i < activation.size(); ++i) {
+            sum += static_cast<double>(activation[i]) *
+                   static_cast<double>(activation[i - lag]);
+            ++count;
+        }
+        salience.push_back((count > 0) ? (sum / static_cast<double>(count)) : 0.0);
+    }
+
+    double mean = std::accumulate(salience.begin(), salience.end(), 0.0);
+    mean /= static_cast<double>(salience.size());
+
+    double variance = 0.0;
+    for (double value : salience) {
+        const double delta = value - mean;
+        variance += delta * delta;
+        metrics.qmax = std::max(metrics.qmax, value);
+    }
+    variance /= static_cast<double>(salience.size());
+
+    const double rms = std::sqrt(variance + mean * mean);
+    if (variance > 1e-12) {
+        double m4 = 0.0;
+        for (double value : salience) {
+            const double delta = value - mean;
+            m4 += delta * delta * delta * delta;
+        }
+        m4 /= static_cast<double>(salience.size());
+        metrics.qkur = m4 / (variance * variance);
+    }
+
+    metrics.qpar = (rms > 1e-12) ? (metrics.qmax / rms) : 0.0;
+    metrics.valid = true;
+    return metrics;
+}
+
+} // namespace
+
 bool run_dbn_postprocess(const DBNRunRequest& request) {
     CoreMLResult& result = request.result;
     const std::vector<float>* phase_energy = request.phase_energy;
@@ -146,70 +220,17 @@ bool run_dbn_postprocess(const DBNRunRequest& request) {
     auto process_quality_gate = [&] {
         const std::vector<float>& quality_src =
             use_window ? beat_slice : result.beat_activation;
-        if (quality_src.size() >= 16) {
-                const double min_bpm_q = std::max(1.0, static_cast<double>(config.min_bpm));
-                const double max_bpm_q = std::max(min_bpm_q + 1.0,
-                                                  static_cast<double>(config.max_bpm));
-                const std::size_t min_lag =
-                    static_cast<std::size_t>(std::max(1.0, std::floor((60.0 * fps) / max_bpm_q)));
-                const std::size_t max_lag =
-                    static_cast<std::size_t>(std::max<double>(min_lag + 1,
-                                                              std::ceil((60.0 * fps) / min_bpm_q)));
-                const std::size_t max_lag_clamped =
-                    std::min<std::size_t>(max_lag, quality_src.size() - 1);
-                if (max_lag_clamped > min_lag) {
-                    std::vector<double> salience;
-                    salience.reserve(max_lag_clamped - min_lag + 1);
-                    for (std::size_t lag = min_lag; lag <= max_lag_clamped; ++lag) {
-                        double sum = 0.0;
-                        std::size_t count = 0;
-                        for (std::size_t i = lag; i < quality_src.size(); ++i) {
-                            sum += static_cast<double>(quality_src[i]) *
-                                   static_cast<double>(quality_src[i - lag]);
-                            ++count;
-                        }
-                        const double value = (count > 0) ? (sum / static_cast<double>(count)) : 0.0;
-                        salience.push_back(value);
-                    }
-                    double mean = 0.0;
-                    for (double v : salience) {
-                        mean += v;
-                    }
-                    mean /= static_cast<double>(salience.size());
-                    double var = 0.0;
-                    for (double v : salience) {
-                        const double d = v - mean;
-                        var += d * d;
-                    }
-                    var /= static_cast<double>(salience.size());
-                    const double rms = std::sqrt(var + mean * mean);
-                    double max_val = 0.0;
-                    for (double v : salience) {
-                        if (v > max_val) {
-                            max_val = v;
-                        }
-                    }
-                    double kurtosis = 0.0;
-                    if (var > 1e-12) {
-                        double m4 = 0.0;
-                        for (double v : salience) {
-                            const double d = v - mean;
-                            m4 += d * d * d * d;
-                        }
-                        m4 /= static_cast<double>(salience.size());
-                        kurtosis = m4 / (var * var);
-                    }
-                    quality_qpar = (rms > 1e-12) ? (max_val / rms) : 0.0;
-                    quality_qkur = kurtosis;
-                    quality_valid = true;
-                    if (config.dbn_trace) {
-                        BEATIT_LOG_DEBUG("DBN quality: qpar=" << quality_qpar
-                                         << " qmax=" << max_val
-                                         << " qkur=" << quality_qkur
-                                         << " lags=[" << min_lag << "," << max_lag_clamped << "]"
-                                         << " frames=" << quality_src.size());
-                    }
-                }
+        const DBNQualityMetrics metrics =
+            calculate_dbn_quality_metrics(quality_src, fps, config.min_bpm, config.max_bpm);
+        quality_qpar = metrics.qpar;
+        quality_qkur = metrics.qkur;
+        quality_valid = metrics.valid;
+        if (config.dbn_trace && metrics.valid) {
+            BEATIT_LOG_DEBUG("DBN quality: qpar=" << quality_qpar
+                             << " qmax=" << metrics.qmax
+                             << " qkur=" << quality_qkur
+                             << " lags=[" << metrics.min_lag << "," << metrics.max_lag << "]"
+                             << " frames=" << quality_src.size());
         }
     };
 
