@@ -78,6 +78,7 @@ void append_probe_debug_line(TLogStream& debug_stream, const ProbeDebugView& vie
                  << " selected_conf=" << view.probes[view.selection.selected_index].conf
                  << " selected_intro_abs_ms=" << view.selected_intro_metrics.median_abs_ms
                  << " selected_middle_abs_ms=" << view.diagnostics.middle.median_abs_ms
+                 << " selected_middle_start_s=" << view.diagnostics.middle_start
                  << " selected_middle_abs_exceed_ratio="
                  << view.diagnostics.middle.abs_limit_exceed_ratio
                  << " selected_middle_signed_exceed_ratio="
@@ -91,6 +92,7 @@ void append_probe_debug_line(TLogStream& debug_stream, const ProbeDebugView& vie
                  << " consistency_middle_high_mismatch="
                  << (consistency_middle_high_mismatch ? 1 : 0)
                  << " selected_between_abs_ms=" << view.diagnostics.between.median_abs_ms
+                 << " selected_between_start_s=" << view.diagnostics.between_start
                  << " selected_between_abs_exceed_ratio="
                  << view.diagnostics.between.abs_limit_exceed_ratio
                  << " selected_between_signed_exceed_ratio="

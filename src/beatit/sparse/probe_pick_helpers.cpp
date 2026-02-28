@@ -302,6 +302,8 @@ SelectedProbeDiagnostics evaluate_selected_probe_diagnostics(const ProbeResult& 
                                          sample_rate,
                                          bpm_hint,
                                          provider);
+    diagnostics.middle_start = diagnostic_starts.middle;
+    diagnostics.between_start = diagnostic_starts.between;
 
     diagnostics.middle = (diagnostic_starts.middle == starts.middle)
         ? middle_metrics
