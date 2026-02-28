@@ -74,9 +74,6 @@ void push_observed_probe(std::vector<ProbeResult>& probes,
 
 void push_unique_probe(std::vector<ProbeResult>& probes, ProbeResult&& probe);
 
-DecisionOutcome make_selection_decision(const std::vector<ProbeResult>& probes,
-                                        const ProbeMetricsSnapshot& metrics);
-
 bool should_add_disagreement_probe(const std::vector<ProbeResult>& probes,
                                    const ProbeMetricsSnapshot& metrics);
 

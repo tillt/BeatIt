@@ -111,11 +111,6 @@ void push_unique_probe(std::vector<ProbeResult>& probes, ProbeResult&& probe) {
     probes.push_back(std::move(probe));
 }
 
-DecisionOutcome make_selection_decision(const std::vector<ProbeResult>& probes,
-                                        const ProbeMetricsSnapshot& metrics) {
-    return sparse_decide_unified(probes, metrics.mode_errors, metrics.intro_metrics);
-}
-
 bool should_add_disagreement_probe(const std::vector<ProbeResult>& probes,
                                    const ProbeMetricsSnapshot& metrics) {
     if (probes.size() != 2 || metrics.consensus_bpm <= 0.0 || metrics.mode_errors.empty()) {
@@ -132,14 +127,10 @@ double select_repair_start(const std::vector<ProbeResult>& probes,
         return fallback_start;
     }
 
-    std::size_t best_mode_index = 0;
-    double best_mode_error = metrics.mode_errors[0];
-    for (std::size_t i = 1; i < probes.size(); ++i) {
-        if (metrics.mode_errors[i] < best_mode_error) {
-            best_mode_error = metrics.mode_errors[i];
-            best_mode_index = i;
-        }
-    }
+    const auto best_mode_it =
+        std::min_element(metrics.mode_errors.begin(), metrics.mode_errors.end());
+    const std::size_t best_mode_index =
+        static_cast<std::size_t>(std::distance(metrics.mode_errors.begin(), best_mode_it));
     return probes[best_mode_index].start;
 }
 

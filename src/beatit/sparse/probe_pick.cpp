@@ -192,7 +192,8 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
                                           provider);
     }
 
-    DecisionOutcome selection = make_selection_decision(probes, metrics);
+    DecisionOutcome selection =
+        sparse_decide_unified(probes, metrics.mode_errors, metrics.intro_metrics);
     SelectedProbeDiagnostics diagnostics;
     bool interior_probe_added = false;
 
@@ -219,7 +220,7 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
                                               min_allowed_start,
                                               max_allowed_start,
                                               provider);
-            selection = make_selection_decision(probes, metrics);
+            selection = sparse_decide_unified(probes, metrics.mode_errors, metrics.intro_metrics);
             refresh_selected();
             interior_probe_added = true;
         }
