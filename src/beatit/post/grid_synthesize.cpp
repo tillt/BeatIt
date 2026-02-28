@@ -15,7 +15,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstddef>
 #include <vector>
 
 namespace beatit::detail {
@@ -26,22 +25,6 @@ struct OffsetSample {
     std::size_t beat_index = 0;
     double offset = 0.0;
 };
-
-std::size_t nearest_peak_frame(const std::vector<std::size_t>& peaks, std::size_t frame) {
-    auto it = std::lower_bound(peaks.begin(), peaks.end(), frame);
-    if (it == peaks.end()) {
-        return peaks.back();
-    }
-
-    std::size_t nearest = *it;
-    if (it != peaks.begin()) {
-        const std::size_t prev = *(it - 1);
-        if (frame - prev < nearest - frame) {
-            nearest = prev;
-        }
-    }
-    return nearest;
-}
 
 double median_offset_window(const std::vector<OffsetSample>& samples,
                             std::size_t begin,

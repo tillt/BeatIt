@@ -37,6 +37,22 @@ std::vector<std::size_t> collect_activation_peaks(const std::vector<float>& acti
     return peaks;
 }
 
+std::size_t nearest_peak_frame(const std::vector<std::size_t>& peaks, std::size_t frame) {
+    auto it = std::lower_bound(peaks.begin(), peaks.end(), frame);
+    if (it == peaks.end()) {
+        return peaks.back();
+    }
+
+    std::size_t nearest = *it;
+    if (it != peaks.begin()) {
+        const std::size_t prev = *(it - 1);
+        if (frame - prev < nearest - frame) {
+            nearest = prev;
+        }
+    }
+    return nearest;
+}
+
 namespace {
 
 double median_value(std::vector<double>& values) {
@@ -339,19 +355,7 @@ void trace_grid_peak_alignment(const std::vector<std::size_t>& beat_grid,
         double sum_sq = 0.0;
         std::size_t count = 0;
         for (const auto frame : grid) {
-            auto it = std::lower_bound(peaks.begin(), peaks.end(), frame);
-            std::size_t best = *peaks.begin();
-            if (it == peaks.end()) {
-                best = peaks.back();
-            } else {
-                best = *it;
-                if (it != peaks.begin()) {
-                    const std::size_t prev = *(it - 1);
-                    if (frame - prev < best - frame) {
-                        best = prev;
-                    }
-                }
-            }
+            const std::size_t best = nearest_peak_frame(peaks, frame);
             const double delta = (static_cast<double>(best) -
                                   static_cast<double>(frame)) / fps;
             sum += delta;
