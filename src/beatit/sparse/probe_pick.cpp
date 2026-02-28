@@ -111,6 +111,39 @@ void append_probe_debug_line(TLogStream& debug_stream, const ProbeDebugView& vie
                  << " repair=" << (view.selection.low_confidence ? 1 : 0);
 }
 
+template <typename TLogStream>
+void append_probe_candidate_debug(TLogStream& debug_stream,
+                                  const std::vector<ProbeResult>& probes,
+                                  const ProbeMetricsSnapshot& metrics,
+                                  double probe_duration,
+                                  double sample_rate,
+                                  const SparseSampleProvider& provider,
+                                  std::size_t selected_index) {
+    debug_stream << "Sparse probe candidates:";
+    for (std::size_t i = 0; i < probes.size(); ++i) {
+        const double bpm_hint =
+            (metrics.consensus_bpm > 0.0) ? metrics.consensus_bpm : probes[i].bpm;
+        const auto diagnostics = evaluate_selected_probe_diagnostics(probes[i],
+                                                                     metrics.middle_metrics[i],
+                                                                     bpm_hint,
+                                                                     metrics.starts,
+                                                                     probe_duration,
+                                                                     sample_rate,
+                                                                     provider);
+        debug_stream << " idx=" << i
+                     << (i == selected_index ? "*" : "")
+                     << " start=" << probes[i].start
+                     << " bpm=" << probes[i].bpm
+                     << " conf=" << probes[i].conf
+                     << " mode_err=" << metrics.mode_errors[i]
+                     << " intro_abs_ms=" << metrics.intro_metrics[i].median_abs_ms
+                     << " middle_abs_ms=" << diagnostics.middle.median_abs_ms
+                     << " between_abs_ms=" << diagnostics.between.median_abs_ms
+                     << " left_abs_ms=" << diagnostics.left.median_abs_ms
+                     << " right_abs_ms=" << diagnostics.right.median_abs_ms;
+    }
+}
+
 } // namespace
 
 SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelectionParams& params) {
@@ -239,6 +272,13 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
                                            selected_mode_error(metrics, selection),
                                            anchor_start,
                                            interior_probe_added});
+    append_probe_candidate_debug(debug_stream,
+                                 probes,
+                                 metrics,
+                                 probe_duration,
+                                 sample_rate_,
+                                 provider,
+                                 selection.selected_index);
 
     out.result = std::move(result);
     out.probes = std::move(probes);
