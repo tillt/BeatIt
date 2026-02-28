@@ -67,7 +67,7 @@ DBNDecodeResult decode_dbn_beats_beatit(const std::vector<float>& beat_activatio
         pruned_count = candidate_count - candidates.size();
     }
 
-    if (config.dbn_trace) {
+    if (config.dbn_trace && beatit_should_log("debug")) {
         const std::size_t first_window =
             std::min<std::size_t>(beat_activation.size(),
                                   static_cast<std::size_t>(std::llround(2.0 * fps)));
