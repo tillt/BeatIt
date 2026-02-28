@@ -292,7 +292,7 @@ bool test_target_picker_selects_expected_windows() {
         80.0, 20.0, {0.05, 0.80, 0.92, 0.86, 0.08}));
 
     const auto targets =
-        beatit::detail::pick_sparse_usability_targets(windows, 100.0, 0.0);
+        beatit::detail::pick_sparse_usability_targets(windows, 0.0);
     if (targets.left_index != 0) {
         std::cerr << "Sparse usability scan test failed: expected left target index 0, got "
                   << targets.left_index << ".\n";
@@ -311,6 +311,63 @@ bool test_target_picker_selects_expected_windows() {
     if (targets.right_index != 4) {
         std::cerr << "Sparse usability scan test failed: expected right target index 4, got "
                   << targets.right_index << ".\n";
+        return false;
+    }
+    return true;
+}
+
+bool test_target_picker_respects_non_zero_window_origin() {
+    std::vector<beatit::detail::SparseUsabilityWindow> windows;
+    windows.push_back(beatit::detail::build_sparse_usability_window(
+        30.0, 20.0, {0.05, 0.78, 0.91, 0.85, 0.09}));
+    windows.push_back(beatit::detail::build_sparse_usability_window(
+        50.0, 20.0, {0.70, 0.10, 0.15, 0.10, 0.80}));
+    windows.push_back(beatit::detail::build_sparse_usability_window(
+        70.0, 20.0, {0.06, 0.79, 0.89, 0.83, 0.11}));
+    windows.push_back(beatit::detail::build_sparse_usability_window(
+        90.0, 20.0, {0.68, 0.10, 0.15, 0.10, 0.82}));
+    windows.push_back(beatit::detail::build_sparse_usability_window(
+        110.0, 20.0, {0.04, 0.81, 0.93, 0.87, 0.08}));
+
+    const auto targets =
+        beatit::detail::pick_sparse_usability_targets(windows, 0.0);
+    if (targets.left_index != 0) {
+        std::cerr << "Sparse usability scan test failed: expected non-zero-origin left target index 0, got "
+                  << targets.left_index << ".\n";
+        return false;
+    }
+    if (targets.between_index != 0) {
+        std::cerr << "Sparse usability scan test failed: expected non-zero-origin between target index 0, got "
+                  << targets.between_index << ".\n";
+        return false;
+    }
+    if (targets.middle_index != 2) {
+        std::cerr << "Sparse usability scan test failed: expected non-zero-origin middle target index 2, got "
+                  << targets.middle_index << ".\n";
+        return false;
+    }
+    if (targets.right_index != 4) {
+        std::cerr << "Sparse usability scan test failed: expected non-zero-origin right target index 4, got "
+                  << targets.right_index << ".\n";
+        return false;
+    }
+    return true;
+}
+
+bool test_covering_window_picker_prefers_best_covering_score() {
+    std::vector<beatit::detail::SparseUsabilityWindow> windows;
+    windows.push_back(beatit::detail::build_sparse_usability_window(
+        30.0, 30.0, {0.08, 0.72, 0.76, 0.70, 0.16}));
+    windows.push_back(beatit::detail::build_sparse_usability_window(
+        40.0, 30.0, {0.05, 0.82, 0.90, 0.86, 0.08}));
+    windows.push_back(beatit::detail::build_sparse_usability_window(
+        50.0, 30.0, {0.06, 0.78, 0.84, 0.80, 0.10}));
+
+    const std::size_t index =
+        beatit::detail::find_covering_sparse_usability_window(windows, 55.0);
+    if (index != 1) {
+        std::cerr << "Sparse usability scan test failed: expected covering window index 1, got "
+                  << index << ".\n";
         return false;
     }
     return true;
@@ -344,6 +401,12 @@ int main() {
         return 1;
     }
     if (!test_target_picker_selects_expected_windows()) {
+        return 1;
+    }
+    if (!test_target_picker_respects_non_zero_window_origin()) {
+        return 1;
+    }
+    if (!test_covering_window_picker_prefers_best_covering_score()) {
         return 1;
     }
 

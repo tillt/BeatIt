@@ -394,25 +394,61 @@ std::vector<SparseUsabilityWindow> scan_sparse_usability_windows(
     return windows;
 }
 
+std::size_t find_covering_sparse_usability_window(const std::vector<SparseUsabilityWindow>& windows,
+                                                  double target_seconds) {
+    std::size_t best_index = windows.size();
+    double best_score = -std::numeric_limits<double>::infinity();
+    double best_center_distance = std::numeric_limits<double>::infinity();
+    for (std::size_t i = 0; i < windows.size(); ++i) {
+        const double start_seconds = windows[i].start_seconds;
+        const double end_seconds = start_seconds + windows[i].duration_seconds;
+        if (target_seconds < start_seconds || target_seconds > end_seconds) {
+            continue;
+        }
+
+        const double center_seconds = start_seconds + (0.5 * windows[i].duration_seconds);
+        const double center_distance = std::abs(target_seconds - center_seconds);
+        if (best_index == windows.size() ||
+            windows[i].score > best_score + 1e-9 ||
+            (std::abs(windows[i].score - best_score) <= 1e-9 &&
+             center_distance < best_center_distance)) {
+            best_index = i;
+            best_score = windows[i].score;
+            best_center_distance = center_distance;
+        }
+    }
+    return best_index;
+}
+
 SparseUsabilityTargets pick_sparse_usability_targets(
     const std::vector<SparseUsabilityWindow>& windows,
-    double total_duration_seconds,
     double min_score) {
     SparseUsabilityTargets targets;
-    if (windows.empty() || !(total_duration_seconds > 0.0)) {
+    if (windows.empty()) {
         return targets;
     }
 
-    const double left_target = 0.0;
-    const double right_target = total_duration_seconds;
-    const double middle_target = 0.5 * total_duration_seconds;
-    const double between_target = 0.5 * middle_target;
+    double start_seconds = windows.front().start_seconds;
+    double end_seconds = windows.front().start_seconds + windows.front().duration_seconds;
+    for (const auto& window : windows) {
+        start_seconds = std::min(start_seconds, window.start_seconds);
+        end_seconds = std::max(end_seconds, window.start_seconds + window.duration_seconds);
+    }
+    const double total_duration_seconds = std::max(0.0, end_seconds - start_seconds);
+    if (!(total_duration_seconds > 0.0)) {
+        return targets;
+    }
+
+    const double left_target = start_seconds;
+    const double right_target = end_seconds;
+    const double middle_target = start_seconds + (0.5 * total_duration_seconds);
+    const double between_target = start_seconds + (0.25 * total_duration_seconds);
     const double max_snap_seconds = total_duration_seconds;
     constexpr double kDistanceWeight = 0.01;
 
     targets.left_index = pick_required_window(windows,
                                               left_target,
-                                              0.0,
+                                              start_seconds,
                                               middle_target,
                                               max_snap_seconds,
                                               min_score,
@@ -420,7 +456,7 @@ SparseUsabilityTargets pick_sparse_usability_targets(
     targets.right_index = pick_required_window(windows,
                                                right_target,
                                                middle_target,
-                                               total_duration_seconds,
+                                               end_seconds,
                                                max_snap_seconds,
                                                min_score,
                                                kDistanceWeight);
@@ -434,7 +470,7 @@ SparseUsabilityTargets pick_sparse_usability_targets(
                                                 {targets.left_index, targets.right_index});
     targets.between_index = pick_required_window(windows,
                                                  between_target,
-                                                 0.0,
+                                                 start_seconds,
                                                  middle_target,
                                                  max_snap_seconds,
                                                  min_score,
@@ -444,7 +480,7 @@ SparseUsabilityTargets pick_sparse_usability_targets(
     if (targets.between_index == windows.size()) {
         targets.between_index = pick_required_window(windows,
                                                      between_target,
-                                                     0.0,
+                                                     start_seconds,
                                                      middle_target,
                                                      max_snap_seconds,
                                                      min_score,

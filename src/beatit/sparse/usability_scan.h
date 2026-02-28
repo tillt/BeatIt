@@ -88,9 +88,11 @@ std::vector<SparseUsabilitySpan> build_sparse_usability_spans(
 std::vector<SparseUsabilityWindow> scan_sparse_usability_windows(
     const SparseUsabilityScanRequest& request);
 
+std::size_t find_covering_sparse_usability_window(const std::vector<SparseUsabilityWindow>& windows,
+                                                  double target_seconds);
+
 SparseUsabilityTargets pick_sparse_usability_targets(
     const std::vector<SparseUsabilityWindow>& windows,
-    double total_duration_seconds,
     double min_score);
 
 } // namespace detail
