@@ -12,6 +12,7 @@
 #include "beatit/logging.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 
@@ -352,7 +353,7 @@ DBNDecodeResult CalmdadDecoder::decode(const CalmdadDecodeRequest& request) cons
     const ActivationLogData logs =
         build_activation_logs(beat_activation, downbeat_activation, epsilon, floor_value);
 
-    std::vector<std::size_t> bpb_options = {3, 4};
+    constexpr std::array<std::size_t, 2> kBpbOptions = {3, 4};
     DBNPathResult best_path;
     std::size_t best_bpb = 0;
     BEATIT_LOG_DEBUG("DBN calmdad: frames=" << beat_activation.size()
@@ -362,7 +363,7 @@ DBNDecodeResult CalmdadDecoder::decode(const CalmdadDecodeRequest& request) cons
                      << " step=" << local_step
                      << " lambda=" << transition_lambda
                      << " use_downbeat=" << (use_downbeat ? "true" : "false"));
-    for (std::size_t bpb : bpb_options) {
+    for (std::size_t bpb : kBpbOptions) {
         DBNPathResult path = decode_dbn_beats_candidate(
             logs.beat_log,
             logs.downbeat_log,
