@@ -29,11 +29,8 @@ struct GridTempoDecision {
 
         double bpm_from_peaks = 0.0;
         double bpm_from_peaks_median = 0.0;
-        double bpm_from_peaks_reg = 0.0;
         double bpm_from_peaks_reg_full = 0.0;
         double bpm_from_downbeats = 0.0;
-        double bpm_from_downbeats_median = 0.0;
-        double bpm_from_downbeats_reg = 0.0;
         double bpm_from_fit = 0.0;
         double bpm_from_global_fit = 0.0;
 
@@ -41,8 +38,6 @@ struct GridTempoDecision {
         double downbeat_cv = 0.0;
 
         std::string bpm_source = "none";
-
-        double quality_qkur = 0.0;
     };
 
     std::size_t bpb = 1;

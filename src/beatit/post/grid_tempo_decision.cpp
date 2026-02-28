@@ -22,7 +22,6 @@ namespace beatit::detail {
 GridTempoDecision compute_grid_tempo_decision(const GridTempoDecisionInput& input) {
     GridTempoDecision decision;
     auto& diag = decision.diagnostics;
-    diag.quality_qkur = input.quality_qkur;
     if (input.decoded.beat_frames.empty()) {
         return decision;
     }
@@ -248,11 +247,8 @@ GridTempoDecision compute_grid_tempo_decision(const GridTempoDecisionInput& inpu
         : decision.base_interval;
     diag.bpm_from_peaks = bpm_from_peaks;
     diag.bpm_from_peaks_median = bpm_from_peaks_median;
-    diag.bpm_from_peaks_reg = bpm_from_peaks_reg;
     diag.bpm_from_peaks_reg_full = bpm_from_peaks_reg_full;
     diag.bpm_from_downbeats = bpm_from_downbeats;
-    diag.bpm_from_downbeats_median = bpm_from_downbeats_median;
-    diag.bpm_from_downbeats_reg = bpm_from_downbeats_reg;
 
     return decision;
 }
@@ -295,14 +291,10 @@ void log_grid_tempo_decision(const GridTempoDecision& decision,
                      << " bpm_from_global_fit=" << d.bpm_from_global_fit
                      << " bpm_from_peaks=" << d.bpm_from_peaks
                      << " bpm_from_peaks_median=" << d.bpm_from_peaks_median
-                     << " bpm_from_peaks_reg=" << d.bpm_from_peaks_reg
                      << " bpm_from_peaks_reg_full=" << d.bpm_from_peaks_reg_full
                      << " bpm_from_downbeats=" << d.bpm_from_downbeats
-                     << " bpm_from_downbeats_median=" << d.bpm_from_downbeats_median
-                     << " bpm_from_downbeats_reg=" << d.bpm_from_downbeats_reg
                      << " base_interval=" << decision.base_interval
                      << " bpm_reference=" << input.reference_bpm
-                     << " quality_qkur=" << d.quality_qkur
                      << " quality_low=" << (decision.quality_low ? 1 : 0)
                      << " bpm_for_grid=" << decision.bpm_for_grid
                      << " step_frames=" << decision.step_frames
