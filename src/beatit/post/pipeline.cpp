@@ -45,6 +45,11 @@ struct BpmRange {
     float max_bpm = 2.0f;
 };
 
+struct AnalysisLatencyConfig {
+    std::size_t frames = 0;
+    double frames_f = 0.0;
+};
+
 void clamp_tempo_window(float& min_bpm, float& max_bpm, float hard_min_bpm, float hard_max_bpm) {
     min_bpm = std::max(hard_min_bpm, min_bpm);
     max_bpm = std::min(hard_max_bpm, max_bpm);
@@ -92,6 +97,16 @@ BpmRange build_dbn_bpm_range(const BeatitConfig& config, const TempoWindowConfig
                        out.max_bpm,
                        tempo_window.hard_min_bpm,
                        tempo_window.hard_max_bpm);
+    return out;
+}
+
+AnalysisLatencyConfig build_analysis_latency_config(const BeatitConfig& config,
+                                                    std::size_t used_frames) {
+    AnalysisLatencyConfig out;
+    const bool windowed_inference = config.fixed_frames > 0 && used_frames > config.fixed_frames;
+    out.frames = windowed_inference ? std::min(config.window_border_frames, config.fixed_frames / 2)
+                                    : 0;
+    out.frames_f = static_cast<double>(out.frames);
     return out;
 }
 
@@ -344,17 +359,10 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
     const std::size_t grid_total_frames =
         total_frames_full > used_frames ? total_frames_full : used_frames;
     const TempoWindowConfig tempo_window = build_tempo_window_config(config, reference_bpm);
+    const AnalysisLatencyConfig analysis_latency = build_analysis_latency_config(config, used_frames);
 
     const double fps = static_cast<double>(config.sample_rate) / static_cast<double>(config.hop_size);
     const double hop_scale = sample_rate / static_cast<double>(config.sample_rate);
-    const bool windowed_inference =
-        config.fixed_frames > 0 && used_frames > config.fixed_frames;
-    const std::size_t analysis_latency_frames =
-        windowed_inference ? std::min(config.window_border_frames,
-                                      config.fixed_frames / 2)
-                           : 0;
-    const double analysis_latency_frames_f =
-        static_cast<double>(analysis_latency_frames);
 
     dump_activation_window(result, config, fps, hop_scale);
 
@@ -368,8 +376,8 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                                                 grid_total_frames,
                                                 fps,
                                                 hop_scale,
-                                                analysis_latency_frames,
-                                                analysis_latency_frames_f,
+                                                analysis_latency.frames,
+                                                analysis_latency.frames_f,
                                                 dbn_ms,
                                                 peaks_ms);
         return result;
@@ -386,8 +394,8 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
         dbn_bpm_range.max_bpm,
         fps,
         hop_scale,
-        analysis_latency_frames,
-        analysis_latency_frames_f,
+        analysis_latency.frames,
+        analysis_latency.frames_f,
         peaks_ms,
         dbn_ms,
     };
@@ -422,8 +430,8 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                         config,
                         sample_rate,
                         hop_scale,
-                        analysis_latency_frames,
-                        analysis_latency_frames_f);
+                        analysis_latency.frames,
+                        analysis_latency.frames_f);
 
     if (!result.downbeat_activation.empty()) {
         std::vector<std::size_t> down_peaks =
