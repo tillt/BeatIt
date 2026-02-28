@@ -141,7 +141,6 @@ bool run_dbn_postprocess(const DBNRunRequest& request) {
     };
 
     double quality_qpar = 0.0;
-    double quality_qmax = 0.0;
     double quality_qkur = 0.0;
     bool quality_valid = false;
     auto process_quality_gate = [&] {
@@ -201,12 +200,11 @@ bool run_dbn_postprocess(const DBNRunRequest& request) {
                         kurtosis = m4 / (var * var);
                     }
                     quality_qpar = (rms > 1e-12) ? (max_val / rms) : 0.0;
-                    quality_qmax = max_val;
                     quality_qkur = kurtosis;
                     quality_valid = true;
                     if (config.dbn_trace) {
                         BEATIT_LOG_DEBUG("DBN quality: qpar=" << quality_qpar
-                                         << " qmax=" << quality_qmax
+                                         << " qmax=" << max_val
                                          << " qkur=" << quality_qkur
                                          << " lags=[" << min_lag << "," << max_lag_clamped << "]"
                                          << " frames=" << quality_src.size());
