@@ -278,6 +278,44 @@ bool test_provider_scan_finds_rhythmic_regions() {
     return true;
 }
 
+bool test_target_picker_selects_expected_windows() {
+    std::vector<beatit::detail::SparseUsabilityWindow> windows;
+    windows.push_back(beatit::detail::build_sparse_usability_window(
+        0.0, 20.0, {0.06, 0.75, 0.90, 0.84, 0.10}));
+    windows.push_back(beatit::detail::build_sparse_usability_window(
+        20.0, 20.0, {0.70, 0.10, 0.15, 0.10, 0.80}));
+    windows.push_back(beatit::detail::build_sparse_usability_window(
+        40.0, 20.0, {0.08, 0.78, 0.88, 0.82, 0.12}));
+    windows.push_back(beatit::detail::build_sparse_usability_window(
+        60.0, 20.0, {0.68, 0.10, 0.15, 0.10, 0.82}));
+    windows.push_back(beatit::detail::build_sparse_usability_window(
+        80.0, 20.0, {0.05, 0.80, 0.92, 0.86, 0.08}));
+
+    const auto targets =
+        beatit::detail::pick_sparse_usability_targets(windows, 100.0, 0.0);
+    if (targets.left_index != 0) {
+        std::cerr << "Sparse usability scan test failed: expected left target index 0, got "
+                  << targets.left_index << ".\n";
+        return false;
+    }
+    if (targets.between_index != 0) {
+        std::cerr << "Sparse usability scan test failed: expected between target index 0, got "
+                  << targets.between_index << ".\n";
+        return false;
+    }
+    if (targets.middle_index != 2) {
+        std::cerr << "Sparse usability scan test failed: expected middle target index 2, got "
+                  << targets.middle_index << ".\n";
+        return false;
+    }
+    if (targets.right_index != 4) {
+        std::cerr << "Sparse usability scan test failed: expected right target index 4, got "
+                  << targets.right_index << ".\n";
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 int main() {
@@ -303,6 +341,9 @@ int main() {
         return 1;
     }
     if (!test_provider_scan_finds_rhythmic_regions()) {
+        return 1;
+    }
+    if (!test_target_picker_selects_expected_windows()) {
         return 1;
     }
 

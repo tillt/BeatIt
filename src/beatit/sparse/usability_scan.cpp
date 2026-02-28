@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <initializer_list>
 #include <numeric>
 #include <vector>
 
@@ -24,6 +25,44 @@ double clamp_unit(double value) {
 double window_distance_penalty(const SparseUsabilityWindow& window,
                                const SparseUsabilityPickRequest& request) {
     return request.distance_weight * std::abs(window.start_seconds - request.target_seconds);
+}
+
+std::size_t pick_required_window(const std::vector<SparseUsabilityWindow>& windows,
+                                 double target_seconds,
+                                 double min_start_seconds,
+                                 double max_start_seconds,
+                                 double max_snap_seconds,
+                                 double min_score,
+                                 double distance_weight,
+                                 std::initializer_list<std::size_t> excluded_indices = {}) {
+    std::vector<SparseUsabilityWindow> filtered;
+    filtered.reserve(windows.size());
+    std::vector<std::size_t> index_map;
+    index_map.reserve(windows.size());
+    for (std::size_t i = 0; i < windows.size(); ++i) {
+        if (std::find(excluded_indices.begin(), excluded_indices.end(), i) != excluded_indices.end()) {
+            continue;
+        }
+        if (windows[i].start_seconds < min_start_seconds ||
+            windows[i].start_seconds > max_start_seconds) {
+            continue;
+        }
+        filtered.push_back(windows[i]);
+        index_map.push_back(i);
+    }
+    if (filtered.empty()) {
+        return windows.size();
+    }
+
+    const std::size_t filtered_index =
+        pick_sparse_usability_window(filtered,
+                                     SparseUsabilityPickRequest{
+                                         target_seconds,
+                                         max_snap_seconds,
+                                         distance_weight,
+                                         min_score
+                                     });
+    return filtered_index < index_map.size() ? index_map[filtered_index] : windows.size();
 }
 
 std::vector<double> build_window_starts(double total_duration_seconds,
@@ -353,6 +392,65 @@ std::vector<SparseUsabilityWindow> scan_sparse_usability_windows(
                                                         features));
     }
     return windows;
+}
+
+SparseUsabilityTargets pick_sparse_usability_targets(
+    const std::vector<SparseUsabilityWindow>& windows,
+    double total_duration_seconds,
+    double min_score) {
+    SparseUsabilityTargets targets;
+    if (windows.empty() || !(total_duration_seconds > 0.0)) {
+        return targets;
+    }
+
+    const double left_target = 0.0;
+    const double right_target = total_duration_seconds;
+    const double middle_target = 0.5 * total_duration_seconds;
+    const double between_target = 0.5 * middle_target;
+    const double max_snap_seconds = total_duration_seconds;
+    constexpr double kDistanceWeight = 0.01;
+
+    targets.left_index = pick_required_window(windows,
+                                              left_target,
+                                              0.0,
+                                              middle_target,
+                                              max_snap_seconds,
+                                              min_score,
+                                              kDistanceWeight);
+    targets.right_index = pick_required_window(windows,
+                                               right_target,
+                                               middle_target,
+                                               total_duration_seconds,
+                                               max_snap_seconds,
+                                               min_score,
+                                               kDistanceWeight);
+    targets.middle_index = pick_required_window(windows,
+                                                middle_target,
+                                                between_target,
+                                                right_target,
+                                                max_snap_seconds,
+                                                min_score,
+                                                kDistanceWeight,
+                                                {targets.left_index, targets.right_index});
+    targets.between_index = pick_required_window(windows,
+                                                 between_target,
+                                                 0.0,
+                                                 middle_target,
+                                                 max_snap_seconds,
+                                                 min_score,
+                                                 kDistanceWeight,
+                                                 {targets.middle_index, targets.right_index});
+
+    if (targets.between_index == windows.size()) {
+        targets.between_index = pick_required_window(windows,
+                                                     between_target,
+                                                     0.0,
+                                                     middle_target,
+                                                     max_snap_seconds,
+                                                     min_score,
+                                                     kDistanceWeight);
+    }
+    return targets;
 }
 
 } // namespace detail

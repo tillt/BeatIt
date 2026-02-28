@@ -58,6 +58,13 @@ struct SparseUsabilityScanRequest {
     const SparseSampleProvider* provider = nullptr;
 };
 
+struct SparseUsabilityTargets {
+    std::size_t left_index = std::numeric_limits<std::size_t>::max();
+    std::size_t right_index = std::numeric_limits<std::size_t>::max();
+    std::size_t between_index = std::numeric_limits<std::size_t>::max();
+    std::size_t middle_index = std::numeric_limits<std::size_t>::max();
+};
+
 double score_sparse_usability_window(const SparseUsabilityFeatures& features);
 
 bool sparse_window_is_usable(const SparseUsabilityFeatures& features);
@@ -80,6 +87,11 @@ std::vector<SparseUsabilitySpan> build_sparse_usability_spans(
 
 std::vector<SparseUsabilityWindow> scan_sparse_usability_windows(
     const SparseUsabilityScanRequest& request);
+
+SparseUsabilityTargets pick_sparse_usability_targets(
+    const std::vector<SparseUsabilityWindow>& windows,
+    double total_duration_seconds,
+    double min_score);
 
 } // namespace detail
 } // namespace beatit
