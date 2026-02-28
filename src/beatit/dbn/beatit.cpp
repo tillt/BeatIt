@@ -102,44 +102,6 @@ DBNDecodeResult decode_dbn_beats_beatit(const std::vector<float>& beat_activatio
         summarize_activation(beat_activation, "beat");
         summarize_activation(downbeat_activation, "downbeat");
 
-        auto preview_candidates = [&](const std::vector<std::size_t>& frames,
-                                      const std::vector<float>& activation,
-                                      const char* label) {
-            auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
-            debug_stream << "DBN: " << label << " candidates head:";
-            const std::size_t top = std::min<std::size_t>(8, frames.size());
-            for (std::size_t i = 0; i < top; ++i) {
-                const std::size_t frame = frames[i];
-                const double time_s = fps > 0.0 ? static_cast<double>(frame) / fps : 0.0;
-                float value = 0.0f;
-                if (frame < activation.size()) {
-                    value = activation[frame];
-                }
-                debug_stream << " " << frame << "(" << time_s << "s)->" << value;
-            }
-        };
-        if (!use_all_candidates) {
-            preview_candidates(candidates, beat_activation, "beat");
-        } else {
-            std::vector<std::size_t> first_hits;
-            first_hits.reserve(8);
-            for (std::size_t i = 0; i < beat_activation.size() && first_hits.size() < 8; ++i) {
-                if (beat_activation[i] >= activation_floor) {
-                    first_hits.push_back(i);
-                }
-            }
-            preview_candidates(first_hits, beat_activation, "beat");
-        }
-        std::vector<std::size_t> downbeat_hits;
-        downbeat_hits.reserve(8);
-        for (std::size_t i = 0;
-             i < downbeat_activation.size() && downbeat_hits.size() < 8;
-             ++i) {
-            if (downbeat_activation[i] >= activation_floor) {
-                downbeat_hits.push_back(i);
-            }
-        }
-        preview_candidates(downbeat_hits, downbeat_activation, "downbeat");
     }
 
     if (candidate_count < 2) {
