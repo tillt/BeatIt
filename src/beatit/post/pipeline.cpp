@@ -30,6 +30,49 @@ using detail::median_interval_frames;
 using detail::pick_peaks;
 using detail::score_peaks;
 
+std::vector<std::size_t> compute_post_peaks(const std::vector<float>& activation,
+                                            double fps,
+                                            float min_bpm,
+                                            float max_bpm,
+                                            float threshold,
+                                            double& peaks_ms) {
+    const auto peaks_start = std::chrono::steady_clock::now();
+    const double max_bpm_local = std::max(min_bpm + 1.0f, max_bpm);
+    const double min_bpm_local = std::max(1.0f, min_bpm);
+    const std::size_t min_interval =
+        static_cast<std::size_t>(std::max(1.0, std::floor((60.0 * fps) / max_bpm_local)));
+    const std::size_t max_interval =
+        static_cast<std::size_t>(std::ceil((60.0 * fps) / min_bpm_local));
+    std::vector<std::size_t> peaks = pick_peaks(activation, threshold, min_interval, max_interval);
+    const auto peaks_end = std::chrono::steady_clock::now();
+    peaks_ms += std::chrono::duration<double, std::milli>(peaks_end - peaks_start).count();
+    return peaks;
+}
+
+void relax_post_peak_threshold(std::vector<std::size_t>& peaks,
+                               const std::vector<float>& activation,
+                               const BeatitConfig& config,
+                               double fps,
+                               std::size_t used_frames,
+                               float min_bpm,
+                               float max_bpm,
+                               double& peaks_ms) {
+    if (config.synthetic_fill) {
+        return;
+    }
+
+    const double duration = static_cast<double>(used_frames) / fps;
+    const double min_expected = duration * (std::max(1.0f, min_bpm) / 60.0);
+    if (min_expected <= 0.0) {
+        return;
+    }
+
+    if (peaks.size() < static_cast<std::size_t>(min_expected * 0.5)) {
+        const float lowered = std::max(0.1f, config.activation_threshold * 0.5f);
+        peaks = compute_post_peaks(activation, fps, min_bpm, max_bpm, lowered, peaks_ms);
+    }
+}
+
 } // namespace
 
 CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activation,
@@ -206,51 +249,37 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
         }
     }
 
-    auto compute_peaks = [&](const std::vector<float>& activation,
-                             float local_min_bpm,
-                             float local_max_bpm,
-                             float threshold) {
-        const auto peaks_start = std::chrono::steady_clock::now();
-        const double max_bpm_local = std::max(local_min_bpm + 1.0f, local_max_bpm);
-        const double min_bpm_local = std::max(1.0f, local_min_bpm);
-        const std::size_t min_interval =
-            static_cast<std::size_t>(std::max(1.0, std::floor((60.0 * fps) / max_bpm_local)));
-        const std::size_t max_interval =
-            static_cast<std::size_t>(std::ceil((60.0 * fps) / min_bpm_local));
-        auto peaks = pick_peaks(activation, threshold, min_interval, max_interval);
-        const auto peaks_end = std::chrono::steady_clock::now();
-        peaks_ms += std::chrono::duration<double, std::milli>(peaks_end - peaks_start).count();
-        return peaks;
-    };
-
-    auto adjust_threshold = [&](const std::vector<float>& activation,
-                                float local_min_bpm,
-                                float local_max_bpm,
-                                std::vector<std::size_t>* peaks) {
-        if (!peaks) {
-            return;
-        }
-        if (config.synthetic_fill) {
-            return;
-        }
-        const double duration = static_cast<double>(used_frames) / fps;
-        const double min_expected = duration * (std::max(1.0f, local_min_bpm) / 60.0);
-        if (min_expected <= 0.0) {
-            return;
-        }
-        if (peaks->size() < static_cast<std::size_t>(min_expected * 0.5)) {
-            const float lowered = std::max(0.1f, config.activation_threshold * 0.5f);
-            *peaks = compute_peaks(activation, local_min_bpm, local_max_bpm, lowered);
-        }
-    };
-
     std::vector<std::size_t> peaks =
-        compute_peaks(result.beat_activation, min_bpm, max_bpm, config.activation_threshold);
-    adjust_threshold(result.beat_activation, min_bpm, max_bpm, &peaks);
+        compute_post_peaks(result.beat_activation,
+                           fps,
+                           min_bpm,
+                           max_bpm,
+                           config.activation_threshold,
+                           peaks_ms);
+    relax_post_peak_threshold(peaks,
+                              result.beat_activation,
+                              config,
+                              fps,
+                              used_frames,
+                              min_bpm,
+                              max_bpm,
+                              peaks_ms);
     if (config.prefer_double_time && has_window) {
         std::vector<std::size_t> peaks_alt =
-            compute_peaks(result.beat_activation, min_bpm_alt, max_bpm_alt, config.activation_threshold);
-        adjust_threshold(result.beat_activation, min_bpm_alt, max_bpm_alt, &peaks_alt);
+            compute_post_peaks(result.beat_activation,
+                               fps,
+                               min_bpm_alt,
+                               max_bpm_alt,
+                               config.activation_threshold,
+                               peaks_ms);
+        relax_post_peak_threshold(peaks_alt,
+                                  result.beat_activation,
+                                  config,
+                                  fps,
+                                  used_frames,
+                                  min_bpm_alt,
+                                  max_bpm_alt,
+                                  peaks_ms);
         if (score_peaks(result.beat_activation, peaks_alt) >
             score_peaks(result.beat_activation, peaks)) {
             peaks.swap(peaks_alt);
@@ -300,12 +329,36 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
 
     if (!result.downbeat_activation.empty()) {
         std::vector<std::size_t> down_peaks =
-            compute_peaks(result.downbeat_activation, min_bpm, max_bpm, config.activation_threshold);
-        adjust_threshold(result.downbeat_activation, min_bpm, max_bpm, &down_peaks);
+            compute_post_peaks(result.downbeat_activation,
+                               fps,
+                               min_bpm,
+                               max_bpm,
+                               config.activation_threshold,
+                               peaks_ms);
+        relax_post_peak_threshold(down_peaks,
+                                  result.downbeat_activation,
+                                  config,
+                                  fps,
+                                  used_frames,
+                                  min_bpm,
+                                  max_bpm,
+                                  peaks_ms);
         if (config.prefer_double_time && has_window) {
             std::vector<std::size_t> peaks_alt =
-                compute_peaks(result.downbeat_activation, min_bpm_alt, max_bpm_alt, config.activation_threshold);
-            adjust_threshold(result.downbeat_activation, min_bpm_alt, max_bpm_alt, &peaks_alt);
+                compute_post_peaks(result.downbeat_activation,
+                                   fps,
+                                   min_bpm_alt,
+                                   max_bpm_alt,
+                                   config.activation_threshold,
+                                   peaks_ms);
+            relax_post_peak_threshold(peaks_alt,
+                                      result.downbeat_activation,
+                                      config,
+                                      fps,
+                                      used_frames,
+                                      min_bpm_alt,
+                                      max_bpm_alt,
+                                      peaks_ms);
             if (score_peaks(result.downbeat_activation, peaks_alt) >
                 score_peaks(result.downbeat_activation, down_peaks)) {
                 down_peaks.swap(peaks_alt);
