@@ -176,8 +176,6 @@ GridTempoDecision compute_grid_tempo_decision(const GridTempoDecisionInput& inpu
     diag.bpm_from_fit = bpm_from_fit;
     diag.bpm_from_global_fit = bpm_from_global_fit;
     decision.quality_low = input.quality_valid && (input.quality_qkur < 3.6);
-    const bool drop_fit = decision.quality_low && bpm_from_fit > 0.0;
-    diag.drop_fit = drop_fit;
     const std::size_t downbeat_count = downbeat_stats.count;
     const double downbeat_cv = (downbeat_count > 0 && downbeat_stats.mean_interval > 0.0)
         ? (downbeat_stats.stdev_interval / downbeat_stats.mean_interval)
@@ -191,8 +189,6 @@ GridTempoDecision compute_grid_tempo_decision(const GridTempoDecisionInput& inpu
             : 0.0;
     const bool ref_mismatch =
         decision.downbeat_override_ok && bpm_from_downbeats > 0.0 && ref_downbeat_ratio > 0.005;
-    const bool drop_ref = (decision.quality_low || ref_mismatch) && input.reference_bpm > 0.0f;
-    diag.drop_ref = drop_ref;
     const bool allow_reference_grid_bpm =
         input.reference_bpm > 0.0f &&
         ((static_cast<double>(input.max_bpm) - static_cast<double>(input.min_bpm)) <=
@@ -236,10 +232,6 @@ GridTempoDecision compute_grid_tempo_decision(const GridTempoDecisionInput& inpu
         decision.bpm_for_grid = input.reference_bpm;
         bpm_source = "reference_fallback";
     }
-    const double bpm_before_downbeat = decision.bpm_for_grid;
-    const std::string bpm_source_before_downbeat = bpm_source;
-    diag.bpm_before_downbeat = bpm_before_downbeat;
-    diag.bpm_source_before_downbeat = bpm_source_before_downbeat;
     if (decision.downbeat_override_ok && bpm_from_downbeats > 0.0 && decision.bpm_for_grid > 0.0 &&
         bpm_source != "peaks_reg_full" && bpm_source != "downbeats_primary" &&
         bpm_source != "fit_primary") {
@@ -330,14 +322,10 @@ void log_grid_tempo_decision(const GridTempoDecision& decision,
                      << " start_frame=" << input.decoded.beat_frames.front());
     if (input.config.dbn_trace) {
         BEATIT_LOG_DEBUG("DBN quality gate: low=" << (decision.quality_low ? 1 : 0)
-                         << " drop_ref=" << (d.drop_ref ? 1 : 0)
-                         << " drop_fit=" << (d.drop_fit ? 1 : 0)
                          << " downbeat_ok=" << (decision.downbeat_override_ok ? 1 : 0)
                          << " downbeat_cv=" << d.downbeat_cv
                          << " downbeat_count=" << d.downbeat_count
-                         << " used=" << d.bpm_source
-                         << " pre_override=" << d.bpm_source_before_downbeat
-                         << " pre_bpm=" << d.bpm_before_downbeat);
+                         << " used=" << d.bpm_source);
     }
 }
 

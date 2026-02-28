@@ -46,13 +46,8 @@ struct GridTempoDecision {
         std::size_t downbeat_count = 0;
         double downbeat_cv = 0.0;
 
-        bool drop_fit = false;
-        bool drop_ref = false;
         bool global_fit_plausible = false;
-
-        double bpm_before_downbeat = 0.0;
         std::string bpm_source = "none";
-        std::string bpm_source_before_downbeat = "none";
 
         double quality_qkur = 0.0;
     };
