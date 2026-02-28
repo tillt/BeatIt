@@ -72,7 +72,6 @@ struct BeatitConfig {
     float tempo_window_percent = 20.0f;
     bool prefer_double_time = true;
     float activation_threshold = 0.5f;
-    bool synthetic_fill = false;
     bool pad_final_window = true;
     std::size_t window_border_frames = 6;
     float gap_tolerance = 0.05f;

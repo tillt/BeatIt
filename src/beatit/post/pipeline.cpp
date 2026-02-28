@@ -24,9 +24,6 @@
 namespace beatit {
 namespace {
 
-using detail::fill_peaks_with_gaps;
-using detail::fill_peaks_with_grid;
-using detail::median_interval_frames;
 using detail::pick_peaks;
 using detail::score_peaks;
 
@@ -137,10 +134,6 @@ void relax_post_peak_threshold(std::vector<std::size_t>& peaks,
                                float min_bpm,
                                float max_bpm,
                                double& peaks_ms) {
-    if (config.synthetic_fill) {
-        return;
-    }
-
     const double duration = static_cast<double>(used_frames) / fps;
     const double min_expected = duration * (std::max(1.0f, min_bpm) / 60.0);
     if (min_expected <= 0.0) {
@@ -255,57 +248,6 @@ void dump_activation_window(const CoreMLResult& result,
     debug_stream << std::defaultfloat;
 }
 
-void apply_synthetic_fill(std::vector<std::size_t>& peaks,
-                          const std::vector<float>& activation,
-                          const BeatitConfig& config,
-                          double fps,
-                          float reference_bpm,
-                          std::size_t last_active_frame,
-                          std::size_t used_frames,
-                          float activation_floor) {
-    if (!config.synthetic_fill) {
-        return;
-    }
-
-    double base_interval_frames = 0.0;
-    if (reference_bpm > 0.0f) {
-        base_interval_frames = (60.0 * fps) / reference_bpm;
-    }
-    if (base_interval_frames <= 1.0) {
-        base_interval_frames = median_interval_frames(peaks);
-    }
-
-    std::size_t active_end = last_active_frame;
-    if (active_end == 0 && used_frames > 0) {
-        active_end = used_frames - 1;
-    }
-
-    std::vector<std::size_t> filled =
-        fill_peaks_with_gaps(activation,
-                             peaks,
-                             fps,
-                             activation_floor,
-                             last_active_frame,
-                             base_interval_frames,
-                             config.gap_tolerance,
-                             config.offbeat_tolerance,
-                             config.tempo_window_beats);
-    if (base_interval_frames > 1.0 && !peaks.empty()) {
-        std::vector<std::size_t> grid =
-            fill_peaks_with_grid(activation,
-                                 peaks.front(),
-                                 active_end,
-                                 base_interval_frames,
-                                 activation_floor);
-        if (grid.size() > filled.size()) {
-            filled.swap(grid);
-        }
-    }
-    if (filled.size() > peaks.size()) {
-        peaks.swap(filled);
-    }
-}
-
 void fill_pipeline_beats(CoreMLResult& result,
                          const std::vector<std::size_t>& frames,
                          const BeatitConfig& config,
@@ -344,6 +286,7 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                                             std::size_t last_active_frame,
                                             std::size_t total_frames_full) {
     set_log_verbosity_from_config(config);
+    (void)last_active_frame;
 
     double dbn_ms = 0.0;
     double peaks_ms = 0.0;
@@ -415,16 +358,6 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                           tempo_window.min_bpm_alt,
                           tempo_window.max_bpm_alt,
                           peaks_ms);
-
-    const float activation_floor = std::max(0.05f, config.activation_threshold * 0.2f);
-    apply_synthetic_fill(peaks,
-                         result.beat_activation,
-                         config,
-                         fps,
-                         reference_bpm,
-                         last_active_frame,
-                         used_frames,
-                         activation_floor);
 
     fill_pipeline_beats(result,
                         peaks,
