@@ -898,6 +898,32 @@ set_tests_properties(beatit_samerano_window_alignment_sparse_tests PROPERTIES
     SKIP_RETURN_CODE 77
 )
 
+add_executable(beatit_turbo_window_alignment_sparse_tests
+    tests/turbo_window_alignment_test.mm
+)
+
+target_link_libraries(beatit_turbo_window_alignment_sparse_tests
+    PRIVATE
+        beatit_lib
+)
+
+target_compile_definitions(beatit_turbo_window_alignment_sparse_tests PRIVATE
+    BEATIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+)
+
+if(APPLE)
+    target_compile_options(beatit_turbo_window_alignment_sparse_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
+    target_link_libraries(beatit_turbo_window_alignment_sparse_tests PRIVATE "-framework AVFoundation" "-framework CoreML" "-framework Foundation")
+endif()
+
+add_test(NAME beatit_turbo_window_alignment_sparse_tests COMMAND beatit_turbo_window_alignment_sparse_tests)
+set_tests_properties(beatit_turbo_window_alignment_sparse_tests PROPERTIES
+    ENVIRONMENT
+        "TMPDIR=${CMAKE_CURRENT_BINARY_DIR}/coreml_tmp;HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_home;XDG_CACHE_HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_cache"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    SKIP_RETURN_CODE 77
+)
+
 if(BEATIT_USE_TORCH)
     add_executable(beatit_beatthis_canonical_tests
         tests/beatthis_canonical_test.mm
