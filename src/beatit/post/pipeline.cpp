@@ -118,6 +118,63 @@ std::vector<std::size_t> select_post_peaks(const std::vector<float>& activation,
     return peaks;
 }
 
+void dump_activation_window(const CoreMLResult& result,
+                            const BeatitConfig& config,
+                            double fps,
+                            double hop_scale) {
+    const std::size_t used_frames = result.beat_activation.size();
+    if (used_frames == 0 ||
+        config.debug_activations_start_s < 0.0 ||
+        config.debug_activations_end_s <= config.debug_activations_start_s) {
+        return;
+    }
+
+    const std::size_t start_frame = static_cast<std::size_t>(
+        std::max(0.0, std::floor(config.debug_activations_start_s * fps)));
+    const std::size_t end_frame = static_cast<std::size_t>(
+        std::min<double>(used_frames - 1, std::ceil(config.debug_activations_end_s * fps)));
+    const double epsilon = 1e-5;
+    const double floor_value = epsilon / 2.0;
+    std::size_t emitted = 0;
+
+    auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
+    debug_stream << std::fixed << std::setprecision(6);
+    debug_stream << "Activation window: start=" << config.debug_activations_start_s
+                 << "s end=" << config.debug_activations_end_s
+                 << "s fps=" << fps
+                 << " hop=" << config.hop_size
+                 << " hop_scale=" << hop_scale
+                 << " frames=[" << start_frame << "," << end_frame << "]\n";
+    debug_stream << "Activations (frame,time_s,sample_frame,"
+                 << "beat_raw,downbeat_raw,beat_prob,downbeat_prob,combined)\n";
+
+    for (std::size_t frame = start_frame; frame <= end_frame; ++frame) {
+        const float beat_raw = result.beat_activation[frame];
+        const float downbeat_raw =
+            (frame < result.downbeat_activation.size()) ? result.downbeat_activation[frame] : 0.0f;
+        double beat_prob = beat_raw;
+        double downbeat_prob = downbeat_raw;
+        double combined = beat_raw;
+        if (config.dbn_mode == BeatitConfig::DBNMode::Calmdad) {
+            beat_prob = static_cast<double>(beat_raw) * (1.0 - epsilon) + floor_value;
+            downbeat_prob = static_cast<double>(downbeat_raw) * (1.0 - epsilon) + floor_value;
+            combined = std::max(floor_value, beat_prob - downbeat_prob);
+        }
+        const double time_s = static_cast<double>(frame) / fps;
+        const double sample_pos = static_cast<double>(frame * config.hop_size) * hop_scale;
+        debug_stream << frame << "," << time_s << ","
+                     << static_cast<unsigned long long>(std::llround(sample_pos))
+                     << "," << beat_raw << "," << downbeat_raw
+                     << "," << beat_prob << "," << downbeat_prob << "," << combined << "\n";
+        if (config.debug_activations_max > 0 && ++emitted >= config.debug_activations_max) {
+            debug_stream << "Activations truncated at " << emitted << " rows\n";
+            break;
+        }
+    }
+
+    debug_stream << std::defaultfloat;
+}
+
 } // namespace
 
 CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activation,
@@ -185,53 +242,7 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
     const double analysis_latency_frames_f =
         static_cast<double>(analysis_latency_frames);
 
-    if (config.debug_activations_start_s >= 0.0 &&
-        config.debug_activations_end_s > config.debug_activations_start_s) {
-        const std::size_t start_frame = static_cast<std::size_t>(
-            std::max(0.0, std::floor(config.debug_activations_start_s * fps)));
-        const std::size_t end_frame = static_cast<std::size_t>(
-            std::min<double>(used_frames - 1,
-                             std::ceil(config.debug_activations_end_s * fps)));
-        const double epsilon = 1e-5;
-        const double floor_value = epsilon / 2.0;
-        std::size_t emitted = 0;
-
-        auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
-        debug_stream << std::fixed << std::setprecision(6);
-        debug_stream << "Activation window: start=" << config.debug_activations_start_s
-                     << "s end=" << config.debug_activations_end_s
-                     << "s fps=" << fps
-                     << " hop=" << config.hop_size
-                     << " hop_scale=" << hop_scale
-                     << " frames=[" << start_frame << "," << end_frame << "]\n";
-        debug_stream << "Activations (frame,time_s,sample_frame,"
-                     << "beat_raw,downbeat_raw,beat_prob,downbeat_prob,combined)\n";
-        for (std::size_t frame = start_frame; frame <= end_frame; ++frame) {
-            const float beat_raw = result.beat_activation[frame];
-            const float downbeat_raw =
-                (frame < result.downbeat_activation.size()) ? result.downbeat_activation[frame] : 0.0f;
-            double beat_prob = beat_raw;
-            double downbeat_prob = downbeat_raw;
-            double combined = beat_raw;
-            if (config.dbn_mode == BeatitConfig::DBNMode::Calmdad) {
-                beat_prob = static_cast<double>(beat_raw) * (1.0 - epsilon) + floor_value;
-                downbeat_prob = static_cast<double>(downbeat_raw) * (1.0 - epsilon) + floor_value;
-                combined = std::max(floor_value, beat_prob - downbeat_prob);
-            }
-            const double time_s = static_cast<double>(frame) / fps;
-            const double sample_pos = static_cast<double>(frame * config.hop_size) * hop_scale;
-            debug_stream << frame << "," << time_s << ","
-                         << static_cast<unsigned long long>(std::llround(sample_pos))
-                         << "," << beat_raw << "," << downbeat_raw
-                         << "," << beat_prob << "," << downbeat_prob << "," << combined << "\n";
-            if (config.debug_activations_max > 0 &&
-                ++emitted >= config.debug_activations_max) {
-                debug_stream << "Activations truncated at " << emitted << " rows\n";
-                break;
-            }
-        }
-        debug_stream << std::defaultfloat;
-    }
+    dump_activation_window(result, config, fps, hop_scale);
 
     constexpr std::size_t kRefineWindow = 2;
 
