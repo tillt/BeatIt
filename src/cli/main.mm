@@ -73,6 +73,7 @@ struct CliOptions {
     bool model_info = false;
     bool refine_downbeat_anchor = false;
     bool cpu_only = false;
+    bool dump_events = false;
     bool refine_halfbeat = false;
     float refine_lowfreq = -1.0f;
     std::optional<std::string> log_level;
@@ -117,6 +118,7 @@ void print_usage(const char* exe) {
         << "  --refine-halfbeat         Enable half-beat phase correction\n"
         << "  --refine-lowfreq <w>      Low-frequency weight for bar phase\n"
         << "  --log-level <level>       Log level (error, warn, info, debug)\n"
+        << "  --dump-events            Print beat/downbeat events for inspection\n"
         << "  --cpu-only                Force CoreML CPU-only execution\n"
         << "  --model-info              Print CoreML model metadata\n"
         << "  --info                    Print decoded audio stats\n"
@@ -340,6 +342,8 @@ bool parse_args(int argc, char** argv, CliOptions* options) {
             options->log_level = require_value(arg.c_str());
         } else if (arg == "--cpu-only") {
             options->cpu_only = true;
+        } else if (arg == "--dump-events") {
+            options->dump_events = true;
         } else if (arg == "--model-info") {
             options->model_info = true;
         } else if (arg == "--info") {
@@ -772,89 +776,16 @@ int main(int argc, char** argv) {
         backend_label = "Torch";
     }
 
-    const double anchor_peaks =
-        beatit::estimate_bpm_from_activation(result.coreml_beat_activation,
-                                             config,
-                                             audio.sample_rate);
-    const double anchor_autocorr =
-        beatit::estimate_bpm_from_activation_autocorr(result.coreml_beat_activation,
-                                                      config,
-                                                      audio.sample_rate);
-    const double anchor_comb =
-        beatit::estimate_bpm_from_activation_comb(result.coreml_beat_activation,
-                                                  config,
-                                                  audio.sample_rate);
-    const double anchor_beats =
-        beatit::estimate_bpm_from_beats(result.coreml_beat_sample_frames, audio.sample_rate);
-    const auto choose_anchor = [&](double peaks,
-                                   double autocorr,
-                                   double comb,
-                                   double beats) {
-        const double tol = 0.02;
-        auto near = [&](double a, double b) {
-            if (a <= 0.0 || b <= 0.0) {
-                return false;
-            }
-            return (std::abs(a - b) / std::max(a, 1e-6)) <= tol;
-        };
-        if (near(peaks, comb)) {
-            return 0.5 * (peaks + comb);
-        }
-        if (near(peaks, autocorr)) {
-            return 0.5 * (peaks + autocorr);
-        }
-        if (near(comb, autocorr)) {
-            return 0.5 * (comb + autocorr);
-        }
-        if (peaks > 0.0) {
-            return peaks;
-        }
-        if (comb > 0.0) {
-            return comb;
-        }
-        if (autocorr > 0.0) {
-            return autocorr;
-        }
-        return beats;
-    };
-    const double anchor_chosen =
-        choose_anchor(anchor_peaks, anchor_autocorr, anchor_comb, anchor_beats);
-    std::cout << "Tempo anchor: peaks=" << anchor_peaks
-              << " autocorr=" << anchor_autocorr
-              << " comb=" << anchor_comb
-              << " beats=" << anchor_beats
-              << " chosen=" << anchor_chosen << "\n";
-    std::cout << "Estimated BPM: " << result.estimated_bpm << "\n";
-    std::cout << "Beats (first 64):\n";
-    const std::size_t max_beats = std::min<std::size_t>(64, result.coreml_beat_feature_frames.size());
-    for (std::size_t i = 0; i < max_beats; ++i) {
-        const bool is_downbeat =
-            std::find(result.coreml_downbeat_feature_frames.begin(),
-                      result.coreml_downbeat_feature_frames.end(),
-                      result.coreml_beat_feature_frames[i]) != result.coreml_downbeat_feature_frames.end();
-        std::cout << (is_downbeat ? "* " : "  ")
-                  << "feature_frame=" << result.coreml_beat_feature_frames[i]
-                  << " sample_frame=" << result.coreml_beat_sample_frames[i]
-                  << " strength=" << result.coreml_beat_strengths[i]
-                  << "\n";
-    }
+    const auto& beat_feature_frames = beatit::output_beat_feature_frames(result);
+    const auto& beat_sample_frames = beatit::output_beat_sample_frames(result);
+    const auto& downbeat_feature_frames = beatit::output_downbeat_feature_frames(result);
 
-    std::cout << backend_label << " raw: "
-              << "beats=" << result.coreml_beat_feature_frames.size()
-              << " downbeats=" << result.coreml_downbeat_feature_frames.size()
-              << " activations=" << result.coreml_beat_activation.size()
-              << " threshold=" << config.activation_threshold
-              << " window_hop=" << config.window_hop_frames
-              << " fixed_frames=" << config.fixed_frames
-              << "\n";
+    std::cout << "Tempo = " << std::fixed << std::setprecision(4)
+              << result.estimated_bpm << " BPM\n";
     const bool debug_enabled = beatit_should_log("debug");
 
-    if (!result.coreml_downbeat_feature_frames.empty()) {
-        const auto& beat_frames = result.coreml_beat_feature_frames;
-        const auto& sample_frames = result.coreml_beat_sample_frames;
-        const auto& downbeat_frames = result.coreml_downbeat_feature_frames;
-
-        const unsigned long long downbeat_feature_frame = downbeat_frames.front();
+    if (!downbeat_feature_frames.empty()) {
+        const unsigned long long downbeat_feature_frame = downbeat_feature_frames.front();
         double fps = 0.0;
         if (config.backend == beatit::BeatitConfig::Backend::Torch) {
             fps = config.torch_fps;
@@ -869,27 +800,12 @@ int main(int argc, char** argv) {
             downbeat_s = static_cast<double>(downbeat_feature_frame) / fps;
         }
 
-        std::cout << "First downbeat feature_frame: " << downbeat_feature_frame
-                  << " (s " << downbeat_s << ")";
-
-        if (!beat_frames.empty()) {
-            const auto first_downbeat = std::find_first_of(
-                beat_frames.begin(),
-                beat_frames.end(),
-                downbeat_frames.begin(),
-                downbeat_frames.end());
-
-            if (first_downbeat != beat_frames.end()) {
-                const std::size_t idx =
-                    static_cast<std::size_t>(std::distance(beat_frames.begin(), first_downbeat));
-                const unsigned long long sample_frame = sample_frames[idx];
-                std::cout << " (sample_frame " << sample_frame << ")";
-            }
-        }
-
-        std::cout << "\n";
+        std::cout << "Downbeat = " << downbeat_s << " seconds\n";
 
         if (debug_enabled) {
+            const auto& beat_frames = result.coreml_beat_feature_frames;
+            const auto& sample_frames = result.coreml_beat_sample_frames;
+            const auto& downbeat_frames = result.coreml_downbeat_feature_frames;
             std::unordered_map<unsigned long long, unsigned long long> feature_to_sample;
             feature_to_sample.reserve(beat_frames.size());
             for (std::size_t i = 0; i < beat_frames.size(); ++i) {
@@ -928,6 +844,39 @@ int main(int argc, char** argv) {
             }
             std::cout << "\n";
         }
+    } else {
+        std::cout << "First downbeat: n/a\n";
+    }
+
+    if (options.dump_events) {
+        std::cout << "Events (first 64):\n";
+        const std::size_t max_beats = std::min<std::size_t>(64, beat_feature_frames.size());
+        for (std::size_t i = 0; i < max_beats; ++i) {
+            const bool is_downbeat =
+                std::find(downbeat_feature_frames.begin(),
+                          downbeat_feature_frames.end(),
+                          beat_feature_frames[i]) != downbeat_feature_frames.end();
+            std::cout << (is_downbeat ? "* " : "  ")
+                      << "feature_frame=" << beat_feature_frames[i];
+            if (i < beat_sample_frames.size()) {
+                std::cout << " sample_frame=" << beat_sample_frames[i];
+            }
+            if (i < result.coreml_beat_strengths.size()) {
+                std::cout << " strength=" << result.coreml_beat_strengths[i];
+            }
+            std::cout << "\n";
+        }
+    }
+
+    if (options.info) {
+        std::cout << backend_label << " raw: "
+                  << "beats=" << result.coreml_beat_feature_frames.size()
+                  << " downbeats=" << result.coreml_downbeat_feature_frames.size()
+                  << " activations=" << result.coreml_beat_activation.size()
+                  << " threshold=" << config.activation_threshold
+                  << " window_hop=" << config.window_hop_frames
+                  << " fixed_frames=" << config.fixed_frames
+                  << "\n";
     }
 
     if (!result.coreml_beat_activation.empty()) {
@@ -993,11 +942,13 @@ int main(int argc, char** argv) {
         }
 
         const double mean_activation = sum_activation / result.coreml_beat_activation.size();
-        std::cout << backend_label << " activation stats: "
-                  << "mean=" << mean_activation
-                  << " max=" << max_activation
-                  << " above_threshold=" << above_threshold
-                  << "\n";
+        if (options.info) {
+            std::cout << backend_label << " activation stats: "
+                      << "mean=" << mean_activation
+                      << " max=" << max_activation
+                      << " above_threshold=" << above_threshold
+                      << "\n";
+        }
         if (debug_enabled && first_peak_idx < result.coreml_beat_activation.size()) {
             double first_peak_s = 0.0;
             if (audio.sample_rate > 0.0) {
@@ -1064,8 +1015,8 @@ int main(int argc, char** argv) {
         }
     }
 
-    if (result.coreml_beat_sample_frames.size() > 1) {
-        print_bpm_stats(result.coreml_beat_sample_frames, backend_label);
+    if (options.info && beat_sample_frames.size() > 1) {
+        print_bpm_stats(beat_sample_frames, backend_label);
     }
 
     if (options.constant_refine) {
