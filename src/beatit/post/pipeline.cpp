@@ -222,6 +222,57 @@ void dump_activation_window(const CoreMLResult& result,
     debug_stream << std::defaultfloat;
 }
 
+void apply_synthetic_fill(std::vector<std::size_t>& peaks,
+                          const std::vector<float>& activation,
+                          const BeatitConfig& config,
+                          double fps,
+                          float reference_bpm,
+                          std::size_t last_active_frame,
+                          std::size_t used_frames,
+                          float activation_floor) {
+    if (!config.synthetic_fill) {
+        return;
+    }
+
+    double base_interval_frames = 0.0;
+    if (reference_bpm > 0.0f) {
+        base_interval_frames = (60.0 * fps) / reference_bpm;
+    }
+    if (base_interval_frames <= 1.0) {
+        base_interval_frames = median_interval_frames(peaks);
+    }
+
+    std::size_t active_end = last_active_frame;
+    if (active_end == 0 && used_frames > 0) {
+        active_end = used_frames - 1;
+    }
+
+    std::vector<std::size_t> filled =
+        fill_peaks_with_gaps(activation,
+                             peaks,
+                             fps,
+                             activation_floor,
+                             last_active_frame,
+                             base_interval_frames,
+                             config.gap_tolerance,
+                             config.offbeat_tolerance,
+                             config.tempo_window_beats);
+    if (base_interval_frames > 1.0 && !peaks.empty()) {
+        std::vector<std::size_t> grid =
+            fill_peaks_with_grid(activation,
+                                 peaks.front(),
+                                 active_end,
+                                 base_interval_frames,
+                                 activation_floor);
+        if (grid.size() > filled.size()) {
+            filled.swap(grid);
+        }
+    }
+    if (filled.size() > peaks.size()) {
+        peaks.swap(filled);
+    }
+}
+
 } // namespace
 
 CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activation,
@@ -339,43 +390,14 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                           peaks_ms);
 
     const float activation_floor = std::max(0.05f, config.activation_threshold * 0.2f);
-    if (config.synthetic_fill) {
-        double base_interval_frames = 0.0;
-        if (reference_bpm > 0.0f) {
-            base_interval_frames = (60.0 * fps) / reference_bpm;
-        }
-        if (base_interval_frames <= 1.0) {
-            base_interval_frames = median_interval_frames(peaks);
-        }
-        std::size_t active_end = last_active_frame;
-        if (active_end == 0 && used_frames > 0) {
-            active_end = used_frames - 1;
-        }
-        std::vector<std::size_t> filled =
-            fill_peaks_with_gaps(result.beat_activation,
-                                 peaks,
-                                 fps,
-                                 activation_floor,
-                                 last_active_frame,
-                                 base_interval_frames,
-                                 config.gap_tolerance,
-                                 config.offbeat_tolerance,
-                                 config.tempo_window_beats);
-        if (base_interval_frames > 1.0 && !peaks.empty()) {
-            std::vector<std::size_t> grid =
-                fill_peaks_with_grid(result.beat_activation,
-                                     peaks.front(),
-                                     active_end,
-                                     base_interval_frames,
-                                     activation_floor);
-            if (grid.size() > filled.size()) {
-                filled.swap(grid);
-            }
-        }
-        if (filled.size() > peaks.size()) {
-            peaks.swap(filled);
-        }
-    }
+    apply_synthetic_fill(peaks,
+                         result.beat_activation,
+                         config,
+                         fps,
+                         reference_bpm,
+                         last_active_frame,
+                         used_frames,
+                         activation_floor);
 
     fill_beats_from_frames(peaks);
 
