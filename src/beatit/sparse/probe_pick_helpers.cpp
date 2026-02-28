@@ -86,6 +86,18 @@ ProbeResult seek_quality_probe(const ProbeBuildContext& context,
     return best;
 }
 
+double centered_probe_start(double total_duration_seconds,
+                            double probe_duration,
+                            double max_allowed_start) {
+    return std::clamp(0.5 * (total_duration_seconds - probe_duration), 0.0, max_allowed_start);
+}
+
+void push_observed_probe(std::vector<ProbeResult>& probes,
+                         const ProbeBuildContext& context,
+                         double start_s) {
+    push_unique_probe(probes, run_probe_observation(context, start_s));
+}
+
 void push_unique_probe(std::vector<ProbeResult>& probes, ProbeResult&& probe) {
     const double incoming_score = sparse_probe_quality_score(probe);
     for (auto& existing : probes) {

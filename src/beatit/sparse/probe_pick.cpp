@@ -150,10 +150,10 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
         push_unique_probe(probes, std::move(right_probe));
     }
 
+    const double middle_start =
+        centered_probe_start(total_duration_seconds, probe_duration, max_start);
     if (probes.size() < 2 && (max_allowed_start - min_allowed_start) > 1.0) {
-        push_unique_probe(probes,
-                          run_probe_observation(context,
-                                                clamp_start(total * 0.5 - probe_duration * 0.5)));
+        push_observed_probe(probes, context, middle_start);
     }
 
     ProbeMetricsSnapshot metrics = recompute_probe_metrics(probes,
@@ -164,9 +164,7 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
                                                            max_allowed_start,
                                                            provider);
     if (should_add_disagreement_probe(probes, metrics)) {
-        push_unique_probe(probes,
-                          run_probe_observation(context,
-                                                clamp_start(total * 0.5 - probe_duration * 0.5)));
+        push_observed_probe(probes, context, middle_start);
         metrics = recompute_probe_metrics(probes,
                                           original_config,
                                           sample_rate_,
@@ -199,7 +197,7 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
     if (probes.size() == 2) {
         if (selected_middle_gate_triggered(diagnostics) ||
             selected_consistency_gate_triggered(diagnostics)) {
-            push_unique_probe(probes, run_probe_observation(context, metrics.starts.between));
+            push_observed_probe(probes, context, metrics.starts.between);
             metrics = recompute_probe_metrics(probes,
                                               original_config,
                                               sample_rate_,

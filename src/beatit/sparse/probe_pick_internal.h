@@ -64,6 +64,14 @@ ProbeResult seek_quality_probe(const ProbeBuildContext& context,
                                double seed_start,
                                bool shift_right);
 
+double centered_probe_start(double total_duration_seconds,
+                            double probe_duration,
+                            double max_allowed_start);
+
+void push_observed_probe(std::vector<ProbeResult>& probes,
+                         const ProbeBuildContext& context,
+                         double start_s);
+
 void push_unique_probe(std::vector<ProbeResult>& probes, ProbeResult&& probe);
 
 DecisionOutcome make_selection_decision(const std::vector<ProbeResult>& probes,
