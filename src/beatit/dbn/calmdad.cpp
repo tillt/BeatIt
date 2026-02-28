@@ -146,33 +146,6 @@ ActivationLogData build_activation_logs(const std::vector<float>& beat_activatio
     return logs;
 }
 
-void log_activation_candidates(const ActivationLogData& logs, double floor_value, double fps) {
-    constexpr std::size_t kDumpCount = 10;
-    std::vector<std::size_t> beat_frames;
-    beat_frames.reserve(kDumpCount);
-    for (std::size_t i = 0; i < logs.beat_log.size() && beat_frames.size() < kDumpCount; ++i) {
-        if (std::exp(logs.beat_log[i]) > floor_value) {
-            beat_frames.push_back(i);
-        }
-    }
-    log_frame_preview("DBN calmdad: first beat candidates (frame->s):",
-                      beat_frames,
-                      fps,
-                      kDumpCount);
-
-    std::vector<std::size_t> downbeat_frames;
-    downbeat_frames.reserve(kDumpCount);
-    for (std::size_t i = 0; i < logs.downbeat_log.size() && downbeat_frames.size() < kDumpCount; ++i) {
-        if (std::exp(logs.downbeat_log[i]) > floor_value) {
-            downbeat_frames.push_back(i);
-        }
-    }
-    log_frame_preview("DBN calmdad: first downbeat candidates (frame->s):",
-                      downbeat_frames,
-                      fps,
-                      kDumpCount);
-}
-
 void log_decoded_candidates(const DBNDecodeResult& decoded, double fps) {
     constexpr std::size_t kDumpCount = 10;
     log_frame_preview("DBN calmdad: first beats (frame->s):",
@@ -410,7 +383,6 @@ DBNDecodeResult CalmdadDecoder::decode(const CalmdadDecodeRequest& request) cons
                      << " combined_max=" << logs.combined_max
                      << " beat>floor=" << logs.beat_above_floor
                      << " downbeat>floor=" << logs.downbeat_above_floor);
-    log_activation_candidates(logs, floor_value, fps);
     for (std::size_t bpb : bpb_options) {
         DBNPathResult path = decode_dbn_beats_candidate(
             logs.beat_log,
