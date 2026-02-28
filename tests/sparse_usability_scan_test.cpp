@@ -393,7 +393,7 @@ bool test_resolve_interior_targets_keeps_usable_windows() {
     return true;
 }
 
-bool test_resolve_interior_targets_promotes_middle_and_collapses_between() {
+bool test_resolve_interior_targets_promotes_middle_and_keeps_distinct_between() {
     std::vector<beatit::detail::SparseUsabilityWindow> windows;
     windows.push_back(beatit::detail::build_sparse_usability_window(
         10.0, 20.0, {0.70, 0.10, 0.15, 0.10, 0.82}));
@@ -409,11 +409,35 @@ bool test_resolve_interior_targets_promotes_middle_and_collapses_between() {
         return false;
     }
     if (!targets.between_overridden) {
-        std::cerr << "Sparse usability scan test failed: between should collapse to the promoted middle.\n";
+        std::cerr << "Sparse usability scan test failed: between should have been overridden.\n";
+        return false;
+    }
+    if (targets.middle_start_seconds != 30.0 || targets.between_start_seconds != 50.0) {
+        std::cerr << "Sparse usability scan test failed: promoted middle and distinct between starts not as expected.\n";
+        return false;
+    }
+    return true;
+}
+
+bool test_resolve_interior_targets_collapse_between_when_no_distinct_window_exists() {
+    std::vector<beatit::detail::SparseUsabilityWindow> windows;
+    windows.push_back(beatit::detail::build_sparse_usability_window(
+        30.0, 20.0, {0.04, 0.80, 0.93, 0.87, 0.08}));
+    windows.push_back(beatit::detail::build_sparse_usability_window(
+        50.0, 20.0, {0.70, 0.10, 0.15, 0.10, 0.82}));
+
+    const auto targets =
+        beatit::detail::resolve_sparse_interior_targets(windows, 30.0, 20.0, 0.0);
+    if (targets.middle_overridden) {
+        std::cerr << "Sparse usability scan test failed: usable middle should not be overridden.\n";
+        return false;
+    }
+    if (!targets.between_overridden) {
+        std::cerr << "Sparse usability scan test failed: unusable between should have been overridden.\n";
         return false;
     }
     if (targets.middle_start_seconds != 30.0 || targets.between_start_seconds != 30.0) {
-        std::cerr << "Sparse usability scan test failed: promoted middle/between starts not as expected.\n";
+        std::cerr << "Sparse usability scan test failed: between should collapse to middle when no distinct usable region exists.\n";
         return false;
     }
     return true;
@@ -438,8 +462,8 @@ bool test_resolve_interior_targets_only_repairs_between_when_middle_is_usable() 
         std::cerr << "Sparse usability scan test failed: unusable between should have been overridden.\n";
         return false;
     }
-    if (targets.middle_start_seconds != 10.0 || targets.between_start_seconds != 10.0) {
-        std::cerr << "Sparse usability scan test failed: between should have been redirected to the best left-interior region.\n";
+    if (targets.middle_start_seconds != 10.0 || targets.between_start_seconds != 50.0) {
+        std::cerr << "Sparse usability scan test failed: between should have been redirected to a distinct usable region.\n";
         return false;
     }
     return true;
@@ -484,7 +508,10 @@ int main() {
     if (!test_resolve_interior_targets_keeps_usable_windows()) {
         return 1;
     }
-    if (!test_resolve_interior_targets_promotes_middle_and_collapses_between()) {
+    if (!test_resolve_interior_targets_promotes_middle_and_keeps_distinct_between()) {
+        return 1;
+    }
+    if (!test_resolve_interior_targets_collapse_between_when_no_distinct_window_exists()) {
         return 1;
     }
     if (!test_resolve_interior_targets_only_repairs_between_when_middle_is_usable()) {

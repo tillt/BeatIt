@@ -507,21 +507,31 @@ SparseInteriorWindowTargets resolve_sparse_interior_targets(
         start_seconds = std::min(start_seconds, window.start_seconds);
         end_seconds = std::max(end_seconds, window.start_seconds + window.duration_seconds);
     }
+    const SparseUsabilityTargets suggested_targets =
+        pick_sparse_usability_targets(windows, min_score);
     const double max_snap_seconds = std::max(0.0, end_seconds - start_seconds);
     const auto is_current_usable = [&](double current_start_seconds) {
         const std::size_t index =
             find_covering_sparse_usability_window(windows, current_start_seconds);
         return index < windows.size() && windows[index].usable;
     };
-    const auto pick_replacement_start = [&](double target_start_seconds, double fallback_start) {
-        const std::size_t index = pick_sparse_usability_window(
-            windows,
-            SparseUsabilityPickRequest{
-                target_start_seconds,
-                max_snap_seconds,
-                0.01,
-                min_score
-            });
+    const auto start_for_index = [&](std::size_t index, double fallback_start) {
+        if (index >= windows.size()) {
+            return fallback_start;
+        }
+        return windows[index].start_seconds;
+    };
+    const auto pick_replacement_start = [&](double target_start_seconds,
+                                            double fallback_start,
+                                            std::initializer_list<std::size_t> excluded_indices = {}) {
+        const std::size_t index = pick_required_window(windows,
+                                                       target_start_seconds,
+                                                       start_seconds,
+                                                       end_seconds,
+                                                       max_snap_seconds,
+                                                       min_score,
+                                                       0.01,
+                                                       excluded_indices);
         if (index >= windows.size()) {
             return fallback_start;
         }
@@ -529,27 +539,31 @@ SparseInteriorWindowTargets resolve_sparse_interior_targets(
     };
 
     if (!is_current_usable(current_middle_start_seconds)) {
+        const double suggested_middle_start =
+            start_for_index(suggested_targets.middle_index, current_middle_start_seconds);
         const double middle_start =
-            pick_replacement_start(current_middle_start_seconds, current_middle_start_seconds);
+            pick_replacement_start(suggested_middle_start, current_middle_start_seconds);
         targets.middle_overridden = middle_start != current_middle_start_seconds;
         targets.middle_start_seconds = middle_start;
     }
 
-    if (targets.middle_overridden) {
-        targets.between_start_seconds = targets.middle_start_seconds;
-        targets.between_overridden = true;
-        return targets;
-    }
-
-    if (!is_current_usable(current_between_start_seconds)) {
-        if (is_current_usable(targets.middle_start_seconds)) {
-            targets.between_start_seconds = targets.middle_start_seconds;
-            targets.between_overridden = true;
-            return targets;
+    const std::size_t middle_index =
+        find_covering_sparse_usability_window(windows, targets.middle_start_seconds);
+    const bool between_usable = is_current_usable(current_between_start_seconds);
+    if (targets.middle_overridden || !between_usable) {
+        const double suggested_between_start =
+            start_for_index(suggested_targets.between_index, current_between_start_seconds);
+        double between_start =
+            pick_replacement_start(suggested_between_start,
+                                   targets.middle_start_seconds,
+                                   {middle_index});
+        if (between_start == targets.middle_start_seconds && between_usable &&
+            current_between_start_seconds != targets.middle_start_seconds) {
+            between_start = current_between_start_seconds;
         }
-        const double between_start =
-            pick_replacement_start(current_between_start_seconds, current_between_start_seconds);
-        targets.between_overridden = between_start != current_between_start_seconds;
+        targets.between_overridden =
+            between_start != current_between_start_seconds ||
+            between_start == targets.middle_start_seconds;
         targets.between_start_seconds = between_start;
     }
 
