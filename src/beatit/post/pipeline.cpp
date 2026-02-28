@@ -273,6 +273,33 @@ void apply_synthetic_fill(std::vector<std::size_t>& peaks,
     }
 }
 
+void fill_pipeline_beats(CoreMLResult& result,
+                         const std::vector<std::size_t>& frames,
+                         const BeatitConfig& config,
+                         double sample_rate,
+                         double hop_scale,
+                         std::size_t analysis_latency_frames,
+                         double analysis_latency_frames_f) {
+    constexpr std::size_t kRefineWindow = 2;
+    detail::fill_beats_from_frames(result,
+                                   frames,
+                                   config,
+                                   sample_rate,
+                                   hop_scale,
+                                   analysis_latency_frames,
+                                   analysis_latency_frames_f,
+                                   kRefineWindow);
+}
+
+void assign_feature_frames(std::vector<unsigned long long>& target,
+                           const std::vector<std::size_t>& source) {
+    target.clear();
+    target.reserve(source.size());
+    for (std::size_t frame : source) {
+        target.push_back(static_cast<unsigned long long>(frame));
+    }
+}
+
 } // namespace
 
 CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activation,
@@ -312,20 +339,6 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
         static_cast<double>(analysis_latency_frames);
 
     dump_activation_window(result, config, fps, hop_scale);
-
-    constexpr std::size_t kRefineWindow = 2;
-
-    auto fill_beats_from_frames = [&](const std::vector<std::size_t>& frames) {
-        detail::fill_beats_from_frames(result,
-                                       frames,
-                                       config,
-                                       sample_rate,
-                                       hop_scale,
-                                       analysis_latency_frames,
-                                       analysis_latency_frames_f,
-                                       kRefineWindow);
-    };
-
 
     if (!config.use_dbn) {
         detail::run_logit_consensus_postprocess(result,
@@ -395,7 +408,13 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                          used_frames,
                          activation_floor);
 
-    fill_beats_from_frames(peaks);
+    fill_pipeline_beats(result,
+                        peaks,
+                        config,
+                        sample_rate,
+                        hop_scale,
+                        analysis_latency_frames,
+                        analysis_latency_frames_f);
 
     if (!result.downbeat_activation.empty()) {
         std::vector<std::size_t> down_peaks =
@@ -409,11 +428,7 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                               tempo_window.min_bpm_alt,
                               tempo_window.max_bpm_alt,
                               peaks_ms);
-        result.downbeat_feature_frames.clear();
-        result.downbeat_feature_frames.reserve(down_peaks.size());
-        for (std::size_t frame : down_peaks) {
-            result.downbeat_feature_frames.push_back(static_cast<unsigned long long>(frame));
-        }
+        assign_feature_frames(result.downbeat_feature_frames, down_peaks);
     } else if (!result.beat_feature_frames.empty()) {
         result.downbeat_feature_frames.push_back(result.beat_feature_frames.front());
     }
