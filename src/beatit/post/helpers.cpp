@@ -24,6 +24,15 @@ std::vector<double> positive_intervals(const std::vector<double>& positions);
 
 namespace {
 
+double median_value(std::vector<double>& values) {
+    if (values.empty()) {
+        return 0.0;
+    }
+    const std::size_t mid = values.size() / 2;
+    std::nth_element(values.begin(), values.begin() + static_cast<long>(mid), values.end());
+    return values[mid];
+}
+
 std::vector<double> positive_frame_intervals(const std::vector<std::size_t>& frames) {
     std::vector<double> intervals;
     intervals.reserve(frames.size() > 1 ? frames.size() - 1 : 0);
@@ -120,9 +129,7 @@ void fill_interval_stats(IntervalStats& stats,
     stats.mean_interval = std::accumulate(intervals.begin(), intervals.end(), 0.0) /
                           static_cast<double>(intervals.size());
     std::vector<double> sorted = intervals;
-    const std::size_t mid = sorted.size() / 2;
-    std::nth_element(sorted.begin(), sorted.begin() + static_cast<long>(mid), sorted.end());
-    stats.median_interval = sorted[mid];
+    stats.median_interval = median_value(sorted);
 
     double variance = 0.0;
     for (double value : intervals) {
@@ -192,11 +199,7 @@ double median_interval_frames(const std::vector<std::size_t>& peaks) {
     if (intervals.empty()) {
         return 0.0;
     }
-    const std::size_t mid = intervals.size() / 2;
-    std::nth_element(intervals.begin(),
-                     intervals.begin() + static_cast<long>(mid),
-                     intervals.end());
-    return intervals[mid];
+    return median_value(intervals);
 }
 
 double median_interval_frames_interpolated(const std::vector<float>& activation,
@@ -208,9 +211,7 @@ double median_interval_frames_interpolated(const std::vector<float>& activation,
     if (intervals.empty()) {
         return 0.0;
     }
-    const std::size_t mid = intervals.size() / 2;
-    std::nth_element(intervals.begin(), intervals.begin() + static_cast<long>(mid), intervals.end());
-    return intervals[mid];
+    return median_value(intervals);
 }
 
 double regression_interval_frames_interpolated(const std::vector<float>& activation,
