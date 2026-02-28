@@ -153,6 +153,48 @@ std::string os_status_string(OSStatus status) {
     return stream.str();
 }
 
+std::string default_model_display_name(const beatit::BeatitConfig& config) {
+    if (config.model_path.empty()) {
+        return "unknown";
+    }
+
+    const std::filesystem::path model_path(config.model_path);
+    const std::string stem = model_path.stem().string();
+    if (!stem.empty()) {
+        return stem;
+    }
+
+    const std::string filename = model_path.filename().string();
+    return filename.empty() ? std::string("unknown") : filename;
+}
+
+std::string derive_model_variant(const beatit::BeatitConfig& config) {
+    const std::string model_name = default_model_display_name(config);
+    const std::size_t split = model_name.rfind('_');
+    if (split == std::string::npos || split + 1 >= model_name.size()) {
+        return "unknown";
+    }
+    return model_name.substr(split + 1);
+}
+
+std::string default_model_version_string() {
+    beatit::BeatitConfig config;
+    if (auto preset = beatit::make_coreml_preset("beatthis")) {
+        preset->apply(config);
+    }
+
+    const beatit::CoreMLMetadata metadata = beatit::load_coreml_metadata(config);
+    const std::string model_name = !metadata.short_description.empty()
+        ? metadata.short_description
+        : default_model_display_name(config);
+    const std::string model_version =
+        !metadata.version.empty() ? metadata.version : derive_model_variant(config);
+
+    std::ostringstream stream;
+    stream << "model " << model_name << " v" << model_version;
+    return stream.str();
+}
+
 bool parse_args(int argc, char** argv, CliOptions* options) {
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -513,7 +555,8 @@ int main(int argc, char** argv) {
     if (argc == 2) {
         const std::string arg = argv[1];
         if (arg == "--version" || arg == "-v") {
-            std::cout << "BeatIt " << beatit::version_string() << "\n";
+            std::cout << "BeatIt " << beatit::version_string()
+                      << " (" << default_model_version_string() << ")\n";
             return 0;
         }
     }
@@ -618,18 +661,25 @@ int main(int argc, char** argv) {
     }
     if (options.model_info && config.backend == beatit::BeatitConfig::Backend::CoreML) {
         const beatit::CoreMLMetadata metadata = beatit::load_coreml_metadata(config);
+        const std::string fallback_description = default_model_display_name(config);
+        const std::string fallback_version = derive_model_variant(config);
         std::cout << "CoreML metadata:\n";
         if (!metadata.author.empty()) {
             std::cout << "  Author: " << metadata.author << "\n";
         }
-        if (!metadata.short_description.empty()) {
-            std::cout << "  Description: " << metadata.short_description << "\n";
+        if (!metadata.short_description.empty() || !fallback_description.empty()) {
+            std::cout << "  Description: "
+                      << (!metadata.short_description.empty() ? metadata.short_description
+                                                              : fallback_description)
+                      << "\n";
         }
         if (!metadata.license.empty()) {
             std::cout << "  License: " << metadata.license << "\n";
         }
-        if (!metadata.version.empty()) {
-            std::cout << "  Version: " << metadata.version << "\n";
+        if (!metadata.version.empty() || !fallback_version.empty()) {
+            std::cout << "  Version: "
+                      << (!metadata.version.empty() ? metadata.version : fallback_version)
+                      << "\n";
         }
         if (!metadata.user_defined.empty()) {
             std::cout << "  User metadata:\n";

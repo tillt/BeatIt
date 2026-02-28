@@ -42,7 +42,8 @@ CoreMLMetadata load_coreml_metadata(const BeatitConfig& config) {
         return metadata;
     }
 
-    NSURL* model_url = [NSURL fileURLWithPath:model_path];
+    NSURL* source_model_url = [NSURL fileURLWithPath:model_path];
+    NSURL* model_url = source_model_url;
     NSError* error = nil;
     NSURL* compiled_url = detail::compile_model_if_needed(model_url, &error);
     if (compiled_url) {
@@ -55,30 +56,122 @@ CoreMLMetadata load_coreml_metadata(const BeatitConfig& config) {
     }
 
     NSDictionary* info = model.modelDescription.metadata;
-    if (!info) {
+    if (info) {
+        auto assign_string = [&](NSString* key, std::string* target) {
+            id value = [info objectForKey:key];
+            if ([value isKindOfClass:[NSString class]]) {
+                *target = [static_cast<NSString*>(value) UTF8String];
+            }
+        };
+
+        assign_string(MLModelMetadataKeyAuthor, &metadata.author);
+        assign_string(MLModelMetadataKeyShortDescription, &metadata.short_description);
+        assign_string(MLModelMetadataKeyLicense, &metadata.license);
+        assign_string(MLModelMetadataKeyVersion, &metadata.version);
+
+        id user = [info objectForKey:MLModelMetadataKeyUserDefined];
+        if ([user isKindOfClass:[NSDictionary class]]) {
+            NSDictionary* user_dict = static_cast<NSDictionary*>(user);
+            for (id key in user_dict) {
+                id value = [user_dict objectForKey:key];
+                if ([key isKindOfClass:[NSString class]] && [value isKindOfClass:[NSString class]]) {
+                    metadata.user_defined.emplace_back([static_cast<NSString*>(key) UTF8String],
+                                                       [static_cast<NSString*>(value) UTF8String]);
+                }
+            }
+        }
+    }
+
+    const bool needs_json_fallback =
+        metadata.author.empty() ||
+        metadata.short_description.empty() ||
+        metadata.license.empty() ||
+        metadata.version.empty();
+    if (!needs_json_fallback) {
         return metadata;
     }
 
-    auto assign_string = [&](NSString* key, std::string* target) {
-        id value = [info objectForKey:key];
+    auto load_metadata_dict = ^NSDictionary* {
+        NSMutableArray<NSURL*>* candidates = [NSMutableArray array];
+        if ([[compiled_url pathExtension].lowercaseString isEqualToString:@"mlmodelc"]) {
+            [candidates addObject:[compiled_url URLByAppendingPathComponent:@"metadata.json"]];
+        }
+
+        if ([[source_model_url pathExtension].lowercaseString isEqualToString:@"mlpackage"]) {
+            NSString* package_path = source_model_url.path;
+            NSString* sibling_path = [[package_path stringByDeletingPathExtension]
+                stringByAppendingPathExtension:@"mlmodelc"];
+            NSURL* sibling_url = [NSURL fileURLWithPath:sibling_path];
+            [candidates addObject:[sibling_url URLByAppendingPathComponent:@"metadata.json"]];
+        }
+
+        for (NSURL* candidate in candidates) {
+            if (!candidate ||
+                ![[NSFileManager defaultManager] fileExistsAtPath:candidate.path]) {
+                continue;
+            }
+
+            NSData* metadata_data = [NSData dataWithContentsOfURL:candidate];
+            if (!metadata_data) {
+                continue;
+            }
+
+            NSError* json_error = nil;
+            id json_root =
+                [NSJSONSerialization JSONObjectWithData:metadata_data options:0 error:&json_error];
+            if (json_error || ![json_root isKindOfClass:[NSArray class]]) {
+                continue;
+            }
+
+            NSArray* entries = static_cast<NSArray*>(json_root);
+            if (entries.count == 0) {
+                continue;
+            }
+
+            id first_entry = entries.firstObject;
+            if ([first_entry isKindOfClass:[NSDictionary class]]) {
+                return static_cast<NSDictionary*>(first_entry);
+            }
+        }
+
+        return static_cast<NSDictionary*>(nil);
+    };
+
+    NSDictionary* metadata_dict = load_metadata_dict();
+    if (!metadata_dict) {
+        return metadata;
+    }
+
+    auto assign_json_string = [&](NSString* key, std::string* target) {
+        if (!target->empty()) {
+            return;
+        }
+        id value = [metadata_dict objectForKey:key];
         if ([value isKindOfClass:[NSString class]]) {
             *target = [static_cast<NSString*>(value) UTF8String];
         }
     };
 
-    assign_string(MLModelMetadataKeyAuthor, &metadata.author);
-    assign_string(MLModelMetadataKeyShortDescription, &metadata.short_description);
-    assign_string(MLModelMetadataKeyLicense, &metadata.license);
-    assign_string(MLModelMetadataKeyVersion, &metadata.version);
+    assign_json_string(@"author", &metadata.author);
+    assign_json_string(@"shortDescription", &metadata.short_description);
+    assign_json_string(@"license", &metadata.license);
+    assign_json_string(@"version", &metadata.version);
 
-    id user = [info objectForKey:MLModelMetadataKeyUserDefined];
-    if ([user isKindOfClass:[NSDictionary class]]) {
-        NSDictionary* user_dict = static_cast<NSDictionary*>(user);
+    id user_defined = [metadata_dict objectForKey:@"userDefinedMetadata"];
+    if ([user_defined isKindOfClass:[NSDictionary class]]) {
+        NSDictionary* user_dict = static_cast<NSDictionary*>(user_defined);
         for (id key in user_dict) {
             id value = [user_dict objectForKey:key];
             if ([key isKindOfClass:[NSString class]] && [value isKindOfClass:[NSString class]]) {
-                metadata.user_defined.emplace_back([static_cast<NSString*>(key) UTF8String],
-                                                   [static_cast<NSString*>(value) UTF8String]);
+                const std::string key_string = [static_cast<NSString*>(key) UTF8String];
+                const std::string value_string = [static_cast<NSString*>(value) UTF8String];
+                const auto already_present = std::find_if(
+                    metadata.user_defined.begin(),
+                    metadata.user_defined.end(),
+                    [&](const auto& entry) { return entry.first == key_string; });
+                if (already_present == metadata.user_defined.end()) {
+                    metadata.user_defined.emplace_back(key_string, value_string);
+                }
             }
         }
     }

@@ -13,6 +13,13 @@ import coremltools as ct
 import onnx
 
 
+def derive_model_version(out_path: Path) -> str:
+    stem = out_path.stem
+    if "_" not in stem:
+        return "unknown"
+    return stem.rsplit("_", 1)[-1] or "unknown"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Convert BeatThis ONNX model to CoreML (.mlpackage).",
@@ -31,11 +38,33 @@ def main() -> None:
         default=128,
         help="Input mel bin count",
     )
+    parser.add_argument(
+        "--author",
+        default="CPJKU (Converted for iOS)",
+        help="Author label for metadata",
+    )
+    parser.add_argument(
+        "--description",
+        default="",
+        help="Short description for metadata",
+    )
+    parser.add_argument(
+        "--license",
+        default="MIT",
+        help="License label for metadata",
+    )
+    parser.add_argument(
+        "--version",
+        default="",
+        help="Version string for metadata",
+    )
     args = parser.parse_args()
 
     onnx_model = onnx.load(args.onnx)
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    model_version = args.version or derive_model_version(out_path)
+    model_description = args.description or f"Beat This! ({model_version}) - Beat Tracking"
 
     inputs = [
         ct.TensorType(
@@ -63,6 +92,16 @@ def main() -> None:
             minimum_deployment_target=minimum_target,
             compute_units=ct.ComputeUnit.ALL,
         )
+
+    if args.author:
+        mlmodel.author = args.author
+    if model_description:
+        mlmodel.short_description = model_description
+    if args.license:
+        mlmodel.license = args.license
+    if model_version:
+        mlmodel.version = model_version
+
     mlmodel.save(str(out_path))
 
 
