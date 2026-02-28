@@ -7,54 +7,28 @@
 //
 
 #include "beatit/config.h"
-#include "beatit/dbn/beatit.h"
-#include "beatit/dbn/calmdad.h"
 
-#include "beatit/post/helpers.h"
 #include "beatit/post/dbn_run.h"
+#include "beatit/post/helpers.h"
 #include "beatit/post/result_ops.h"
 #include "beatit/post/logits.h"
-#include "beatit/post/tempo_fit.h"
-#include "beatit/post/window.h"
 #include "beatit/logging.hpp"
+
 #include <algorithm>
-#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <iomanip>
-#include <limits>
-#include <numeric>
-#include <string>
-#include <unordered_map>
-#include <utility>
 #include <vector>
 
 namespace beatit {
 namespace {
 
-using detail::IntervalStats;
 using detail::fill_peaks_with_gaps;
 using detail::fill_peaks_with_grid;
-using detail::filter_short_intervals;
-using detail::guard_projected_downbeat_phase;
-using detail::interval_stats_frames;
-using detail::interval_stats_interpolated;
 using detail::median_interval_frames;
-using detail::median_interval_frames_interpolated;
 using detail::pick_peaks;
-using detail::regression_interval_frames_interpolated;
 using detail::score_peaks;
-using detail::trace_grid_peak_alignment;
-using detail::WindowSummary;
-using detail::align_downbeats_to_beats;
-using detail::compute_minimal_peaks;
-using detail::infer_bpb_phase;
-using detail::project_downbeats_from_beats;
-using detail::select_dbn_window;
-using detail::select_dbn_window_energy;
-using detail::summarize_window;
-using detail::window_tempo_score;
 
 } // namespace
 
@@ -230,25 +204,6 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
         if (detail::run_dbn_postprocess(dbn_request)) {
             return result;
         }
-    }
-
-    if (!config.use_dbn && config.use_minimal_postprocess) {
-        const std::vector<std::size_t> beat_peaks = compute_minimal_peaks(result.beat_activation);
-        const std::vector<std::size_t> downbeat_peaks =
-            compute_minimal_peaks(result.downbeat_activation);
-        fill_beats_from_frames(beat_peaks);
-        const std::vector<std::size_t> aligned_downbeats =
-            align_downbeats_to_beats(beat_peaks, downbeat_peaks);
-        result.downbeat_feature_frames.clear();
-        result.downbeat_feature_frames.reserve(aligned_downbeats.size());
-        for (std::size_t frame : aligned_downbeats) {
-            result.downbeat_feature_frames.push_back(static_cast<unsigned long long>(frame));
-        }
-        if (config.profile) {
-            BEATIT_LOG_INFO("Timing(postprocess): dbn=" << dbn_ms
-                            << "ms peaks=" << peaks_ms << "ms");
-        }
-        return result;
     }
 
     auto compute_peaks = [&](const std::vector<float>& activation,
