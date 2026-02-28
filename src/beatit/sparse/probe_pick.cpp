@@ -18,53 +18,52 @@ namespace detail {
 
 namespace {
 
+struct ProbeDebugView {
+    const std::vector<ProbeResult>& probes;
+    const ProbeMetricsSnapshot& metrics;
+    const DecisionOutcome& selection;
+    const IntroPhaseMetrics& selected_intro_metrics;
+    const SelectedProbeDiagnostics& diagnostics;
+    double selected_mode_error = 0.0;
+    double anchor_start = 0.0;
+    bool interior_probe_added = false;
+};
+
 template <typename TLogStream>
-void append_probe_debug_line(TLogStream& debug_stream,
-                             const std::vector<ProbeResult>& probes,
-                             const ProbeMetricsSnapshot& snapshot,
-                             const DecisionOutcome& decision,
-                             std::size_t selected_index,
-                             double selected_score,
-                             double score_margin,
-                             double selected_mode_error,
-                             const IntroPhaseMetrics& selected_intro_metrics,
-                             const SelectedProbeDiagnostics& diagnostics,
-                             double anchor_start,
-                             bool interior_probe_added,
-                             bool low_confidence) {
-    const bool middle_gate_triggered = selected_middle_gate_triggered(diagnostics);
-    const bool consistency_gate_triggered = selected_consistency_gate_triggered(diagnostics);
+void append_probe_debug_line(TLogStream& debug_stream, const ProbeDebugView& view) {
+    const bool middle_gate_triggered = selected_middle_gate_triggered(view.diagnostics);
+    const bool consistency_gate_triggered = selected_consistency_gate_triggered(view.diagnostics);
     const bool consistency_edges_low_mismatch =
-        selected_consistency_edges_low_mismatch(diagnostics);
+        selected_consistency_edges_low_mismatch(view.diagnostics);
     const bool consistency_between_high_mismatch =
-        selected_consistency_between_high_mismatch(diagnostics);
+        selected_consistency_between_high_mismatch(view.diagnostics);
     const bool consistency_middle_high_mismatch =
-        selected_consistency_middle_high_mismatch(diagnostics);
+        selected_consistency_middle_high_mismatch(view.diagnostics);
 
     debug_stream << "Sparse probes:";
-    for (std::size_t i = 0; i < probes.size(); ++i) {
-        debug_stream << " start=" << probes[i].start
-                     << " bpm=" << probes[i].bpm
-                     << " conf=" << probes[i].conf
-                     << " mode_err=" << snapshot.mode_errors[i];
+    for (std::size_t i = 0; i < view.probes.size(); ++i) {
+        debug_stream << " start=" << view.probes[i].start
+                     << " bpm=" << view.probes[i].bpm
+                     << " conf=" << view.probes[i].conf
+                     << " mode_err=" << view.metrics.mode_errors[i];
     }
 
-    debug_stream << " consensus=" << snapshot.consensus_bpm
-                 << " anchor_start=" << anchor_start
-                 << " left_probe_start_s=" << snapshot.starts.left
-                 << " right_probe_start_s=" << snapshot.starts.right
-                 << " decision=" << decision.mode
-                 << " selected_start=" << probes[selected_index].start
-                 << " selected_score=" << selected_score
-                 << " score_margin=" << score_margin
-                 << " selected_mode_err=" << selected_mode_error
-                 << " selected_conf=" << probes[selected_index].conf
-                 << " selected_intro_abs_ms=" << selected_intro_metrics.median_abs_ms
-                 << " selected_middle_abs_ms=" << diagnostics.middle.median_abs_ms
+    debug_stream << " consensus=" << view.metrics.consensus_bpm
+                 << " anchor_start=" << view.anchor_start
+                 << " left_probe_start_s=" << view.metrics.starts.left
+                 << " right_probe_start_s=" << view.metrics.starts.right
+                 << " decision=" << view.selection.mode
+                 << " selected_start=" << view.probes[view.selection.selected_index].start
+                 << " selected_score=" << view.selection.selected_score
+                 << " score_margin=" << view.selection.score_margin
+                 << " selected_mode_err=" << view.selected_mode_error
+                 << " selected_conf=" << view.probes[view.selection.selected_index].conf
+                 << " selected_intro_abs_ms=" << view.selected_intro_metrics.median_abs_ms
+                 << " selected_middle_abs_ms=" << view.diagnostics.middle.median_abs_ms
                  << " selected_middle_abs_exceed_ratio="
-                 << diagnostics.middle.abs_limit_exceed_ratio
+                 << view.diagnostics.middle.abs_limit_exceed_ratio
                  << " selected_middle_signed_exceed_ratio="
-                 << diagnostics.middle.signed_limit_exceed_ratio
+                 << view.diagnostics.middle.signed_limit_exceed_ratio
                  << " middle_gate_triggered=" << (middle_gate_triggered ? 1 : 0)
                  << " consistency_gate_triggered=" << (consistency_gate_triggered ? 1 : 0)
                  << " consistency_edges_low_mismatch="
@@ -73,25 +72,25 @@ void append_probe_debug_line(TLogStream& debug_stream,
                  << (consistency_between_high_mismatch ? 1 : 0)
                  << " consistency_middle_high_mismatch="
                  << (consistency_middle_high_mismatch ? 1 : 0)
-                 << " selected_between_abs_ms=" << diagnostics.between.median_abs_ms
+                 << " selected_between_abs_ms=" << view.diagnostics.between.median_abs_ms
                  << " selected_between_abs_exceed_ratio="
-                 << diagnostics.between.abs_limit_exceed_ratio
+                 << view.diagnostics.between.abs_limit_exceed_ratio
                  << " selected_between_signed_exceed_ratio="
-                 << diagnostics.between.signed_limit_exceed_ratio
-                 << " selected_left_abs_ms=" << diagnostics.left.median_abs_ms
+                 << view.diagnostics.between.signed_limit_exceed_ratio
+                 << " selected_left_abs_ms=" << view.diagnostics.left.median_abs_ms
                  << " selected_left_abs_exceed_ratio="
-                 << diagnostics.left.abs_limit_exceed_ratio
+                 << view.diagnostics.left.abs_limit_exceed_ratio
                  << " selected_left_signed_exceed_ratio="
-                 << diagnostics.left.signed_limit_exceed_ratio
-                 << " selected_right_abs_ms=" << diagnostics.right.median_abs_ms
+                 << view.diagnostics.left.signed_limit_exceed_ratio
+                 << " selected_right_abs_ms=" << view.diagnostics.right.median_abs_ms
                  << " selected_right_abs_exceed_ratio="
-                 << diagnostics.right.abs_limit_exceed_ratio
+                 << view.diagnostics.right.abs_limit_exceed_ratio
                  << " selected_right_signed_exceed_ratio="
-                 << diagnostics.right.signed_limit_exceed_ratio
-                 << " middle_probe_start_s=" << snapshot.starts.middle
-                 << " between_probe_start_s=" << snapshot.starts.between
-                 << " interior_probe_added=" << (interior_probe_added ? 1 : 0)
-                 << " repair=" << (low_confidence ? 1 : 0);
+                 << view.diagnostics.right.signed_limit_exceed_ratio
+                 << " middle_probe_start_s=" << view.metrics.starts.middle
+                 << " between_probe_start_s=" << view.metrics.starts.between
+                 << " interior_probe_added=" << (view.interior_probe_added ? 1 : 0)
+                 << " repair=" << (view.selection.low_confidence ? 1 : 0);
 }
 
 } // namespace
@@ -228,18 +227,14 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
 
     auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
     append_probe_debug_line(debug_stream,
-                            probes,
-                            metrics,
-                            selection,
-                            selection.selected_index,
-                            selection.selected_score,
-                            selection.score_margin,
-                            selected_mode_error,
-                            selected_intro_metrics(),
-                            diagnostics,
-                            anchor_start,
-                            interior_probe_added,
-                            selection.low_confidence);
+                            ProbeDebugView{probes,
+                                           metrics,
+                                           selection,
+                                           selected_intro_metrics(),
+                                           diagnostics,
+                                           selected_mode_error,
+                                           anchor_start,
+                                           interior_probe_added});
 
     out.result = std::move(result);
     out.probes = std::move(probes);
