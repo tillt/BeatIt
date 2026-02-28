@@ -57,6 +57,17 @@ struct TempoWindowDecodeInput {
     float bpm_step = 0.0f;
 };
 
+struct TempoAnchorFusion {
+    double intro_bpm = 0.0;
+    double intro_conf = 0.0;
+    double outro_bpm = 0.0;
+    double outro_conf = 0.0;
+    ModeCandidate best_intro{};
+    ModeCandidate best_outro{};
+    double agree_rel = std::numeric_limits<double>::infinity();
+    double fused_bpm = 0.0;
+};
+
 std::pair<double, double> estimate_window_tempo(const std::vector<std::size_t>& beats,
                                                 double fps) {
     if (beats.size() < 8) {
@@ -230,6 +241,71 @@ std::vector<std::size_t> decode_window_beats(const TempoWindowDecodeInput& input
     return beats;
 }
 
+TempoAnchorFusion fuse_tempo_anchor_windows(const std::vector<std::size_t>& intro_beats,
+                                            const std::vector<std::size_t>& outro_beats,
+                                            double fps,
+                                            float min_bpm,
+                                            float max_bpm) {
+    TempoAnchorFusion fusion;
+    std::tie(fusion.intro_bpm, fusion.intro_conf) = estimate_window_tempo(intro_beats, fps);
+    std::tie(fusion.outro_bpm, fusion.outro_conf) = estimate_window_tempo(outro_beats, fps);
+
+    const auto intro_modes =
+        expand_mode_candidates(fusion.intro_bpm, fusion.intro_conf, min_bpm, max_bpm);
+    const auto outro_modes =
+        expand_mode_candidates(fusion.outro_bpm, fusion.outro_conf, min_bpm, max_bpm);
+    std::tie(fusion.best_intro, fusion.best_outro) =
+        match_mode_candidates(intro_modes, outro_modes);
+
+    if (fusion.best_intro.bpm > 0.0 && fusion.best_outro.bpm > 0.0) {
+        fusion.agree_rel =
+            std::abs(fusion.best_intro.bpm - fusion.best_outro.bpm) /
+            (0.5 * (fusion.best_intro.bpm + fusion.best_outro.bpm));
+    }
+    if (fusion.agree_rel <= 0.025) {
+        const double conf_sum = fusion.best_intro.conf + fusion.best_outro.conf;
+        if (conf_sum > 0.0) {
+            fusion.fused_bpm =
+                ((fusion.best_intro.bpm * fusion.best_intro.conf) +
+                 (fusion.best_outro.bpm * fusion.best_outro.conf)) /
+                conf_sum;
+        }
+    }
+    return fusion;
+}
+
+void trace_tempo_anchor_windows(const FrameWindow& intro,
+                                const FrameWindow& outro,
+                                std::size_t intro_beats,
+                                std::size_t outro_beats,
+                                const TempoAnchorWindows& windows,
+                                double fps) {
+    auto print_window = [&](const char* name, const FrameWindow& window, std::size_t beat_count) {
+        const double start_s = static_cast<double>(window.start) / fps;
+        const double end_s = static_cast<double>(window.end) / fps;
+        BEATIT_LOG_DEBUG("DBN tempo window " << name
+                         << ": frames=" << window.start << "-" << window.end
+                         << " (" << start_s << "s-" << end_s << "s)"
+                         << " beats=" << beat_count);
+    };
+    print_window("intro", intro, intro_beats);
+    print_window("outro", outro, outro_beats);
+    BEATIT_LOG_DEBUG("DBN tempo anchors: gap_frames=" << windows.gap_frames
+                     << " min_gap_frames=" << windows.min_gap_frames
+                     << " separated=" << (windows.separated ? "true" : "false"));
+}
+
+void trace_tempo_anchor_fusion(const TempoAnchorFusion& fusion) {
+    BEATIT_LOG_DEBUG("DBN tempo anchors: intro_bpm=" << fusion.intro_bpm
+                     << " intro_conf=" << fusion.intro_conf
+                     << " outro_bpm=" << fusion.outro_bpm
+                     << " outro_conf=" << fusion.outro_conf
+                     << " mode_match_intro=" << fusion.best_intro.mode
+                     << " mode_match_outro=" << fusion.best_outro.mode
+                     << " agree_rel=" << fusion.agree_rel
+                     << " fused_bpm=" << fusion.fused_bpm);
+}
+
 } // namespace
 
 double bpm_from_linear_fit(const std::vector<std::size_t>& beats, double fps) {
@@ -296,49 +372,20 @@ double bpm_from_global_fit(const CoreMLResult& result,
     const bool intro_valid = intro_beats.size() >= 8;
     const bool outro_valid = outro_beats.size() >= 8;
     if (trace_enabled) {
-        auto print_window = [&](const char* name, const FrameWindow& window, std::size_t beat_count) {
-            const double start_s = static_cast<double>(window.start) / fps;
-            const double end_s = static_cast<double>(window.end) / fps;
-            BEATIT_LOG_DEBUG("DBN tempo window " << name
-                             << ": frames=" << window.start << "-" << window.end
-                             << " (" << start_s << "s-" << end_s << "s)"
-                             << " beats=" << beat_count);
-        };
-        print_window("intro", windows.intro, intro_beats.size());
-        print_window("outro", windows.outro, outro_beats.size());
-        BEATIT_LOG_DEBUG("DBN tempo anchors: gap_frames=" << windows.gap_frames
-                         << " min_gap_frames=" << windows.min_gap_frames
-                         << " separated=" << (windows.separated ? "true" : "false"));
+        trace_tempo_anchor_windows(windows.intro,
+                                   windows.outro,
+                                   intro_beats.size(),
+                                   outro_beats.size(),
+                                   windows,
+                                   fps);
     }
 
     if (intro_valid && outro_valid && windows.separated) {
-        const auto [intro_bpm, intro_conf] = estimate_window_tempo(intro_beats, fps);
-        const auto [outro_bpm, outro_conf] = estimate_window_tempo(outro_beats, fps);
-        const auto intro_modes = expand_mode_candidates(intro_bpm, intro_conf, min_bpm, max_bpm);
-        const auto outro_modes = expand_mode_candidates(outro_bpm, outro_conf, min_bpm, max_bpm);
-        const auto [best_intro, best_outro] = match_mode_candidates(intro_modes, outro_modes);
-        const double agree_rel = (best_intro.bpm > 0.0 && best_outro.bpm > 0.0)
-            ? (std::abs(best_intro.bpm - best_outro.bpm) /
-               (0.5 * (best_intro.bpm + best_outro.bpm)))
-            : std::numeric_limits<double>::infinity();
-        if (agree_rel <= 0.025) {
-            const double conf_sum = best_intro.conf + best_outro.conf;
-            if (conf_sum > 0.0) {
-                bpm_from_global_fit =
-                    ((best_intro.bpm * best_intro.conf) +
-                     (best_outro.bpm * best_outro.conf)) /
-                    conf_sum;
-            }
-        }
+        const TempoAnchorFusion fusion =
+            fuse_tempo_anchor_windows(intro_beats, outro_beats, fps, min_bpm, max_bpm);
+        bpm_from_global_fit = fusion.fused_bpm;
         if (trace_enabled) {
-            BEATIT_LOG_DEBUG("DBN tempo anchors: intro_bpm=" << intro_bpm
-                             << " intro_conf=" << intro_conf
-                             << " outro_bpm=" << outro_bpm
-                             << " outro_conf=" << outro_conf
-                             << " mode_match_intro=" << best_intro.mode
-                             << " mode_match_outro=" << best_outro.mode
-                             << " agree_rel=" << agree_rel
-                             << " fused_bpm=" << bpm_from_global_fit);
+            trace_tempo_anchor_fusion(fusion);
         }
     }
 
