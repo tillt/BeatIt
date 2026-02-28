@@ -285,8 +285,8 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
     out.result = std::move(result);
     out.probes = std::move(probes);
     out.probe_duration = probe_duration;
-    out.between_probe_start = metrics.starts.between;
-    out.middle_probe_start = metrics.starts.middle;
+    out.between_probe_start = diagnostics.between_start;
+    out.middle_probe_start = diagnostics.middle_start;
     out.low_confidence = selection.low_confidence;
     out.selected_intro_median_abs_ms = selected_intro_metrics(metrics, selection).median_abs_ms;
     out.consensus_bpm = metrics.consensus_bpm;

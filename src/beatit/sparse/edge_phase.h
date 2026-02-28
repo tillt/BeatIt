@@ -33,6 +33,8 @@ struct SparseEdgePhaseTryResult {
     bool applied = false;
 };
 
+int select_sparse_edge_phase_candidate(const SparseEdgePhaseTryResult& result);
+
 SparseEdgePhaseTryResult apply_sparse_edge_phase_try(
     std::vector<unsigned long long>* projected,
     double bpm_hint,

@@ -21,6 +21,11 @@ namespace beatit {
 namespace detail {
 namespace {
 
+constexpr double kPhaseTryMinImprovementScore = 2.0;
+constexpr double kCleanInteriorAbsMs = 45.0;
+constexpr double kBadInteriorAbsMs = 90.0;
+constexpr double kInteriorRegressionMs = 40.0;
+
 struct PhaseScoreSummary {
     bool valid = false;
     double score = std::numeric_limits<double>::infinity();
@@ -201,7 +206,50 @@ PhaseScoreSummary score_phase_candidate(const std::vector<unsigned long long>& b
     return out;
 }
 
+bool breaks_clean_interior(double base_abs_ms, double candidate_abs_ms) {
+    return std::isfinite(base_abs_ms) &&
+           std::isfinite(candidate_abs_ms) &&
+           base_abs_ms <= kCleanInteriorAbsMs &&
+           candidate_abs_ms >= kBadInteriorAbsMs &&
+           candidate_abs_ms >= (base_abs_ms + kInteriorRegressionMs);
+}
+
+bool candidate_is_acceptable(const SparseEdgePhaseTryResult& result,
+                             int candidate,
+                             double candidate_score) {
+    if (!(candidate_score < (result.base_score - kPhaseTryMinImprovementScore))) {
+        return false;
+    }
+
+    const double candidate_between_abs_ms =
+        (candidate < 0) ? result.minus_between_abs_ms : result.plus_between_abs_ms;
+    const double candidate_middle_abs_ms =
+        (candidate < 0) ? result.minus_middle_abs_ms : result.plus_middle_abs_ms;
+    if (breaks_clean_interior(result.base_between_abs_ms, candidate_between_abs_ms) ||
+        breaks_clean_interior(result.base_middle_abs_ms, candidate_middle_abs_ms)) {
+        return false;
+    }
+
+    return true;
+}
+
 } // namespace
+
+int select_sparse_edge_phase_candidate(const SparseEdgePhaseTryResult& result) {
+    double best_score = result.base_score;
+    int best_choice = 0;
+    if (std::isfinite(result.minus_score) &&
+        candidate_is_acceptable(result, -1, result.minus_score)) {
+        best_score = result.minus_score;
+        best_choice = -1;
+    }
+    if (std::isfinite(result.plus_score) &&
+        result.plus_score < best_score &&
+        candidate_is_acceptable(result, 1, result.plus_score)) {
+        best_choice = 1;
+    }
+    return best_choice;
+}
 
 SparseEdgePhaseTryResult apply_sparse_edge_phase_try(
     std::vector<unsigned long long>* projected,
@@ -272,18 +320,12 @@ SparseEdgePhaseTryResult apply_sparse_edge_phase_try(
     out.plus_between_abs_ms = plus_score.between_abs_ms;
     out.plus_middle_abs_ms = plus_score.middle_abs_ms;
 
-    double best_score = base_score.score;
     std::vector<unsigned long long> best_beats = *projected;
-    int best_choice = 0;
-    if (minus_score.valid && minus_score.score < (best_score - 2.0)) {
-        best_score = minus_score.score;
+    const int best_choice = select_sparse_edge_phase_candidate(out);
+    if (best_choice < 0) {
         best_beats = minus_candidate;
-        best_choice = -1;
-    }
-    if (plus_score.valid && plus_score.score < (best_score - 2.0)) {
-        best_score = plus_score.score;
+    } else if (best_choice > 0) {
         best_beats = plus_candidate;
-        best_choice = 1;
     }
     if (best_choice != 0) {
         *projected = std::move(best_beats);

@@ -426,6 +426,27 @@ endif()
 
 add_test(NAME beatit_sparse_usability_scan_tests COMMAND beatit_sparse_usability_scan_tests)
 
+add_executable(beatit_sparse_edge_phase_tests
+    tests/sparse_edge_phase_test.cpp
+)
+
+target_link_libraries(beatit_sparse_edge_phase_tests
+    PRIVATE
+        beatit_lib
+)
+
+target_include_directories(beatit_sparse_edge_phase_tests
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/beatit
+)
+
+if(APPLE)
+    target_compile_options(beatit_sparse_edge_phase_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
+endif()
+
+add_test(NAME beatit_sparse_edge_phase_tests COMMAND beatit_sparse_edge_phase_tests)
+
 add_executable(beatit_dbn_purelove_tests
     tests/dbn_purelove_test.mm
 )
