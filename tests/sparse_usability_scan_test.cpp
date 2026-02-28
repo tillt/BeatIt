@@ -116,6 +116,42 @@ bool test_window_builder_keeps_score_consistent() {
                        "window score");
 }
 
+bool test_span_builder_groups_contiguous_usable_windows() {
+    std::vector<beatit::detail::SparseUsabilityWindow> windows;
+    windows.push_back(beatit::detail::build_sparse_usability_window(
+        0.0, 30.0, {0.08, 0.72, 0.84, 0.78, 0.14}));
+    windows.push_back(beatit::detail::build_sparse_usability_window(
+        30.0, 30.0, {0.10, 0.70, 0.80, 0.76, 0.18}));
+    windows.push_back(beatit::detail::build_sparse_usability_window(
+        60.0, 30.0, {0.70, 0.10, 0.15, 0.10, 0.80}));
+    windows.push_back(beatit::detail::build_sparse_usability_window(
+        90.0, 30.0, {0.06, 0.78, 0.88, 0.82, 0.12}));
+
+    const auto spans = beatit::detail::build_sparse_usability_spans(windows, 0.0);
+    if (spans.size() != 2) {
+        std::cerr << "Sparse usability scan test failed: expected 2 spans, got "
+                  << spans.size() << ".\n";
+        return false;
+    }
+    if (!check_close(spans[0].start_seconds, 0.0, 1e-9, "span 0 start")) {
+        return false;
+    }
+    if (!check_close(spans[0].end_seconds, 60.0, 1e-9, "span 0 end")) {
+        return false;
+    }
+    if (spans[0].first_index != 0 || spans[0].last_index != 1) {
+        std::cerr << "Sparse usability scan test failed: first span index bounds mismatch.\n";
+        return false;
+    }
+    if (!check_close(spans[1].start_seconds, 90.0, 1e-9, "span 1 start")) {
+        return false;
+    }
+    if (!check_close(spans[1].end_seconds, 120.0, 1e-9, "span 1 end")) {
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 int main() {
@@ -132,6 +168,9 @@ int main() {
         return 1;
     }
     if (!test_window_builder_keeps_score_consistent()) {
+        return 1;
+    }
+    if (!test_span_builder_groups_contiguous_usable_windows()) {
         return 1;
     }
 

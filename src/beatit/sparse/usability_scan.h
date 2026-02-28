@@ -38,6 +38,14 @@ struct SparseUsabilityPickRequest {
     double min_score = 0.0;
 };
 
+struct SparseUsabilitySpan {
+    double start_seconds = 0.0;
+    double end_seconds = 0.0;
+    double mean_score = 0.0;
+    std::size_t first_index = 0;
+    std::size_t last_index = 0;
+};
+
 double score_sparse_usability_window(const SparseUsabilityFeatures& features);
 
 bool sparse_window_is_usable(const SparseUsabilityFeatures& features);
@@ -48,6 +56,10 @@ SparseUsabilityWindow build_sparse_usability_window(double start_seconds,
 
 std::size_t pick_sparse_usability_window(const std::vector<SparseUsabilityWindow>& windows,
                                          const SparseUsabilityPickRequest& request);
+
+std::vector<SparseUsabilitySpan> build_sparse_usability_spans(
+    const std::vector<SparseUsabilityWindow>& windows,
+    double min_score);
 
 } // namespace detail
 } // namespace beatit

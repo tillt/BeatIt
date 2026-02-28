@@ -89,5 +89,53 @@ std::size_t pick_sparse_usability_window(const std::vector<SparseUsabilityWindow
     return best_index;
 }
 
+std::vector<SparseUsabilitySpan> build_sparse_usability_spans(
+    const std::vector<SparseUsabilityWindow>& windows,
+    double min_score) {
+    std::vector<SparseUsabilitySpan> spans;
+    if (windows.empty()) {
+        return spans;
+    }
+
+    bool in_span = false;
+    SparseUsabilitySpan current;
+    double score_sum = 0.0;
+    std::size_t score_count = 0;
+
+    for (std::size_t i = 0; i < windows.size(); ++i) {
+        const auto& window = windows[i];
+        const bool eligible = window.usable && window.score >= min_score;
+        if (!eligible) {
+            if (in_span) {
+                current.mean_score = score_sum / static_cast<double>(score_count);
+                spans.push_back(current);
+                in_span = false;
+                score_sum = 0.0;
+                score_count = 0;
+            }
+            continue;
+        }
+
+        if (!in_span) {
+            in_span = true;
+            current = SparseUsabilitySpan{};
+            current.start_seconds = window.start_seconds;
+            current.first_index = i;
+        }
+
+        current.end_seconds = window.start_seconds + window.duration_seconds;
+        current.last_index = i;
+        score_sum += window.score;
+        ++score_count;
+    }
+
+    if (in_span) {
+        current.mean_score = score_sum / static_cast<double>(score_count);
+        spans.push_back(current);
+    }
+
+    return spans;
+}
+
 } // namespace detail
 } // namespace beatit
