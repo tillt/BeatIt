@@ -10,22 +10,16 @@
 
 #include "beatit/post/dbn_apply.h"
 #include "beatit/post/helpers.h"
-#include "beatit/post/result_ops.h"
-#include "beatit/post/tempo_fit.h"
 #include "beatit/post/window.h"
 #include "beatit/logging.hpp"
 #include "beatit/dbn/beatit.h"
 #include "beatit/dbn/calmdad.h"
 
 #include <algorithm>
-#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
-#include <limits>
 #include <numeric>
-#include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
