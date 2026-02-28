@@ -43,11 +43,6 @@ struct DecisionOutcome {
 
 double sparse_estimate_probe_confidence(const AnalysisResult& result, double sample_rate);
 
-double sparse_estimate_intro_phase_abs_ms(const AnalysisResult& result,
-                                          double bpm_hint,
-                                          double sample_rate,
-                                          const SparseSampleProvider& provider);
-
 double sparse_probe_quality_score(const SparseProbeObservation& probe);
 
 bool sparse_probe_is_usable(const SparseProbeObservation& probe);

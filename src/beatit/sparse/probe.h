@@ -13,6 +13,7 @@
 
 #include <cstddef>
 #include <functional>
+#include <limits>
 #include <vector>
 
 namespace beatit {
@@ -37,7 +38,9 @@ struct SparseProbeObservation {
     AnalysisResult analysis;
     double bpm = 0.0;
     double conf = 0.0;
-    double phase_abs_ms = 0.0;
+    double phase_abs_ms = std::numeric_limits<double>::infinity();
+    double intro_odd_even_gap_ms = std::numeric_limits<double>::infinity();
+    double intro_phase_bpm = 0.0;
 };
 
 AnalysisResult analyze_sparse_probe_window(const BeatitConfig& original_config,

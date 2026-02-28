@@ -15,6 +15,23 @@
 
 namespace beatit {
 namespace detail {
+namespace {
+
+bool probe_intro_metrics_match_bpm_hint(const ProbeResult& probe, double bpm_hint) {
+    if (!(probe.intro_phase_bpm > 0.0) || !(bpm_hint > 0.0)) {
+        return false;
+    }
+    return std::abs(probe.intro_phase_bpm - bpm_hint) <= 0.01;
+}
+
+IntroPhaseMetrics cached_intro_phase_metrics(const ProbeResult& probe) {
+    IntroPhaseMetrics metrics;
+    metrics.median_abs_ms = probe.phase_abs_ms;
+    metrics.odd_even_gap_ms = probe.intro_odd_even_gap_ms;
+    return metrics;
+}
+
+} // namespace
 
 double clamp_probe_start(const ProbeBuildContext& context, double start_s) {
     return std::clamp(start_s, 0.0, context.max_allowed_start);
@@ -26,10 +43,14 @@ ProbeResult run_probe_observation(const ProbeBuildContext& context, double start
     probe.analysis = context.run_probe(probe.start, context.probe_duration, 0.0);
     probe.bpm = probe.analysis.estimated_bpm;
     probe.conf = sparse_estimate_probe_confidence(probe.analysis, context.sample_rate);
-    probe.phase_abs_ms = sparse_estimate_intro_phase_abs_ms(probe.analysis,
-                                                            probe.bpm,
-                                                            context.sample_rate,
-                                                            context.provider);
+    const IntroPhaseMetrics intro_metrics =
+        sparse_measure_intro_phase(probe.analysis,
+                                   probe.bpm,
+                                   context.sample_rate,
+                                   context.provider);
+    probe.phase_abs_ms = intro_metrics.median_abs_ms;
+    probe.intro_odd_even_gap_ms = intro_metrics.odd_even_gap_ms;
+    probe.intro_phase_bpm = probe.bpm;
     return probe;
 }
 
@@ -166,8 +187,9 @@ ProbeMetricsSnapshot recompute_probe_metrics(const std::vector<ProbeResult>& pro
     snapshot.middle_metrics.assign(probes.size(), SparseWindowPhaseMetrics{});
     for (std::size_t i = 0; i < probes.size(); ++i) {
         const double bpm_hint = snapshot.have_consensus ? snapshot.consensus_bpm : probes[i].bpm;
-        snapshot.intro_metrics[i] =
-            sparse_measure_intro_phase(probes[i].analysis, bpm_hint, sample_rate, provider);
+        snapshot.intro_metrics[i] = probe_intro_metrics_match_bpm_hint(probes[i], bpm_hint)
+            ? cached_intro_phase_metrics(probes[i])
+            : sparse_measure_intro_phase(probes[i].analysis, bpm_hint, sample_rate, provider);
         snapshot.middle_metrics[i] = measure_sparse_window_phase(probes[i].analysis,
                                                                  bpm_hint,
                                                                  snapshot.starts.middle,
