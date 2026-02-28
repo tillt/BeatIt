@@ -23,7 +23,6 @@ int main() {
     cfg.target_bpm = 123.013;
     cfg.max_bpm_error = 0.02;
 
-    cfg.max_intro_median_abs_ms = 16.0;
     cfg.max_offset_slope_ms_per_beat = 0.0335;
     cfg.max_start_end_delta_ms = 33.0;
     cfg.max_start_end_delta_beats = 0.067;

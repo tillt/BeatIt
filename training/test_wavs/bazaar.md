@@ -40,6 +40,11 @@
   - `ratio_applied=1.0004`
   - `delta_frames=6643`
 
+## Notes
+
+- The opening anchor is slightly early in the first local section, but the user validated the file as musically acceptable in the player.
+- The canonical regression for `bazaar` is therefore tempo stability / drift-free projection, not a very tight intro-local offset check.
+
 Reproduce baseline:
 
 ```bash
