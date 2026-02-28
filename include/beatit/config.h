@@ -95,7 +95,7 @@ struct BeatitConfig {
     float dbn_downbeat_weight = 1.0f;
     float dbn_downbeat_phase_peak_ratio = 0.2f;
     double dbn_downbeat_phase_window_seconds = 2.0;
-    double dbn_downbeat_phase_max_delay_seconds = 0.3;
+    double dbn_downbeat_phase_max_delay_seconds = 0.9;
     float dbn_tempo_change_penalty = 0.05f;
     std::size_t dbn_max_candidates = 4096;
     float dbn_transition_reward = 0.7f;

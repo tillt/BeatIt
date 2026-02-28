@@ -251,10 +251,14 @@ std::size_t guard_projected_downbeat_phase(const std::vector<std::size_t>& proje
 
     const double inferred_score = scores[normalized_inferred_phase];
     const double phase0_score = scores[0];
+    const bool phase0_has_evidence = phase0_score > 1e-6;
     const bool inferred_strong =
         inferred_score > (phase0_score + 0.06) &&
         inferred_score > (phase0_score * 1.15);
-    if (best_phase == 0 && normalized_inferred_phase != 0 && !inferred_strong) {
+    if (best_phase == 0 &&
+        phase0_has_evidence &&
+        normalized_inferred_phase != 0 &&
+        !inferred_strong) {
         BEATIT_LOG_DEBUG("DBN projected phase guard: inferred_phase="
                          << normalized_inferred_phase
                          << " inferred_score=" << inferred_score
