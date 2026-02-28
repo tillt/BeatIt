@@ -780,8 +780,13 @@ int main(int argc, char** argv) {
     const auto& beat_sample_frames = beatit::output_beat_sample_frames(result);
     const auto& downbeat_feature_frames = beatit::output_downbeat_feature_frames(result);
 
-    std::cout << "Tempo = " << std::fixed << std::setprecision(4)
-              << result.estimated_bpm << " BPM\n";
+    const auto format_fixed = [](double value, int precision) {
+        std::ostringstream stream;
+        stream << std::fixed << std::setprecision(precision) << value;
+        return stream.str();
+    };
+
+    std::cout << "Tempo = " << format_fixed(result.estimated_bpm, 4) << " BPM\n";
     const bool debug_enabled = beatit_should_log("debug");
 
     if (!downbeat_feature_frames.empty()) {
@@ -800,7 +805,7 @@ int main(int argc, char** argv) {
             downbeat_s = static_cast<double>(downbeat_feature_frame) / fps;
         }
 
-        std::cout << "Downbeat = " << downbeat_s << " seconds\n";
+        std::cout << "Downbeat = " << format_fixed(downbeat_s, 3) << " seconds\n";
 
         if (debug_enabled) {
             const auto& beat_frames = result.coreml_beat_feature_frames;
