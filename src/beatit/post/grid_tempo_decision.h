@@ -36,7 +36,6 @@ struct GridTempoDecision {
         double bpm_from_peaks = 0.0;
         double bpm_from_peaks_median = 0.0;
         double bpm_from_peaks_reg = 0.0;
-        double bpm_from_peaks_median_full = 0.0;
         double bpm_from_peaks_reg_full = 0.0;
         double bpm_from_downbeats = 0.0;
         double bpm_from_downbeats_median = 0.0;

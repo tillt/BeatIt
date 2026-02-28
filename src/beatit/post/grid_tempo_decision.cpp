@@ -72,7 +72,6 @@ GridTempoDecision compute_grid_tempo_decision(const GridTempoDecisionInput& inpu
     double bpm_from_peaks = 0.0;
     double bpm_from_peaks_median = 0.0;
     double bpm_from_peaks_reg = 0.0;
-    double bpm_from_peaks_median_full = 0.0;
     double bpm_from_peaks_reg_full = 0.0;
     if (tempo_peaks.size() >= 2) {
         const double interval_median =
@@ -97,13 +96,8 @@ GridTempoDecision compute_grid_tempo_decision(const GridTempoDecisionInput& inpu
         }
     }
     if (tempo_peaks_full.size() >= 2) {
-        const double interval_median =
-            median_interval_frames_interpolated(input.result.beat_activation, tempo_peaks_full);
         const double interval_reg =
             regression_interval_frames_interpolated(input.result.beat_activation, tempo_peaks_full);
-        if (interval_median > 0.0) {
-            bpm_from_peaks_median_full = (60.0 * input.fps) / interval_median;
-        }
         if (interval_reg > 0.0) {
             bpm_from_peaks_reg_full = (60.0 * input.fps) / interval_reg;
         }
@@ -271,7 +265,6 @@ GridTempoDecision compute_grid_tempo_decision(const GridTempoDecisionInput& inpu
     diag.bpm_from_peaks = bpm_from_peaks;
     diag.bpm_from_peaks_median = bpm_from_peaks_median;
     diag.bpm_from_peaks_reg = bpm_from_peaks_reg;
-    diag.bpm_from_peaks_median_full = bpm_from_peaks_median_full;
     diag.bpm_from_peaks_reg_full = bpm_from_peaks_reg_full;
     diag.bpm_from_downbeats = bpm_from_downbeats;
     diag.bpm_from_downbeats_median = bpm_from_downbeats_median;
@@ -325,7 +318,6 @@ void log_grid_tempo_decision(const GridTempoDecision& decision,
                      << " bpm_from_peaks=" << d.bpm_from_peaks
                      << " bpm_from_peaks_median=" << d.bpm_from_peaks_median
                      << " bpm_from_peaks_reg=" << d.bpm_from_peaks_reg
-                     << " bpm_from_peaks_median_full=" << d.bpm_from_peaks_median_full
                      << " bpm_from_peaks_reg_full=" << d.bpm_from_peaks_reg_full
                      << " bpm_from_downbeats=" << d.bpm_from_downbeats
                      << " bpm_from_downbeats_median=" << d.bpm_from_downbeats_median
