@@ -340,7 +340,7 @@ void trace_grid_peak_alignment(const std::vector<std::size_t>& beat_grid,
                                const std::vector<float>& downbeat_activation,
                                float activation_floor,
                                double fps) {
-    if (fps <= 0.0) {
+    if (fps <= 0.0 || !beatit_should_log("debug")) {
         return;
     }
     auto compute_offsets = [&](const std::vector<std::size_t>& grid,
