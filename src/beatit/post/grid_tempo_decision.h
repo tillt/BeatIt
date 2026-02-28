@@ -22,9 +22,6 @@ namespace beatit::detail {
 
 struct GridTempoDecision {
     struct Diagnostics {
-        double min_interval_frames = 0.0;
-        double short_interval_threshold = 0.0;
-
         IntervalStats tempo_stats;
         IntervalStats decoded_stats;
         IntervalStats decoded_filtered_stats;
@@ -46,7 +43,6 @@ struct GridTempoDecision {
         std::size_t downbeat_count = 0;
         double downbeat_cv = 0.0;
 
-        bool global_fit_plausible = false;
         std::string bpm_source = "none";
 
         double quality_qkur = 0.0;

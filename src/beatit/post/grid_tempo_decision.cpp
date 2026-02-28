@@ -31,8 +31,6 @@ GridTempoDecision compute_grid_tempo_decision(const GridTempoDecisionInput& inpu
         (input.max_bpm > 1.0f && input.fps > 0.0) ? (60.0 * input.fps) / input.max_bpm : 0.0;
     const double short_interval_threshold =
         (min_interval_frames > 0.0) ? std::max(1.0, min_interval_frames * 0.5) : 0.0;
-    diag.min_interval_frames = min_interval_frames;
-    diag.short_interval_threshold = short_interval_threshold;
     const std::vector<std::size_t> filtered_beats =
         filter_short_intervals(input.decoded.beat_frames, short_interval_threshold);
     const std::vector<std::size_t> aligned_downbeats =
@@ -199,7 +197,6 @@ GridTempoDecision compute_grid_tempo_decision(const GridTempoDecisionInput& inpu
         const double rel_diff = diff / bpm_from_fit;
         global_fit_plausible = rel_diff <= 0.08;
     }
-    diag.global_fit_plausible = global_fit_plausible;
     std::string bpm_source = "none";
     if (global_fit_plausible) {
         decision.bpm_for_grid = bpm_from_global_fit;
@@ -298,10 +295,6 @@ void log_grid_tempo_decision(const GridTempoDecision& decision,
         }
         print_stats("decoded_beats", d.decoded_stats);
         print_stats("decoded_beats_filtered", d.decoded_filtered_stats);
-        if (d.short_interval_threshold > 0.0) {
-            BEATIT_LOG_DEBUG("DBN stats: filter_threshold=" << d.short_interval_threshold
-                             << " min_interval=" << d.min_interval_frames);
-        }
     }
     BEATIT_LOG_DEBUG("DBN grid: bpm=" << input.decoded.bpm
                      << " bpm_from_fit=" << d.bpm_from_fit
