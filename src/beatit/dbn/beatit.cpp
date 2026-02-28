@@ -98,20 +98,6 @@ DBNDecodeResult decode_dbn_beats_beatit(const std::vector<float>& beat_activatio
                              << " mean=" << mean
                              << " above_floor=" << above
                              << " floor=" << activation_floor);
-            auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
-            debug_stream << "DBN: " << label << " first2s hits:";
-            std::size_t printed = 0;
-            for (std::size_t i = 0; i < first_window && printed < 8; ++i) {
-                const float v = activation[i];
-                if (v >= activation_floor) {
-                    const double time_s = fps > 0.0 ? static_cast<double>(i) / fps : 0.0;
-                    debug_stream << " " << i << "(" << time_s << "s)->" << v;
-                    ++printed;
-                }
-            }
-            if (printed == 0) {
-                debug_stream << " none";
-            }
         };
         summarize_activation(beat_activation, "beat");
         summarize_activation(downbeat_activation, "downbeat");
