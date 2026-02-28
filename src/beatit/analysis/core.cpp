@@ -75,7 +75,6 @@ AnalysisResult analyze(const std::vector<float>& samples,
     BeatitConfig base_config = config;
     base_config.tempo_window_percent = 0.0f;
     base_config.prefer_double_time = false;
-    base_config.synthetic_fill = false;
 
     const std::size_t last_active_frame =
         estimate_last_active_frame(samples, sample_rate, config);

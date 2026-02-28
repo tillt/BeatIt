@@ -11,7 +11,6 @@
 #include "beatit/sparse/probe_pick.h"
 #include "probe_score.h"
 
-#include <utility>
 #include <vector>
 
 namespace beatit {
@@ -27,7 +26,6 @@ struct ProbeWindowStarts {
 };
 
 struct ProbeMetricsSnapshot {
-    bool have_consensus = false;
     double consensus_bpm = 0.0;
     std::vector<double> mode_errors;
     std::vector<IntroPhaseMetrics> intro_metrics;
@@ -44,11 +42,6 @@ struct SelectedProbeDiagnostics {
     WindowPhaseGate between_gate;
     WindowPhaseGate left_gate;
     WindowPhaseGate right_gate;
-    bool middle_gate_triggered = false;
-    bool consistency_gate_triggered = false;
-    bool consistency_edges_low_mismatch = false;
-    bool consistency_between_high_mismatch = false;
-    bool consistency_middle_high_mismatch = false;
 };
 
 struct ProbeBuildContext {
@@ -63,15 +56,6 @@ struct ProbeBuildContext {
     std::size_t max_quality_shifts = 0;
 };
 
-struct SelectionDecisionSnapshot {
-    DecisionOutcome decision;
-    std::size_t selected_index = 0;
-    double selected_score = 0.0;
-    double score_margin = 0.0;
-    bool low_confidence = true;
-    IntroPhaseMetrics selected_intro_metrics;
-};
-
 double clamp_probe_start(const ProbeBuildContext& context, double start_s);
 
 ProbeResult run_probe_observation(const ProbeBuildContext& context, double start_s);
@@ -80,10 +64,20 @@ ProbeResult seek_quality_probe(const ProbeBuildContext& context,
                                double seed_start,
                                bool shift_right);
 
-void push_unique_probe(std::vector<ProbeResult>& probes, ProbeResult&& probe);
+double push_quality_probe(std::vector<ProbeResult>& probes,
+                          const ProbeBuildContext& context,
+                          double seed_start,
+                          bool shift_right);
 
-SelectionDecisionSnapshot make_selection_decision(const std::vector<ProbeResult>& probes,
-                                                  const ProbeMetricsSnapshot& metrics);
+double centered_probe_start(double total_duration_seconds,
+                            double probe_duration,
+                            double max_allowed_start);
+
+void push_observed_probe(std::vector<ProbeResult>& probes,
+                         const ProbeBuildContext& context,
+                         double start_s);
+
+void push_unique_probe(std::vector<ProbeResult>& probes, ProbeResult&& probe);
 
 bool should_add_disagreement_probe(const std::vector<ProbeResult>& probes,
                                    const ProbeMetricsSnapshot& metrics);
@@ -91,10 +85,6 @@ bool should_add_disagreement_probe(const std::vector<ProbeResult>& probes,
 double select_repair_start(const std::vector<ProbeResult>& probes,
                            const ProbeMetricsSnapshot& metrics,
                            double fallback_start);
-
-std::pair<double, double> probe_start_extents(const std::vector<ProbeResult>& probes,
-                                              double fallback_min,
-                                              double fallback_max);
 
 ProbeWindowStarts compute_probe_window_starts(const std::vector<ProbeResult>& probes,
                                               double min_allowed_start,
@@ -111,6 +101,16 @@ ProbeMetricsSnapshot recompute_probe_metrics(const std::vector<ProbeResult>& pro
 bool window_has_high_mismatch(const SparseWindowPhaseMetrics& metrics, const WindowPhaseGate& gate);
 
 bool window_has_low_mismatch(const SparseWindowPhaseMetrics& metrics, const WindowPhaseGate& gate);
+
+bool selected_middle_gate_triggered(const SelectedProbeDiagnostics& diagnostics);
+
+bool selected_consistency_edges_low_mismatch(const SelectedProbeDiagnostics& diagnostics);
+
+bool selected_consistency_between_high_mismatch(const SelectedProbeDiagnostics& diagnostics);
+
+bool selected_consistency_middle_high_mismatch(const SelectedProbeDiagnostics& diagnostics);
+
+bool selected_consistency_gate_triggered(const SelectedProbeDiagnostics& diagnostics);
 
 SelectedProbeDiagnostics evaluate_selected_probe_diagnostics(const ProbeResult& selected_probe,
                                                              const SparseWindowPhaseMetrics& middle_metrics,

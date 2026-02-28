@@ -21,8 +21,6 @@ struct SparseWindowPhaseMetrics {
     double median_ms = std::numeric_limits<double>::infinity();
     double median_abs_ms = std::numeric_limits<double>::infinity();
     double odd_even_gap_ms = std::numeric_limits<double>::infinity();
-    double abs_p90_ms = std::numeric_limits<double>::infinity();
-    double abs_p95_ms = std::numeric_limits<double>::infinity();
     double abs_limit_exceed_ratio = std::numeric_limits<double>::infinity();
     double signed_limit_exceed_ratio = std::numeric_limits<double>::infinity();
     std::size_t count = 0;

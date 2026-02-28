@@ -381,69 +381,71 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
         first_window_start,
         last_window_start);
 
-    const EdgeOffsetMetrics pre_global_intro =
-        measure_edge_offsets(projected_before_refit, bpm_hint, false, sample_rate, provider);
-    const EdgeOffsetMetrics pre_global_outro =
-        measure_edge_offsets(projected_before_refit, bpm_hint, true, sample_rate, provider);
-    const auto pre_middle_pair = measure_middle_windows(projected_before_refit);
-    const auto post_middle_pair = measure_middle_windows(*projected);
-    const double pre_global_delta_ms =
-        (has_valid_edge_metrics(pre_global_intro) && has_valid_edge_metrics(pre_global_outro))
-            ? std::abs(pre_global_outro.median_ms - pre_global_intro.median_ms)
-            : std::numeric_limits<double>::infinity();
-    const double post_global_delta_ms =
-        (has_valid_edge_metrics(global_intro) && has_valid_edge_metrics(global_outro))
-            ? std::abs(global_outro.median_ms - global_intro.median_ms)
-            : std::numeric_limits<double>::infinity();
-    const double pre_between_abs_ms = pre_middle_pair.first.median_abs_ms;
-    const double pre_middle_abs_ms = pre_middle_pair.second.median_abs_ms;
-    const double post_between_abs_ms = post_middle_pair.first.median_abs_ms;
-    const double post_middle_abs_ms = post_middle_pair.second.median_abs_ms;
-    const double pre_phase_score =
-        (std::isfinite(pre_global_delta_ms) &&
-         std::isfinite(pre_between_abs_ms) &&
-         std::isfinite(pre_middle_abs_ms))
-            ? ((0.40 * pre_global_delta_ms) + pre_between_abs_ms + pre_middle_abs_ms)
-            : std::numeric_limits<double>::infinity();
-    const double post_phase_score =
-        (std::isfinite(post_global_delta_ms) &&
-         std::isfinite(post_between_abs_ms) &&
-         std::isfinite(post_middle_abs_ms))
-            ? ((0.40 * post_global_delta_ms) + post_between_abs_ms + post_middle_abs_ms)
-            : std::numeric_limits<double>::infinity();
+    if (beatit_should_log("debug")) {
+        const EdgeOffsetMetrics pre_global_intro =
+            measure_edge_offsets(projected_before_refit, bpm_hint, false, sample_rate, provider);
+        const EdgeOffsetMetrics pre_global_outro =
+            measure_edge_offsets(projected_before_refit, bpm_hint, true, sample_rate, provider);
+        const auto pre_middle_pair = measure_middle_windows(projected_before_refit);
+        const auto post_middle_pair = measure_middle_windows(*projected);
+        const double pre_global_delta_ms =
+            (has_valid_edge_metrics(pre_global_intro) && has_valid_edge_metrics(pre_global_outro))
+                ? std::abs(pre_global_outro.median_ms - pre_global_intro.median_ms)
+                : std::numeric_limits<double>::infinity();
+        const double post_global_delta_ms =
+            (has_valid_edge_metrics(global_intro) && has_valid_edge_metrics(global_outro))
+                ? std::abs(global_outro.median_ms - global_intro.median_ms)
+                : std::numeric_limits<double>::infinity();
+        const double pre_between_abs_ms = pre_middle_pair.first.median_abs_ms;
+        const double pre_middle_abs_ms = pre_middle_pair.second.median_abs_ms;
+        const double post_between_abs_ms = post_middle_pair.first.median_abs_ms;
+        const double post_middle_abs_ms = post_middle_pair.second.median_abs_ms;
+        const double pre_phase_score =
+            (std::isfinite(pre_global_delta_ms) &&
+             std::isfinite(pre_between_abs_ms) &&
+             std::isfinite(pre_middle_abs_ms))
+                ? ((0.40 * pre_global_delta_ms) + pre_between_abs_ms + pre_middle_abs_ms)
+                : std::numeric_limits<double>::infinity();
+        const double post_phase_score =
+            (std::isfinite(post_global_delta_ms) &&
+             std::isfinite(post_between_abs_ms) &&
+             std::isfinite(post_middle_abs_ms))
+                ? ((0.40 * post_global_delta_ms) + post_between_abs_ms + post_middle_abs_ms)
+                : std::numeric_limits<double>::infinity();
 
-    const double err_delta_frames =
-        ((outro.median_ms - intro.median_ms) * sample_rate) / 1000.0;
-    BEATIT_LOG_DEBUG("Sparse edge refit:"
-                     << " first_probe_start_s=" << first_probe_start
-                     << " last_probe_start_s=" << last_probe_start
-                     << " first_window_start_s=" << first_window_start
-                     << " last_window_start_s=" << last_window_start
-                     << " quality_shift_rounds=" << quality_shift_rounds
-                     << " intro_ms=" << intro.median_ms
-                     << " outro_ms=" << outro.median_ms
-                     << " post_intro_ms=" << post_intro.median_ms
-                     << " post_outro_ms=" << post_outro.median_ms
-                     << " global_intro_ms=" << global_intro.median_ms
-                     << " global_outro_ms=" << global_outro.median_ms
-                     << " pre_global_delta_ms=" << pre_global_delta_ms
-                     << " post_global_delta_ms=" << post_global_delta_ms
-                     << " pre_between_abs_ms=" << pre_between_abs_ms
-                     << " pre_middle_abs_ms=" << pre_middle_abs_ms
-                     << " post_between_abs_ms=" << post_between_abs_ms
-                     << " post_middle_abs_ms=" << post_middle_abs_ms
-                     << " pre_phase_score=" << pre_phase_score
-                     << " post_phase_score=" << post_phase_score
-                     << " phase_try_base_score=" << phase_try.base_score
-                     << " phase_try_minus_score=" << phase_try.minus_score
-                     << " phase_try_plus_score=" << phase_try.plus_score
-                     << " phase_try_selected=" << phase_try.selected
-                     << " phase_try_applied=" << (phase_try.applied ? 1 : 0)
-                     << " global_ratio_applied=" << global_guard_ratio
-                     << " delta_frames=" << err_delta_frames
-                     << " ratio=" << ratio
-                     << " ratio_applied=" << applied_ratio
-                     << " beats=" << projected->size());
+        const double err_delta_frames =
+            ((outro.median_ms - intro.median_ms) * sample_rate) / 1000.0;
+        BEATIT_LOG_DEBUG("Sparse edge refit:"
+                         << " first_probe_start_s=" << first_probe_start
+                         << " last_probe_start_s=" << last_probe_start
+                         << " first_window_start_s=" << first_window_start
+                         << " last_window_start_s=" << last_window_start
+                         << " quality_shift_rounds=" << quality_shift_rounds
+                         << " intro_ms=" << intro.median_ms
+                         << " outro_ms=" << outro.median_ms
+                         << " post_intro_ms=" << post_intro.median_ms
+                         << " post_outro_ms=" << post_outro.median_ms
+                         << " global_intro_ms=" << global_intro.median_ms
+                         << " global_outro_ms=" << global_outro.median_ms
+                         << " pre_global_delta_ms=" << pre_global_delta_ms
+                         << " post_global_delta_ms=" << post_global_delta_ms
+                         << " pre_between_abs_ms=" << pre_between_abs_ms
+                         << " pre_middle_abs_ms=" << pre_middle_abs_ms
+                         << " post_between_abs_ms=" << post_between_abs_ms
+                         << " post_middle_abs_ms=" << post_middle_abs_ms
+                         << " pre_phase_score=" << pre_phase_score
+                         << " post_phase_score=" << post_phase_score
+                         << " phase_try_base_score=" << phase_try.base_score
+                         << " phase_try_minus_score=" << phase_try.minus_score
+                         << " phase_try_plus_score=" << phase_try.plus_score
+                         << " phase_try_selected=" << phase_try.selected
+                         << " phase_try_applied=" << (phase_try.applied ? 1 : 0)
+                         << " global_ratio_applied=" << global_guard_ratio
+                         << " delta_frames=" << err_delta_frames
+                         << " ratio=" << ratio
+                         << " ratio_applied=" << applied_ratio
+                         << " beats=" << projected->size());
+    }
 }
 
 } // namespace detail

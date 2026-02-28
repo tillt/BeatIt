@@ -81,7 +81,6 @@ public:
         config.dbn_use_downbeat = true;
         config.dbn_mode = BeatitConfig::DBNMode::Calmdad;
         config.dbn_activation_floor = 0.7f;
-        config.dbn_tempo_prior_weight = 0.0f;
         config.dbn_downbeat_phase_peak_ratio = 0.2f;
         config.dbn_downbeat_phase_window_seconds = 2.0;
         config.dbn_downbeat_phase_max_delay_seconds = 0.3;
@@ -93,9 +92,6 @@ public:
         config.dbn_project_grid = true;
         config.dbn_grid_global_fit = true;
         config.dbn_trace = false;
-        config.dbn_grid_align_downbeat_peak = true;
-        config.dbn_grid_start_strong_peak = true;
-        config.dbn_grid_start_advance_seconds = 0.06f;
         config.max_analysis_seconds = 0.0;
         config.dbn_window_start_seconds = 0.0;
         config.sparse_probe_mode = true;

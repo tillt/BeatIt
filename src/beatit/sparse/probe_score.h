@@ -20,7 +20,6 @@ namespace detail {
 struct IntroPhaseMetrics {
     double median_abs_ms = std::numeric_limits<double>::infinity();
     double odd_even_gap_ms = std::numeric_limits<double>::infinity();
-    std::size_t count = 0;
 };
 
 struct WindowPhaseGate {
@@ -43,11 +42,6 @@ struct DecisionOutcome {
 };
 
 double sparse_estimate_probe_confidence(const AnalysisResult& result, double sample_rate);
-
-double sparse_estimate_intro_phase_abs_ms(const AnalysisResult& result,
-                                          double bpm_hint,
-                                          double sample_rate,
-                                          const SparseSampleProvider& provider);
 
 double sparse_probe_quality_score(const SparseProbeObservation& probe);
 

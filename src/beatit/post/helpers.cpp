@@ -17,6 +17,66 @@
 
 namespace beatit::detail {
 
+std::vector<std::size_t> collect_activation_peaks(const std::vector<float>& activation,
+                                                  float floor) {
+    std::vector<std::size_t> peaks;
+    peaks.reserve(activation.size() / 8);
+    if (activation.size() < 3) {
+        return peaks;
+    }
+
+    const std::size_t end = activation.size() - 1;
+    for (std::size_t i = 1; i < end; ++i) {
+        const float prev = activation[i - 1];
+        const float curr = activation[i];
+        const float next = activation[i + 1];
+        if (curr >= floor && curr >= prev && curr >= next) {
+            peaks.push_back(i);
+        }
+    }
+    return peaks;
+}
+
+std::size_t nearest_peak_frame(const std::vector<std::size_t>& peaks, std::size_t frame) {
+    auto it = std::lower_bound(peaks.begin(), peaks.end(), frame);
+    if (it == peaks.end()) {
+        return peaks.back();
+    }
+
+    std::size_t nearest = *it;
+    if (it != peaks.begin()) {
+        const std::size_t prev = *(it - 1);
+        if (frame - prev < nearest - frame) {
+            nearest = prev;
+        }
+    }
+    return nearest;
+}
+
+namespace {
+
+double median_value(std::vector<double>& values) {
+    if (values.empty()) {
+        return 0.0;
+    }
+    const std::size_t mid = values.size() / 2;
+    std::nth_element(values.begin(), values.begin() + static_cast<long>(mid), values.end());
+    return values[mid];
+}
+
+std::vector<double> positive_frame_intervals(const std::vector<std::size_t>& frames) {
+    std::vector<double> intervals;
+    intervals.reserve(frames.size() > 1 ? frames.size() - 1 : 0);
+    for (std::size_t i = 1; i < frames.size(); ++i) {
+        if (frames[i] > frames[i - 1]) {
+            intervals.push_back(static_cast<double>(frames[i] - frames[i - 1]));
+        }
+    }
+    return intervals;
+}
+
+} // namespace
+
 double interpolate_peak_position(const std::vector<float>& activation, std::size_t frame) {
     double pos = static_cast<double>(frame);
     if (frame > 0 && frame + 1 < activation.size()) {
@@ -53,6 +113,15 @@ std::vector<double> positive_intervals(const std::vector<double>& positions) {
     }
     return intervals;
 }
+
+namespace {
+
+std::vector<double> positive_interpolated_peak_intervals(const std::vector<float>& activation,
+                                                         const std::vector<std::size_t>& peaks) {
+    return positive_intervals(interpolated_peak_positions(activation, peaks));
+}
+
+} // namespace
 
 void fill_bpm_bins(IntervalStats& stats,
                    const std::vector<double>& intervals,
@@ -95,9 +164,7 @@ void fill_interval_stats(IntervalStats& stats,
     stats.mean_interval = std::accumulate(intervals.begin(), intervals.end(), 0.0) /
                           static_cast<double>(intervals.size());
     std::vector<double> sorted = intervals;
-    const std::size_t mid = sorted.size() / 2;
-    std::nth_element(sorted.begin(), sorted.begin() + static_cast<long>(mid), sorted.end());
-    stats.median_interval = sorted[mid];
+    stats.median_interval = median_value(sorted);
 
     double variance = 0.0;
     for (double value : intervals) {
@@ -163,19 +230,11 @@ double median_interval_frames(const std::vector<std::size_t>& peaks) {
     if (peaks.size() < 2) {
         return 0.0;
     }
-    std::vector<std::size_t> intervals;
-    intervals.reserve(peaks.size() - 1);
-    for (std::size_t i = 1; i < peaks.size(); ++i) {
-        if (peaks[i] > peaks[i - 1]) {
-            intervals.push_back(peaks[i] - peaks[i - 1]);
-        }
-    }
+    std::vector<double> intervals = positive_frame_intervals(peaks);
     if (intervals.empty()) {
         return 0.0;
     }
-    const std::size_t mid = intervals.size() / 2;
-    std::nth_element(intervals.begin(), intervals.begin() + static_cast<long>(mid), intervals.end());
-    return static_cast<double>(intervals[mid]);
+    return median_value(intervals);
 }
 
 double median_interval_frames_interpolated(const std::vector<float>& activation,
@@ -183,14 +242,11 @@ double median_interval_frames_interpolated(const std::vector<float>& activation,
     if (peaks.size() < 2 || activation.empty()) {
         return 0.0;
     }
-    const std::vector<double> positions = interpolated_peak_positions(activation, peaks);
-    std::vector<double> intervals = positive_intervals(positions);
+    std::vector<double> intervals = positive_interpolated_peak_intervals(activation, peaks);
     if (intervals.empty()) {
         return 0.0;
     }
-    const std::size_t mid = intervals.size() / 2;
-    std::nth_element(intervals.begin(), intervals.begin() + static_cast<long>(mid), intervals.end());
-    return intervals[mid];
+    return median_value(intervals);
 }
 
 double regression_interval_frames_interpolated(const std::vector<float>& activation,
@@ -252,8 +308,7 @@ IntervalStats interval_stats_interpolated(const std::vector<float>& activation,
         return stats;
     }
 
-    const std::vector<double> positions = interpolated_peak_positions(activation, peaks);
-    std::vector<double> intervals = positive_intervals(positions);
+    std::vector<double> intervals = positive_interpolated_peak_intervals(activation, peaks);
     if (intervals.empty()) {
         return stats;
     }
@@ -270,13 +325,7 @@ IntervalStats interval_stats_frames(const std::vector<std::size_t>& frames,
         return stats;
     }
 
-    std::vector<double> intervals;
-    intervals.reserve(frames.size() - 1);
-    for (std::size_t i = 1; i < frames.size(); ++i) {
-        if (frames[i] > frames[i - 1]) {
-            intervals.push_back(static_cast<double>(frames[i] - frames[i - 1]));
-        }
-    }
+    std::vector<double> intervals = positive_frame_intervals(frames);
     if (intervals.empty()) {
         return stats;
     }
@@ -291,27 +340,9 @@ void trace_grid_peak_alignment(const std::vector<std::size_t>& beat_grid,
                                const std::vector<float>& downbeat_activation,
                                float activation_floor,
                                double fps) {
-    if (fps <= 0.0) {
+    if (fps <= 0.0 || !beatit_should_log("debug")) {
         return;
     }
-    auto collect_peaks = [](const std::vector<float>& activation,
-                            float floor,
-                            std::vector<std::size_t>& peaks_out) {
-        peaks_out.clear();
-        if (activation.size() < 3) {
-            return;
-        }
-        const std::size_t end = activation.size() - 1;
-        for (std::size_t i = 1; i < end; ++i) {
-            const float prev = activation[i - 1];
-            const float curr = activation[i];
-            const float next = activation[i + 1];
-            if (curr >= floor && curr >= prev && curr >= next) {
-                peaks_out.push_back(i);
-            }
-        }
-    };
-
     auto compute_offsets = [&](const std::vector<std::size_t>& grid,
                                const std::vector<std::size_t>& peaks,
                                const char* label) {
@@ -324,19 +355,7 @@ void trace_grid_peak_alignment(const std::vector<std::size_t>& beat_grid,
         double sum_sq = 0.0;
         std::size_t count = 0;
         for (const auto frame : grid) {
-            auto it = std::lower_bound(peaks.begin(), peaks.end(), frame);
-            std::size_t best = *peaks.begin();
-            if (it == peaks.end()) {
-                best = peaks.back();
-            } else {
-                best = *it;
-                if (it != peaks.begin()) {
-                    const std::size_t prev = *(it - 1);
-                    if (frame - prev < best - frame) {
-                        best = prev;
-                    }
-                }
-            }
+            const std::size_t best = nearest_peak_frame(peaks, frame);
             const double delta = (static_cast<double>(best) -
                                   static_cast<double>(frame)) / fps;
             sum += delta;
@@ -355,10 +374,10 @@ void trace_grid_peak_alignment(const std::vector<std::size_t>& beat_grid,
                                        << " count=" << count);
     };
 
-    std::vector<std::size_t> beat_peaks;
-    std::vector<std::size_t> downbeat_peaks;
-    collect_peaks(beat_activation, activation_floor, beat_peaks);
-    collect_peaks(downbeat_activation, activation_floor, downbeat_peaks);
+    const std::vector<std::size_t> beat_peaks =
+        collect_activation_peaks(beat_activation, activation_floor);
+    const std::vector<std::size_t> downbeat_peaks =
+        collect_activation_peaks(downbeat_activation, activation_floor);
     compute_offsets(beat_grid, beat_peaks, "beat");
     compute_offsets(downbeat_grid, downbeat_peaks, "downbeat");
 }

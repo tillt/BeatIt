@@ -22,41 +22,22 @@ namespace beatit::detail {
 
 struct GridTempoDecision {
     struct Diagnostics {
-        double min_interval_frames = 0.0;
-        double short_interval_threshold = 0.0;
-
         IntervalStats tempo_stats;
         IntervalStats decoded_stats;
         IntervalStats decoded_filtered_stats;
         IntervalStats downbeat_stats;
 
-        bool has_downbeat_stats = false;
-        bool stats_computed = false;
-
         double bpm_from_peaks = 0.0;
         double bpm_from_peaks_median = 0.0;
-        double bpm_from_peaks_reg = 0.0;
-        double bpm_from_peaks_median_full = 0.0;
         double bpm_from_peaks_reg_full = 0.0;
         double bpm_from_downbeats = 0.0;
-        double bpm_from_downbeats_median = 0.0;
-        double bpm_from_downbeats_reg = 0.0;
         double bpm_from_fit = 0.0;
         double bpm_from_global_fit = 0.0;
 
         std::size_t downbeat_count = 0;
         double downbeat_cv = 0.0;
 
-        bool drop_fit = false;
-        bool drop_ref = false;
-        bool global_fit_plausible = false;
-
-        double bpm_before_downbeat = 0.0;
         std::string bpm_source = "none";
-        std::string bpm_source_before_downbeat = "none";
-
-        double quality_qpar = 0.0;
-        double quality_qkur = 0.0;
     };
 
     std::size_t bpb = 1;
@@ -80,7 +61,6 @@ struct GridTempoDecisionInput {
     const std::vector<float>& downbeat_slice;
 
     bool quality_valid = false;
-    double quality_qpar = 0.0;
     double quality_qkur = 0.0;
 
     std::size_t used_frames = 0;

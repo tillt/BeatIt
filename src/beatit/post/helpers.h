@@ -42,6 +42,12 @@ double median_interval_frames_interpolated(const std::vector<float>& activation,
 double regression_interval_frames_interpolated(const std::vector<float>& activation,
                                                const std::vector<std::size_t>& peaks);
 
+std::vector<std::size_t> collect_activation_peaks(const std::vector<float>& activation,
+                                                  float floor);
+
+std::size_t nearest_peak_frame(const std::vector<std::size_t>& peaks,
+                               std::size_t frame);
+
 std::vector<std::size_t> filter_short_intervals(const std::vector<std::size_t>& frames,
                                                 double min_interval_frames);
 

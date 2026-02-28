@@ -84,7 +84,6 @@ AnalysisResult BeatitStream::finalize() {
     BeatitConfig base_config = coreml_config_;
     base_config.tempo_window_percent = 0.0f;
     base_config.prefer_double_time = false;
-    base_config.synthetic_fill = false;
     base_config.dbn_window_seconds = 0.0;
 
     std::size_t last_active_frame = 0;

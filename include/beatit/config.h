@@ -72,7 +72,6 @@ struct BeatitConfig {
     float tempo_window_percent = 20.0f;
     bool prefer_double_time = true;
     float activation_threshold = 0.5f;
-    bool synthetic_fill = false;
     bool pad_final_window = true;
     std::size_t window_border_frames = 6;
     float gap_tolerance = 0.05f;
@@ -98,7 +97,6 @@ struct BeatitConfig {
     double dbn_downbeat_phase_window_seconds = 2.0;
     double dbn_downbeat_phase_max_delay_seconds = 0.3;
     float dbn_tempo_change_penalty = 0.05f;
-    float dbn_tempo_prior_weight = 0.0f;
     std::size_t dbn_max_candidates = 4096;
     float dbn_transition_reward = 0.7f;
     bool dbn_use_all_candidates = true;
@@ -120,9 +118,6 @@ struct BeatitConfig {
     bool sparse_probe_mode = false;
     // Fit one global linear beat grid (frame ~= a + i*b) before projection.
     bool dbn_grid_global_fit = false;
-    bool dbn_grid_align_downbeat_peak = true;
-    bool dbn_grid_start_strong_peak = true;
-    float dbn_grid_start_advance_seconds = 0.06f;
     double max_analysis_seconds = 60.0;
     double prepend_silence_seconds = 1.0;
     double debug_activations_start_s = -1.0;

@@ -114,7 +114,8 @@ std::pair<std::size_t, std::size_t> infer_bpb_phase(const std::vector<std::size_
     if (beats.empty() || downbeats.empty()) {
         return std::make_pair(best_bpb, best_phase);
     }
-    if (config.dbn_trace) {
+    const bool trace_enabled = config.dbn_trace && beatit_should_log("debug");
+    if (trace_enabled) {
         auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
         debug_stream << "DBN bpb inference: beats=" << beats.size()
                      << " downbeats=" << downbeats.size() << " candidates=";
@@ -149,7 +150,7 @@ std::pair<std::size_t, std::size_t> infer_bpb_phase(const std::vector<std::size_
         }
         hits_by_bpb[bpb] = hits;
         phase_by_bpb[bpb] = phase;
-        if (config.dbn_trace) {
+        if (trace_enabled) {
             BEATIT_LOG_DEBUG("DBN bpb inference: bpb=" << bpb
                              << " phase=" << phase
                              << " hits=" << hits);
@@ -168,13 +169,13 @@ std::pair<std::size_t, std::size_t> infer_bpb_phase(const std::vector<std::size_
             best_bpb = 4;
             best_phase = phase_by_bpb[4];
             best_hits = hits_by_bpb[4];
-            if (config.dbn_trace) {
+            if (trace_enabled) {
                 BEATIT_LOG_DEBUG("DBN bpb inference: biasing to 4/4 (hits3="
                                  << hits3 << " hits4=" << hits4 << ")");
             }
         }
     }
-    if (config.dbn_trace) {
+    if (trace_enabled) {
         BEATIT_LOG_DEBUG("DBN bpb inference: best_bpb=" << best_bpb
                          << " best_phase=" << best_phase
                          << " best_hits=" << best_hits);

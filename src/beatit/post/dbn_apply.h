@@ -46,7 +46,6 @@ struct DBNBpmContext {
 
 struct DBNQualityContext {
     bool valid = false;
-    double qpar = 0.0;
     double qkur = 0.0;
 };
 

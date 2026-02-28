@@ -32,7 +32,6 @@ struct SparseProbeSelectionResult {
     double middle_probe_start = 0.0;
     bool low_confidence = true;
     double selected_intro_median_abs_ms = std::numeric_limits<double>::infinity();
-    bool have_consensus = false;
     double consensus_bpm = 0.0;
 };
 

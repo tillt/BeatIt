@@ -22,8 +22,6 @@ namespace beatit::detail {
 GridTempoDecision compute_grid_tempo_decision(const GridTempoDecisionInput& input) {
     GridTempoDecision decision;
     auto& diag = decision.diagnostics;
-    diag.quality_qpar = input.quality_qpar;
-    diag.quality_qkur = input.quality_qkur;
     if (input.decoded.beat_frames.empty()) {
         return decision;
     }
@@ -32,8 +30,6 @@ GridTempoDecision compute_grid_tempo_decision(const GridTempoDecisionInput& inpu
         (input.max_bpm > 1.0f && input.fps > 0.0) ? (60.0 * input.fps) / input.max_bpm : 0.0;
     const double short_interval_threshold =
         (min_interval_frames > 0.0) ? std::max(1.0, min_interval_frames * 0.5) : 0.0;
-    diag.min_interval_frames = min_interval_frames;
-    diag.short_interval_threshold = short_interval_threshold;
     const std::vector<std::size_t> filtered_beats =
         filter_short_intervals(input.decoded.beat_frames, short_interval_threshold);
     const std::vector<std::size_t> aligned_downbeats =
@@ -72,7 +68,6 @@ GridTempoDecision compute_grid_tempo_decision(const GridTempoDecisionInput& inpu
     double bpm_from_peaks = 0.0;
     double bpm_from_peaks_median = 0.0;
     double bpm_from_peaks_reg = 0.0;
-    double bpm_from_peaks_median_full = 0.0;
     double bpm_from_peaks_reg_full = 0.0;
     if (tempo_peaks.size() >= 2) {
         const double interval_median =
@@ -97,13 +92,8 @@ GridTempoDecision compute_grid_tempo_decision(const GridTempoDecisionInput& inpu
         }
     }
     if (tempo_peaks_full.size() >= 2) {
-        const double interval_median =
-            median_interval_frames_interpolated(input.result.beat_activation, tempo_peaks_full);
         const double interval_reg =
             regression_interval_frames_interpolated(input.result.beat_activation, tempo_peaks_full);
-        if (interval_median > 0.0) {
-            bpm_from_peaks_median_full = (60.0 * input.fps) / interval_median;
-        }
         if (interval_reg > 0.0) {
             bpm_from_peaks_reg_full = (60.0 * input.fps) / interval_reg;
         }
@@ -160,16 +150,12 @@ GridTempoDecision compute_grid_tempo_decision(const GridTempoDecisionInput& inpu
                                                      downbeat_peaks,
                                                      input.fps,
                                                      0.2);
-        diag.has_downbeat_stats = true;
     }
     if (input.config.dbn_trace) {
-        diag.stats_computed = true;
         diag.tempo_stats = interval_stats_interpolated(tempo_activation, tempo_peaks, input.fps, 0.2);
         diag.decoded_stats = interval_stats_frames(input.decoded.beat_frames, input.fps, 0.2);
         diag.decoded_filtered_stats = interval_stats_frames(filtered_beats, input.fps, 0.2);
-        if (diag.has_downbeat_stats) {
-            diag.downbeat_stats = downbeat_stats;
-        }
+        diag.downbeat_stats = downbeat_stats;
     }
 
     const double bpm_from_fit = bpm_from_linear_fit(filtered_beats, input.fps);
@@ -183,8 +169,6 @@ GridTempoDecision compute_grid_tempo_decision(const GridTempoDecisionInput& inpu
     diag.bpm_from_fit = bpm_from_fit;
     diag.bpm_from_global_fit = bpm_from_global_fit;
     decision.quality_low = input.quality_valid && (input.quality_qkur < 3.6);
-    const bool drop_fit = decision.quality_low && bpm_from_fit > 0.0;
-    diag.drop_fit = drop_fit;
     const std::size_t downbeat_count = downbeat_stats.count;
     const double downbeat_cv = (downbeat_count > 0 && downbeat_stats.mean_interval > 0.0)
         ? (downbeat_stats.stdev_interval / downbeat_stats.mean_interval)
@@ -198,8 +182,6 @@ GridTempoDecision compute_grid_tempo_decision(const GridTempoDecisionInput& inpu
             : 0.0;
     const bool ref_mismatch =
         decision.downbeat_override_ok && bpm_from_downbeats > 0.0 && ref_downbeat_ratio > 0.005;
-    const bool drop_ref = (decision.quality_low || ref_mismatch) && input.reference_bpm > 0.0f;
-    diag.drop_ref = drop_ref;
     const bool allow_reference_grid_bpm =
         input.reference_bpm > 0.0f &&
         ((static_cast<double>(input.max_bpm) - static_cast<double>(input.min_bpm)) <=
@@ -210,7 +192,6 @@ GridTempoDecision compute_grid_tempo_decision(const GridTempoDecisionInput& inpu
         const double rel_diff = diff / bpm_from_fit;
         global_fit_plausible = rel_diff <= 0.08;
     }
-    diag.global_fit_plausible = global_fit_plausible;
     std::string bpm_source = "none";
     if (global_fit_plausible) {
         decision.bpm_for_grid = bpm_from_global_fit;
@@ -243,10 +224,6 @@ GridTempoDecision compute_grid_tempo_decision(const GridTempoDecisionInput& inpu
         decision.bpm_for_grid = input.reference_bpm;
         bpm_source = "reference_fallback";
     }
-    const double bpm_before_downbeat = decision.bpm_for_grid;
-    const std::string bpm_source_before_downbeat = bpm_source;
-    diag.bpm_before_downbeat = bpm_before_downbeat;
-    diag.bpm_source_before_downbeat = bpm_source_before_downbeat;
     if (decision.downbeat_override_ok && bpm_from_downbeats > 0.0 && decision.bpm_for_grid > 0.0 &&
         bpm_source != "peaks_reg_full" && bpm_source != "downbeats_primary" &&
         bpm_source != "fit_primary") {
@@ -270,12 +247,8 @@ GridTempoDecision compute_grid_tempo_decision(const GridTempoDecisionInput& inpu
         : decision.base_interval;
     diag.bpm_from_peaks = bpm_from_peaks;
     diag.bpm_from_peaks_median = bpm_from_peaks_median;
-    diag.bpm_from_peaks_reg = bpm_from_peaks_reg;
-    diag.bpm_from_peaks_median_full = bpm_from_peaks_median_full;
     diag.bpm_from_peaks_reg_full = bpm_from_peaks_reg_full;
     diag.bpm_from_downbeats = bpm_from_downbeats;
-    diag.bpm_from_downbeats_median = bpm_from_downbeats_median;
-    diag.bpm_from_downbeats_reg = bpm_from_downbeats_reg;
 
     return decision;
 }
@@ -283,7 +256,7 @@ GridTempoDecision compute_grid_tempo_decision(const GridTempoDecisionInput& inpu
 void log_grid_tempo_decision(const GridTempoDecision& decision,
                              const GridTempoDecisionInput& input) {
     const auto& d = decision.diagnostics;
-    if (input.config.dbn_trace && d.stats_computed) {
+    if (input.config.dbn_trace) {
         auto print_stats = [&](const char* label, const IntervalStats& stats) {
             if (stats.count == 0 || stats.median_interval <= 0.0) {
                 BEATIT_LOG_DEBUG("DBN stats: " << label << " empty");
@@ -309,45 +282,29 @@ void log_grid_tempo_decision(const GridTempoDecision& decision,
             }
         };
         print_stats("tempo_peaks", d.tempo_stats);
-        if (d.has_downbeat_stats) {
-            print_stats("downbeat_peaks", d.downbeat_stats);
-        }
+        print_stats("downbeat_peaks", d.downbeat_stats);
         print_stats("decoded_beats", d.decoded_stats);
         print_stats("decoded_beats_filtered", d.decoded_filtered_stats);
-        if (d.short_interval_threshold > 0.0) {
-            BEATIT_LOG_DEBUG("DBN stats: filter_threshold=" << d.short_interval_threshold
-                             << " min_interval=" << d.min_interval_frames);
-        }
     }
     BEATIT_LOG_DEBUG("DBN grid: bpm=" << input.decoded.bpm
                      << " bpm_from_fit=" << d.bpm_from_fit
                      << " bpm_from_global_fit=" << d.bpm_from_global_fit
                      << " bpm_from_peaks=" << d.bpm_from_peaks
                      << " bpm_from_peaks_median=" << d.bpm_from_peaks_median
-                     << " bpm_from_peaks_reg=" << d.bpm_from_peaks_reg
-                     << " bpm_from_peaks_median_full=" << d.bpm_from_peaks_median_full
                      << " bpm_from_peaks_reg_full=" << d.bpm_from_peaks_reg_full
                      << " bpm_from_downbeats=" << d.bpm_from_downbeats
-                     << " bpm_from_downbeats_median=" << d.bpm_from_downbeats_median
-                     << " bpm_from_downbeats_reg=" << d.bpm_from_downbeats_reg
                      << " base_interval=" << decision.base_interval
                      << " bpm_reference=" << input.reference_bpm
-                     << " quality_qpar=" << d.quality_qpar
-                     << " quality_qkur=" << d.quality_qkur
                      << " quality_low=" << (decision.quality_low ? 1 : 0)
                      << " bpm_for_grid=" << decision.bpm_for_grid
                      << " step_frames=" << decision.step_frames
                      << " start_frame=" << input.decoded.beat_frames.front());
     if (input.config.dbn_trace) {
         BEATIT_LOG_DEBUG("DBN quality gate: low=" << (decision.quality_low ? 1 : 0)
-                         << " drop_ref=" << (d.drop_ref ? 1 : 0)
-                         << " drop_fit=" << (d.drop_fit ? 1 : 0)
                          << " downbeat_ok=" << (decision.downbeat_override_ok ? 1 : 0)
                          << " downbeat_cv=" << d.downbeat_cv
                          << " downbeat_count=" << d.downbeat_count
-                         << " used=" << d.bpm_source
-                         << " pre_override=" << d.bpm_source_before_downbeat
-                         << " pre_bpm=" << d.bpm_before_downbeat);
+                         << " used=" << d.bpm_source);
     }
 }
 

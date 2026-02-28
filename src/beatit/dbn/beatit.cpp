@@ -19,8 +19,7 @@ DBNDecodeResult decode_dbn_beats_beatit(const std::vector<float>& beat_activatio
                                         double fps,
                                         float min_bpm,
                                         float max_bpm,
-                                        const BeatitConfig& config,
-                                        float reference_bpm) {
+                                        const BeatitConfig& config) {
     DBNDecodeResult result;
     if (beat_activation.empty() || fps <= 0.0) {
         return result;
@@ -31,7 +30,6 @@ DBNDecodeResult decode_dbn_beats_beatit(const std::vector<float>& beat_activatio
     const std::size_t beats_per_bar = std::max<std::size_t>(1, config.dbn_beats_per_bar);
     const float downbeat_weight = std::max(0.0f, config.dbn_downbeat_weight);
     const float tempo_change_penalty = std::max(0.0f, config.dbn_tempo_change_penalty);
-    const float tempo_prior_weight = std::max(0.0f, config.dbn_tempo_prior_weight);
     const float transition_reward = config.dbn_transition_reward;
     const std::size_t max_candidates = std::max<std::size_t>(4, config.dbn_max_candidates);
     const double floor_value = std::max(1e-6f, activation_floor);
@@ -41,7 +39,6 @@ DBNDecodeResult decode_dbn_beats_beatit(const std::vector<float>& beat_activatio
 
     std::vector<std::size_t> candidates;
     std::size_t candidate_count = beat_activation.size();
-    const std::size_t raw_candidate_count = candidate_count;
     if (!use_all_candidates) {
         candidates.reserve(beat_activation.size());
         for (std::size_t i = 0; i < beat_activation.size(); ++i) {
@@ -52,7 +49,6 @@ DBNDecodeResult decode_dbn_beats_beatit(const std::vector<float>& beat_activatio
         candidate_count = candidates.size();
     }
 
-    std::size_t pruned_count = 0;
     if (!use_all_candidates && candidates.size() > max_candidates) {
         std::vector<std::size_t> sorted = candidates;
         std::nth_element(sorted.begin(),
@@ -64,10 +60,9 @@ DBNDecodeResult decode_dbn_beats_beatit(const std::vector<float>& beat_activatio
         sorted.resize(max_candidates);
         std::sort(sorted.begin(), sorted.end());
         candidates.swap(sorted);
-        pruned_count = candidate_count - candidates.size();
     }
 
-    if (config.dbn_trace) {
+    if (config.dbn_trace && beatit_should_log("debug")) {
         const std::size_t first_window =
             std::min<std::size_t>(beat_activation.size(),
                                   static_cast<std::size_t>(std::llround(2.0 * fps)));
@@ -98,62 +93,10 @@ DBNDecodeResult decode_dbn_beats_beatit(const std::vector<float>& beat_activatio
                              << " mean=" << mean
                              << " above_floor=" << above
                              << " floor=" << activation_floor);
-            auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
-            debug_stream << "DBN: " << label << " first2s hits:";
-            std::size_t printed = 0;
-            for (std::size_t i = 0; i < first_window && printed < 8; ++i) {
-                const float v = activation[i];
-                if (v >= activation_floor) {
-                    const double time_s = fps > 0.0 ? static_cast<double>(i) / fps : 0.0;
-                    debug_stream << " " << i << "(" << time_s << "s)->" << v;
-                    ++printed;
-                }
-            }
-            if (printed == 0) {
-                debug_stream << " none";
-            }
         };
         summarize_activation(beat_activation, "beat");
         summarize_activation(downbeat_activation, "downbeat");
 
-        auto preview_candidates = [&](const std::vector<std::size_t>& frames,
-                                      const std::vector<float>& activation,
-                                      const char* label) {
-            auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
-            debug_stream << "DBN: " << label << " candidates head:";
-            const std::size_t top = std::min<std::size_t>(8, frames.size());
-            for (std::size_t i = 0; i < top; ++i) {
-                const std::size_t frame = frames[i];
-                const double time_s = fps > 0.0 ? static_cast<double>(frame) / fps : 0.0;
-                float value = 0.0f;
-                if (frame < activation.size()) {
-                    value = activation[frame];
-                }
-                debug_stream << " " << frame << "(" << time_s << "s)->" << value;
-            }
-        };
-        if (!use_all_candidates) {
-            preview_candidates(candidates, beat_activation, "beat");
-        } else {
-            std::vector<std::size_t> first_hits;
-            first_hits.reserve(8);
-            for (std::size_t i = 0; i < beat_activation.size() && first_hits.size() < 8; ++i) {
-                if (beat_activation[i] >= activation_floor) {
-                    first_hits.push_back(i);
-                }
-            }
-            preview_candidates(first_hits, beat_activation, "beat");
-        }
-        std::vector<std::size_t> downbeat_hits;
-        downbeat_hits.reserve(8);
-        for (std::size_t i = 0;
-             i < downbeat_activation.size() && downbeat_hits.size() < 8;
-             ++i) {
-            if (downbeat_activation[i] >= activation_floor) {
-                downbeat_hits.push_back(i);
-            }
-        }
-        preview_candidates(downbeat_hits, downbeat_activation, "downbeat");
     }
 
     if (candidate_count < 2) {
@@ -174,18 +117,13 @@ DBNDecodeResult decode_dbn_beats_beatit(const std::vector<float>& beat_activatio
 
     BEATIT_LOG_DEBUG("DBN config: all_candidates="
                      << (use_all_candidates ? "true" : "false")
-                     << " raw_candidates=" << raw_candidate_count
                      << " used_candidates=" << candidate_count
-                     << " pruned=" << pruned_count
                      << " floor=" << activation_floor
                      << " tol=" << tolerance
-                     << " max_cand=" << max_candidates
                      << " bpm=[" << min_bpm << "," << max_bpm << "]"
                      << " step=" << bpm_step
                      << " tempos=" << tempo_count
-                     << " bpb=" << beats_per_bar
-                     << " reference_bpm=" << reference_bpm
-                     << " prior_weight=" << tempo_prior_weight);
+                     << " bpb=" << beats_per_bar);
 
     std::vector<double> beat_log(beat_activation.size(), 0.0);
     for (std::size_t i = 0; i < beat_activation.size(); ++i) {
@@ -201,7 +139,6 @@ DBNDecodeResult decode_dbn_beats_beatit(const std::vector<float>& beat_activatio
         float bpm = 0.0f;
         std::size_t min_interval = 0;
         std::size_t max_interval = 0;
-        double prior_penalty = 0.0;
     };
 
     std::vector<TempoParams> tempos;
@@ -211,15 +148,10 @@ DBNDecodeResult decode_dbn_beats_beatit(const std::vector<float>& beat_activatio
         const double interval = (60.0 * fps) / bpm;
         const double min_interval = interval * (1.0 - tolerance);
         const double max_interval = interval * (1.0 + tolerance);
-        double prior_penalty = 0.0;
-        if (reference_bpm > 0.0f && tempo_prior_weight > 0.0f) {
-            prior_penalty = tempo_prior_weight * std::abs(bpm - reference_bpm);
-        }
         tempos.push_back({
             bpm,
             static_cast<std::size_t>(std::max(1.0, std::floor(min_interval))),
             static_cast<std::size_t>(std::max(1.0, std::ceil(max_interval))),
-            prior_penalty
         });
     }
 
@@ -237,8 +169,12 @@ DBNDecodeResult decode_dbn_beats_beatit(const std::vector<float>& beat_activatio
         return (cand_idx * tempo_count + tempo_idx) * phase_count + phase_idx;
     };
 
+    auto frame_for_candidate = [&](std::size_t cand_idx) {
+        return use_all_candidates ? cand_idx : candidates[cand_idx];
+    };
+
     for (std::size_t ci = 0; ci < candidate_count; ++ci) {
-        const std::size_t frame = use_all_candidates ? ci : candidates[ci];
+        const std::size_t frame = frame_for_candidate(ci);
         const double beat_obs = beat_log[frame];
         for (std::size_t tempo_idx = 0; tempo_idx < tempo_count; ++tempo_idx) {
             const auto& tempo = tempos[tempo_idx];
@@ -266,7 +202,7 @@ DBNDecodeResult decode_dbn_beats_beatit(const std::vector<float>& beat_activatio
 
             for (std::size_t phase_idx = 0; phase_idx < phase_count; ++phase_idx) {
                 const bool is_downbeat = (phase_idx == 0);
-                double obs = beat_obs - tempo.prior_penalty;
+                double obs = beat_obs;
                 if (config.dbn_use_downbeat && is_downbeat && frame < downbeat_log.size()) {
                     obs += downbeat_weight * downbeat_log[frame];
                 }
@@ -290,8 +226,8 @@ DBNDecodeResult decode_dbn_beats_beatit(const std::vector<float>& beat_activatio
                         }
                         const double tempo_penalty =
                             tempo_change_penalty * std::abs(tempo.bpm - tempos[prev_tempo].bpm);
-                        const double candidate = prev_score + obs - tempo_penalty;
-                        const double rewarded = candidate + transition_reward;
+                        const double rewarded =
+                            prev_score + obs - tempo_penalty + transition_reward;
                         if (rewarded > best_score) {
                             best_score = rewarded;
                             best_backref.prev_idx = static_cast<int>(cj);
@@ -333,9 +269,10 @@ DBNDecodeResult decode_dbn_beats_beatit(const std::vector<float>& beat_activatio
     std::size_t phase_idx = best_phase;
 
     while (true) {
-        beat_frames.push_back(use_all_candidates ? ci : candidates[ci]);
+        const std::size_t frame = frame_for_candidate(ci);
+        beat_frames.push_back(frame);
         if (phase_idx == 0) {
-            downbeat_frames.push_back(use_all_candidates ? ci : candidates[ci]);
+            downbeat_frames.push_back(frame);
         }
         const std::size_t idx = state_index(ci, tempo_idx, phase_idx);
         const Backref ref = backrefs[idx];

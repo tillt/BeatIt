@@ -105,50 +105,6 @@ double sparse_estimate_probe_confidence(const AnalysisResult& result, double sam
     return (1.0 / (1.0 + cv)) * std::min(1.0, n / 32.0);
 }
 
-double sparse_estimate_intro_phase_abs_ms(const AnalysisResult& result,
-                                          double bpm_hint,
-                                          double sample_rate,
-                                          const SparseSampleProvider& provider) {
-    if (sample_rate <= 0.0 || bpm_hint <= 0.0 || !provider) {
-        return std::numeric_limits<double>::infinity();
-    }
-    const auto& beats = sparse_select_beats(result);
-    if (beats.size() < 12) {
-        return std::numeric_limits<double>::infinity();
-    }
-
-    const std::size_t probe_beats = std::min<std::size_t>(24, beats.size());
-    const double beat_period_s = 60.0 / bpm_hint;
-    const double intro_s = std::max(20.0, beat_period_s * static_cast<double>(probe_beats + 4));
-
-    std::vector<float> intro_samples;
-    if (!sparse_load_samples(provider, 0.0, intro_s, &intro_samples)) {
-        return std::numeric_limits<double>::infinity();
-    }
-    const std::size_t radius = sparse_waveform_radius(sample_rate, bpm_hint);
-    if (radius == 0) {
-        return std::numeric_limits<double>::infinity();
-    }
-
-    std::vector<double> signed_offsets_ms;
-    std::vector<double> abs_offsets_ms;
-    abs_offsets_ms.reserve(probe_beats);
-    sparse_collect_offsets(beats,
-                           0,
-                           probe_beats,
-                           0,
-                           intro_samples,
-                           radius,
-                           SparsePeakMode::AbsoluteMax,
-                           sample_rate,
-                           &signed_offsets_ms,
-                           &abs_offsets_ms);
-    if (abs_offsets_ms.size() < 8) {
-        return std::numeric_limits<double>::infinity();
-    }
-    return sparse_median_inplace(&abs_offsets_ms);
-}
-
 double sparse_probe_quality_score(const SparseProbeObservation& probe) {
     const std::size_t beat_count = probe_beat_count(probe.analysis);
     if (!(probe.bpm > 0.0) || beat_count < 4) {
@@ -274,7 +230,6 @@ IntroPhaseMetrics sparse_measure_intro_phase(const AnalysisResult& result,
     if (abs_offsets_ms.size() < 8) {
         return metrics;
     }
-    metrics.count = abs_offsets_ms.size();
     metrics.median_abs_ms = sparse_median_inplace(&abs_offsets_ms);
 
     std::vector<double> odd;
