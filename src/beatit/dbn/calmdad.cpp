@@ -84,6 +84,22 @@ std::vector<std::size_t> CalmdadDecoder::viterbi_beats(const std::vector<float>&
 
 namespace {
 
+void log_frame_preview(const char* label,
+                       const std::vector<std::size_t>& frames,
+                       double fps,
+                       std::size_t max_count) {
+    auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
+    debug_stream << label;
+    const std::size_t count = std::min(max_count, frames.size());
+    for (std::size_t i = 0; i < count; ++i) {
+        const std::size_t frame = frames[i];
+        debug_stream << " " << frame << "->" << (static_cast<double>(frame) / fps);
+    }
+    if (frames.empty()) {
+        debug_stream << " none";
+    }
+}
+
 struct ActivationLogData {
     std::vector<double> beat_log;
     std::vector<double> downbeat_log;
@@ -132,54 +148,41 @@ ActivationLogData build_activation_logs(const std::vector<float>& beat_activatio
 
 void log_activation_candidates(const ActivationLogData& logs, double floor_value, double fps) {
     constexpr std::size_t kDumpCount = 10;
-    std::size_t emitted = 0;
-    auto beat_stream = BEATIT_LOG_DEBUG_STREAM();
-    beat_stream << "DBN calmdad: first beat candidates (frame->s):";
-    for (std::size_t i = 0; i < logs.beat_log.size() && emitted < kDumpCount; ++i) {
+    std::vector<std::size_t> beat_frames;
+    beat_frames.reserve(kDumpCount);
+    for (std::size_t i = 0; i < logs.beat_log.size() && beat_frames.size() < kDumpCount; ++i) {
         if (std::exp(logs.beat_log[i]) > floor_value) {
-            beat_stream << " " << i << "->" << (static_cast<double>(i) / fps);
-            ++emitted;
+            beat_frames.push_back(i);
         }
     }
-    if (emitted == 0) {
-        beat_stream << " none";
-    }
+    log_frame_preview("DBN calmdad: first beat candidates (frame->s):",
+                      beat_frames,
+                      fps,
+                      kDumpCount);
 
-    emitted = 0;
-    auto downbeat_stream = BEATIT_LOG_DEBUG_STREAM();
-    downbeat_stream << "DBN calmdad: first downbeat candidates (frame->s):";
-    for (std::size_t i = 0; i < logs.downbeat_log.size() && emitted < kDumpCount; ++i) {
+    std::vector<std::size_t> downbeat_frames;
+    downbeat_frames.reserve(kDumpCount);
+    for (std::size_t i = 0; i < logs.downbeat_log.size() && downbeat_frames.size() < kDumpCount; ++i) {
         if (std::exp(logs.downbeat_log[i]) > floor_value) {
-            downbeat_stream << " " << i << "->" << (static_cast<double>(i) / fps);
-            ++emitted;
+            downbeat_frames.push_back(i);
         }
     }
-    if (emitted == 0) {
-        downbeat_stream << " none";
-    }
+    log_frame_preview("DBN calmdad: first downbeat candidates (frame->s):",
+                      downbeat_frames,
+                      fps,
+                      kDumpCount);
 }
 
 void log_decoded_candidates(const DBNDecodeResult& decoded, double fps) {
     constexpr std::size_t kDumpCount = 10;
-    auto beat_stream = BEATIT_LOG_DEBUG_STREAM();
-    beat_stream << "DBN calmdad: first beats (frame->s):";
-    for (std::size_t i = 0; i < decoded.beat_frames.size() && i < kDumpCount; ++i) {
-        const auto frame = decoded.beat_frames[i];
-        beat_stream << " " << frame << "->" << (static_cast<double>(frame) / fps);
-    }
-    if (decoded.beat_frames.empty()) {
-        beat_stream << " none";
-    }
-
-    auto downbeat_stream = BEATIT_LOG_DEBUG_STREAM();
-    downbeat_stream << "DBN calmdad: first downbeats (frame->s):";
-    for (std::size_t i = 0; i < decoded.downbeat_frames.size() && i < kDumpCount; ++i) {
-        const auto frame = decoded.downbeat_frames[i];
-        downbeat_stream << " " << frame << "->" << (static_cast<double>(frame) / fps);
-    }
-    if (decoded.downbeat_frames.empty()) {
-        downbeat_stream << " none";
-    }
+    log_frame_preview("DBN calmdad: first beats (frame->s):",
+                      decoded.beat_frames,
+                      fps,
+                      kDumpCount);
+    log_frame_preview("DBN calmdad: first downbeats (frame->s):",
+                      decoded.downbeat_frames,
+                      fps,
+                      kDumpCount);
 }
 
 DBNPathResult decode_dbn_beats_candidate(const std::vector<double>& beat_log,
