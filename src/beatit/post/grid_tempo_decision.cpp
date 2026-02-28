@@ -22,7 +22,6 @@ namespace beatit::detail {
 GridTempoDecision compute_grid_tempo_decision(const GridTempoDecisionInput& input) {
     GridTempoDecision decision;
     auto& diag = decision.diagnostics;
-    diag.quality_qpar = input.quality_qpar;
     diag.quality_qkur = input.quality_qkur;
     if (input.decoded.beat_frames.empty()) {
         return decision;
@@ -324,7 +323,6 @@ void log_grid_tempo_decision(const GridTempoDecision& decision,
                      << " bpm_from_downbeats_reg=" << d.bpm_from_downbeats_reg
                      << " base_interval=" << decision.base_interval
                      << " bpm_reference=" << input.reference_bpm
-                     << " quality_qpar=" << d.quality_qpar
                      << " quality_qkur=" << d.quality_qkur
                      << " quality_low=" << (decision.quality_low ? 1 : 0)
                      << " bpm_for_grid=" << decision.bpm_for_grid

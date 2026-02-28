@@ -47,7 +47,6 @@ bool run_dbn_decoded_postprocess(CoreMLResult& result,
     const float max_bpm = context.bpm.max_bpm;
 
     const bool quality_valid = context.quality.valid;
-    const double quality_qpar = context.quality.qpar;
     const double quality_qkur = context.quality.qkur;
 
     auto fill_beats_from_frames = [&](const std::vector<std::size_t>& frames) {
@@ -142,7 +141,6 @@ bool run_dbn_decoded_postprocess(CoreMLResult& result,
             beat_slice,
             downbeat_slice,
             quality_valid,
-            quality_qpar,
             quality_qkur,
             used_frames,
             min_bpm,

@@ -54,7 +54,6 @@ struct GridTempoDecision {
         std::string bpm_source = "none";
         std::string bpm_source_before_downbeat = "none";
 
-        double quality_qpar = 0.0;
         double quality_qkur = 0.0;
     };
 
@@ -79,7 +78,6 @@ struct GridTempoDecisionInput {
     const std::vector<float>& downbeat_slice;
 
     bool quality_valid = false;
-    double quality_qpar = 0.0;
     double quality_qkur = 0.0;
 
     std::size_t used_frames = 0;

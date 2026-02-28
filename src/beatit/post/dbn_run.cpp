@@ -311,7 +311,6 @@ bool run_dbn_postprocess(const DBNRunRequest& request) {
         };
         const DBNQualityContext quality_ctx{
             quality_valid,
-            quality_qpar,
             quality_qkur,
         };
         const DBNDecodedPostprocessContext decoded_context{
