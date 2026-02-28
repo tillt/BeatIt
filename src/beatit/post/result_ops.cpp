@@ -17,6 +17,21 @@ namespace beatit::detail {
 
 namespace {
 
+std::size_t clamp_subtract(std::size_t value, std::size_t amount) {
+    return (value > amount) ? (value - amount) : 0;
+}
+
+double feature_to_sample_position(double feature_frame,
+                                  const BeatitConfig& config,
+                                  double hop_scale) {
+    return (feature_frame * static_cast<double>(config.hop_size)) * hop_scale;
+}
+
+long long quantized_sample_frame(double sample_position, long long latency_samples = 0) {
+    const long long sample_frame = static_cast<long long>(std::llround(sample_position)) - latency_samples;
+    return std::max<long long>(0, sample_frame);
+}
+
 void dedupe_aligned_beats(std::vector<unsigned long long>& sample_frames,
                           std::vector<unsigned long long>& feature_frames,
                           std::vector<float>& strengths) {
@@ -139,22 +154,15 @@ void fill_beats_from_frames(CoreMLResult& result,
         std::llround(config.output_latency_seconds * sample_rate));
 
     for (std::size_t frame : frames) {
-        const std::size_t output_frame =
-            (analysis_latency_frames > 0 && frame > analysis_latency_frames)
-                ? (frame - analysis_latency_frames)
-                : (analysis_latency_frames > 0 ? 0 : frame);
+        const std::size_t output_frame = clamp_subtract(frame, analysis_latency_frames);
         result.beat_feature_frames.push_back(static_cast<unsigned long long>(output_frame));
         const std::size_t peak_frame = refine_frame_to_peak(frame, result.beat_activation, refine_window);
         double frame_pos = interpolate_peak_position(result.beat_activation, peak_frame);
         if (analysis_latency_frames > 0) {
             frame_pos = std::max(0.0, frame_pos - analysis_latency_frames_f);
         }
-        const double sample_pos =
-            (frame_pos * static_cast<double>(config.hop_size)) * hop_scale;
-        long long sample_frame = static_cast<long long>(std::llround(sample_pos)) - latency_samples;
-        if (sample_frame < 0) {
-            sample_frame = 0;
-        }
+        const double sample_pos = feature_to_sample_position(frame_pos, config, hop_scale);
+        const long long sample_frame = quantized_sample_frame(sample_pos, latency_samples);
         result.beat_sample_frames.push_back(static_cast<unsigned long long>(sample_frame));
         if (!result.beat_activation.empty()) {
             result.beat_strengths.push_back(result.beat_activation[peak_frame]);
@@ -193,17 +201,15 @@ void fill_beats_from_bpm_grid_into(const std::vector<float>& beat_activation,
     }
 
     const double start_frame_adjusted = static_cast<double>(start_frame);
+    const double start_sample_pos =
+        feature_to_sample_position(start_frame_adjusted, config, hop_scale);
+    const long long start_sample_frame = quantized_sample_frame(start_sample_pos);
 
     if (config.dbn_trace) {
         const double start_time = start_frame_adjusted / fps;
-        const double start_sample_pos =
-            (start_frame_adjusted * static_cast<double>(config.hop_size)) * hop_scale;
-        const long long start_sample_frame =
-            static_cast<long long>(std::llround(start_sample_pos));
         const double start_time_after_latency =
             sample_rate > 0.0
-                ? static_cast<double>(std::max<long long>(0, start_sample_frame)) /
-                    sample_rate
+                ? static_cast<double>(start_sample_frame) / sample_rate
                 : 0.0;
         BEATIT_LOG_DEBUG("DBN grid project: start_frame=" << start_frame
                          << " start_time=" << start_time
@@ -220,9 +226,6 @@ void fill_beats_from_bpm_grid_into(const std::vector<float>& beat_activation,
     if (step_samples <= 0.0) {
         return;
     }
-    const double start_sample_pos =
-        (start_frame_adjusted * static_cast<double>(config.hop_size)) * hop_scale;
-    const long long start_sample_frame = static_cast<long long>(std::llround(start_sample_pos));
     std::vector<unsigned long long> grid_samples;
     grid_samples.reserve(static_cast<std::size_t>(
         std::ceil(static_cast<double>(total_frames) / step_frames)) + 4);
