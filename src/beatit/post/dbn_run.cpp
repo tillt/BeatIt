@@ -9,7 +9,6 @@
 #include "beatit/post/dbn_run.h"
 
 #include "beatit/post/dbn_apply.h"
-#include "beatit/post/helpers.h"
 #include "beatit/post/window.h"
 #include "beatit/logging.hpp"
 #include "beatit/dbn/beatit.h"
@@ -187,68 +186,13 @@ struct DBNDecodeOutcome {
     float max_bpm = 0.0f;
 };
 
-void apply_calmdad_prior_clamp(float& min_bpm,
-                               float& max_bpm,
-                               const std::vector<float>& activation,
-                               const BeatitConfig& config,
-                               double fps,
-                               float hard_min_bpm,
-                               float hard_max_bpm) {
-    if (config.dbn_tempo_prior_weight <= 0.0f) {
-        return;
-    }
-
-    const double tolerance =
-        std::max(0.0, static_cast<double>(config.dbn_interval_tolerance));
-    const double min_interval_frames =
-        std::max(1.0, (60.0 * fps) / std::max(1.0f, max_bpm)) * (1.0 - tolerance);
-    const double max_interval_frames =
-        std::max(1.0, (60.0 * fps) / std::max(1.0f, min_bpm)) * (1.0 + tolerance);
-    const std::size_t peak_min_interval =
-        static_cast<std::size_t>(std::max(1.0, std::floor(min_interval_frames)));
-    const std::size_t peak_max_interval =
-        static_cast<std::size_t>(std::max<double>(peak_min_interval,
-                                                  std::ceil(max_interval_frames)));
-    const float peak_threshold =
-        std::max(config.activation_threshold, config.dbn_activation_floor);
-
-    const std::vector<std::size_t> prior_peaks =
-        pick_peaks(activation, peak_threshold, peak_min_interval, peak_max_interval);
-    const double prior_interval = median_interval_frames(prior_peaks);
-    if (prior_interval <= 1.0) {
-        BEATIT_LOG_DEBUG("DBN calmdad prior: insufficient peaks for clamp");
-        return;
-    }
-
-    const double prior_bpm = (60.0 * fps) / prior_interval;
-    const double window_pct = config.tempo_window_percent > 0.0f
-        ? (static_cast<double>(config.tempo_window_percent) / 100.0)
-        : 0.10;
-    min_bpm = static_cast<float>(prior_bpm * (1.0 - window_pct));
-    max_bpm = static_cast<float>(prior_bpm * (1.0 + window_pct));
-    min_bpm = std::max(hard_min_bpm, min_bpm);
-    max_bpm = std::min(hard_max_bpm, max_bpm);
-    if (max_bpm <= min_bpm) {
-        min_bpm = hard_min_bpm;
-        max_bpm = hard_max_bpm;
-    }
-
-    BEATIT_LOG_DEBUG("DBN calmdad prior: bpm=" << prior_bpm
-                     << " peaks=" << prior_peaks.size()
-                     << " window_pct=" << window_pct
-                     << " clamp=[" << min_bpm << "," << max_bpm << "]");
-}
-
 DBNDecodeOutcome run_dbn_decode(const CoreMLResult& result,
                                 const DBNWindowSelection& window_selection,
                                 const BeatitConfig& config,
                                 const CalmdadDecoder& calmdad_decoder,
                                 double fps,
-                                float reference_bpm,
                                 float min_bpm,
-                                float max_bpm,
-                                float hard_min_bpm,
-                                float hard_max_bpm) {
+                                float max_bpm) {
     DBNDecodeOutcome outcome;
     outcome.min_bpm = min_bpm;
     outcome.max_bpm = max_bpm;
@@ -259,13 +203,6 @@ DBNDecodeOutcome run_dbn_decode(const CoreMLResult& result,
         window_selection.use_window ? window_selection.downbeat_slice : result.downbeat_activation;
 
     if (config.dbn_mode == BeatitConfig::DBNMode::Calmdad) {
-        apply_calmdad_prior_clamp(outcome.min_bpm,
-                                  outcome.max_bpm,
-                                  beat_activation,
-                                  config,
-                                  fps,
-                                  hard_min_bpm,
-                                  hard_max_bpm);
         outcome.decoded = calmdad_decoder.decode({
             beat_activation,
             downbeat_activation,
@@ -282,8 +219,7 @@ DBNDecodeOutcome run_dbn_decode(const CoreMLResult& result,
                                               fps,
                                               outcome.min_bpm,
                                               outcome.max_bpm,
-                                              config,
-                                              reference_bpm);
+                                              config);
     return outcome;
 }
 
@@ -311,8 +247,6 @@ bool run_dbn_postprocess(const DBNRunRequest& request) {
     }
 
     constexpr std::size_t kRefineWindow = 2;
-    const float hard_min_bpm = std::max(1.0f, config.min_bpm);
-    const float hard_max_bpm = std::max(hard_min_bpm + 1.0f, config.max_bpm);
 
     const DBNWindowSelection window_selection =
         select_dbn_processing_window(result, phase_energy, config, fps, min_bpm, max_bpm);
@@ -332,11 +266,8 @@ bool run_dbn_postprocess(const DBNRunRequest& request) {
                                                      config,
                                                      calmdad_decoder,
                                                      fps,
-                                                     reference_bpm,
                                                      min_bpm,
-                                                     max_bpm,
-                                                     hard_min_bpm,
-                                                     hard_max_bpm);
+                                                     max_bpm);
     const auto dbn_end = std::chrono::steady_clock::now();
     dbn_ms += std::chrono::duration<double, std::milli>(dbn_end - dbn_start).count();
     DBNDecodeResult& decoded = decode_outcome.decoded;

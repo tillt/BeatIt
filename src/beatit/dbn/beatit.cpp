@@ -19,8 +19,7 @@ DBNDecodeResult decode_dbn_beats_beatit(const std::vector<float>& beat_activatio
                                         double fps,
                                         float min_bpm,
                                         float max_bpm,
-                                        const BeatitConfig& config,
-                                        float reference_bpm) {
+                                        const BeatitConfig& config) {
     DBNDecodeResult result;
     if (beat_activation.empty() || fps <= 0.0) {
         return result;
@@ -31,7 +30,6 @@ DBNDecodeResult decode_dbn_beats_beatit(const std::vector<float>& beat_activatio
     const std::size_t beats_per_bar = std::max<std::size_t>(1, config.dbn_beats_per_bar);
     const float downbeat_weight = std::max(0.0f, config.dbn_downbeat_weight);
     const float tempo_change_penalty = std::max(0.0f, config.dbn_tempo_change_penalty);
-    const float tempo_prior_weight = std::max(0.0f, config.dbn_tempo_prior_weight);
     const float transition_reward = config.dbn_transition_reward;
     const std::size_t max_candidates = std::max<std::size_t>(4, config.dbn_max_candidates);
     const double floor_value = std::max(1e-6f, activation_floor);
@@ -125,8 +123,7 @@ DBNDecodeResult decode_dbn_beats_beatit(const std::vector<float>& beat_activatio
                      << " bpm=[" << min_bpm << "," << max_bpm << "]"
                      << " step=" << bpm_step
                      << " tempos=" << tempo_count
-                     << " bpb=" << beats_per_bar
-                     << " reference_bpm=" << reference_bpm);
+                     << " bpb=" << beats_per_bar);
 
     std::vector<double> beat_log(beat_activation.size(), 0.0);
     for (std::size_t i = 0; i < beat_activation.size(); ++i) {
@@ -142,7 +139,6 @@ DBNDecodeResult decode_dbn_beats_beatit(const std::vector<float>& beat_activatio
         float bpm = 0.0f;
         std::size_t min_interval = 0;
         std::size_t max_interval = 0;
-        double prior_penalty = 0.0;
     };
 
     std::vector<TempoParams> tempos;
@@ -152,15 +148,10 @@ DBNDecodeResult decode_dbn_beats_beatit(const std::vector<float>& beat_activatio
         const double interval = (60.0 * fps) / bpm;
         const double min_interval = interval * (1.0 - tolerance);
         const double max_interval = interval * (1.0 + tolerance);
-        double prior_penalty = 0.0;
-        if (reference_bpm > 0.0f && tempo_prior_weight > 0.0f) {
-            prior_penalty = tempo_prior_weight * std::abs(bpm - reference_bpm);
-        }
         tempos.push_back({
             bpm,
             static_cast<std::size_t>(std::max(1.0, std::floor(min_interval))),
             static_cast<std::size_t>(std::max(1.0, std::ceil(max_interval))),
-            prior_penalty
         });
     }
 
@@ -211,7 +202,7 @@ DBNDecodeResult decode_dbn_beats_beatit(const std::vector<float>& beat_activatio
 
             for (std::size_t phase_idx = 0; phase_idx < phase_count; ++phase_idx) {
                 const bool is_downbeat = (phase_idx == 0);
-                double obs = beat_obs - tempo.prior_penalty;
+                double obs = beat_obs;
                 if (config.dbn_use_downbeat && is_downbeat && frame < downbeat_log.size()) {
                     obs += downbeat_weight * downbeat_log[frame];
                 }

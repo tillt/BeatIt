@@ -81,7 +81,6 @@ public:
         config.dbn_use_downbeat = true;
         config.dbn_mode = BeatitConfig::DBNMode::Calmdad;
         config.dbn_activation_floor = 0.7f;
-        config.dbn_tempo_prior_weight = 0.0f;
         config.dbn_downbeat_phase_peak_ratio = 0.2f;
         config.dbn_downbeat_phase_window_seconds = 2.0;
         config.dbn_downbeat_phase_max_delay_seconds = 0.3;
