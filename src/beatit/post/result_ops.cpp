@@ -15,6 +15,35 @@
 
 namespace beatit::detail {
 
+namespace {
+
+void dedupe_aligned_beats(std::vector<unsigned long long>& sample_frames,
+                          std::vector<unsigned long long>& feature_frames,
+                          std::vector<float>& strengths) {
+    if (sample_frames.empty()) {
+        return;
+    }
+
+    std::size_t write = 1;
+    unsigned long long last = sample_frames[0];
+    for (std::size_t i = 1; i < sample_frames.size(); ++i) {
+        const unsigned long long current = sample_frames[i];
+        if (current <= last) {
+            continue;
+        }
+        sample_frames[write] = current;
+        feature_frames[write] = feature_frames[i];
+        strengths[write] = strengths[i];
+        last = current;
+        ++write;
+    }
+    sample_frames.resize(write);
+    feature_frames.resize(write);
+    strengths.resize(write);
+}
+
+} // namespace
+
 std::size_t refine_frame_to_peak(std::size_t frame,
                                  const std::vector<float>& activation,
                                  std::size_t window) {
@@ -134,24 +163,9 @@ void fill_beats_from_frames(CoreMLResult& result,
         }
     }
 
-    if (!result.beat_sample_frames.empty()) {
-        std::size_t write = 1;
-        unsigned long long last = result.beat_sample_frames[0];
-        for (std::size_t i = 1; i < result.beat_sample_frames.size(); ++i) {
-            const unsigned long long current = result.beat_sample_frames[i];
-            if (current <= last) {
-                continue;
-            }
-            result.beat_sample_frames[write] = current;
-            result.beat_feature_frames[write] = result.beat_feature_frames[i];
-            result.beat_strengths[write] = result.beat_strengths[i];
-            last = current;
-            ++write;
-        }
-        result.beat_sample_frames.resize(write);
-        result.beat_feature_frames.resize(write);
-        result.beat_strengths.resize(write);
-    }
+    dedupe_aligned_beats(result.beat_sample_frames,
+                         result.beat_feature_frames,
+                         result.beat_strengths);
 }
 
 void fill_beats_from_bpm_grid_into(const std::vector<float>& beat_activation,
@@ -254,24 +268,7 @@ void fill_beats_from_bpm_grid_into(const std::vector<float>& beat_activation,
         }
     }
 
-    if (!out_sample_frames.empty()) {
-        std::size_t write = 1;
-        unsigned long long last = out_sample_frames[0];
-        for (std::size_t i = 1; i < out_sample_frames.size(); ++i) {
-            const unsigned long long current = out_sample_frames[i];
-            if (current <= last) {
-                continue;
-            }
-            out_sample_frames[write] = current;
-            out_feature_frames[write] = out_feature_frames[i];
-            out_strengths[write] = out_strengths[i];
-            last = current;
-            ++write;
-        }
-        out_sample_frames.resize(write);
-        out_feature_frames.resize(write);
-        out_strengths.resize(write);
-    }
+    dedupe_aligned_beats(out_sample_frames, out_feature_frames, out_strengths);
 
     if (config.dbn_trace) {
         const std::size_t preview = std::min<std::size_t>(6, out_feature_frames.size());
