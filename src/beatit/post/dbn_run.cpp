@@ -112,6 +112,26 @@ struct DBNWindowSelection {
     std::vector<float> downbeat_slice;
 };
 
+DBNQualityMetrics evaluate_dbn_quality(const CoreMLResult& result,
+                                       const DBNWindowSelection& window_selection,
+                                       const BeatitConfig& config,
+                                       double fps) {
+    const std::vector<float>& activation =
+        window_selection.use_window ? window_selection.beat_slice : result.beat_activation;
+    const DBNQualityMetrics metrics =
+        calculate_dbn_quality_metrics(activation, fps, config.min_bpm, config.max_bpm);
+
+    if (config.dbn_trace && metrics.valid) {
+        BEATIT_LOG_DEBUG("DBN quality: qpar=" << metrics.qpar
+                         << " qmax=" << metrics.qmax
+                         << " qkur=" << metrics.qkur
+                         << " lags=[" << metrics.min_lag << "," << metrics.max_lag << "]"
+                         << " frames=" << activation.size());
+    }
+
+    return metrics;
+}
+
 DBNWindowSelection select_dbn_processing_window(const CoreMLResult& result,
                                                 const std::vector<float>* phase_energy,
                                                 const BeatitConfig& config,
@@ -307,31 +327,10 @@ bool run_dbn_postprocess(const DBNRunRequest& request) {
     const std::vector<float>& beat_slice = window_selection.beat_slice;
     const std::vector<float>& downbeat_slice = window_selection.downbeat_slice;
 
-    double quality_qpar = 0.0;
-    double quality_qkur = 0.0;
-    bool quality_valid = false;
-    auto process_quality_gate = [&] {
-        const std::vector<float>& quality_src =
-            use_window ? beat_slice : result.beat_activation;
-        const DBNQualityMetrics metrics =
-            calculate_dbn_quality_metrics(quality_src, fps, config.min_bpm, config.max_bpm);
-        quality_qpar = metrics.qpar;
-        quality_qkur = metrics.qkur;
-        quality_valid = metrics.valid;
-        if (config.dbn_trace && metrics.valid) {
-            BEATIT_LOG_DEBUG("DBN quality: qpar=" << quality_qpar
-                             << " qmax=" << metrics.qmax
-                             << " qkur=" << quality_qkur
-                             << " lags=[" << metrics.min_lag << "," << metrics.max_lag << "]"
-                             << " frames=" << quality_src.size());
-        }
-    };
-
     const CalmdadDecoder calmdad_decoder(config);
-
-    if (fps > 0.0) {
-        process_quality_gate();
-    }
+    const DBNQualityMetrics quality_metrics =
+        (fps > 0.0) ? evaluate_dbn_quality(result, window_selection, config, fps)
+                    : DBNQualityMetrics{};
 
     const auto dbn_start = std::chrono::steady_clock::now();
     DBNDecodeOutcome decode_outcome = run_dbn_decode(result,
@@ -375,8 +374,8 @@ bool run_dbn_postprocess(const DBNRunRequest& request) {
             max_bpm,
         };
         const DBNQualityContext quality_ctx{
-            quality_valid,
-            quality_qkur,
+            quality_metrics.valid,
+            quality_metrics.qkur,
         };
         const DBNDecodedPostprocessContext decoded_context{
             processing_ctx,
