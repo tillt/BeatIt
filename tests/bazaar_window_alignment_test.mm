@@ -20,14 +20,11 @@ int main() {
     cfg.drift_probe_count = 24;
     cfg.event_probe_count = 16;
 
-    cfg.target_bpm = 123.013;
-    cfg.max_bpm_error = 0.02;
+    cfg.expected_first_downbeat_sample_frame = 11994ULL;
+    cfg.first_downbeat_sample_tolerance_ms = 10.0;
 
-    cfg.max_offset_slope_ms_per_beat = 0.0335;
-    cfg.max_start_end_delta_ms = 33.0;
-    cfg.max_start_end_delta_beats = 0.067;
-    cfg.max_odd_even_median_gap_ms = 10.5;
-    cfg.max_tempo_edge_bpm_delta = 0.0005;
+    cfg.min_expected_bpm = 122.9;
+    cfg.max_expected_bpm = 123.1;
 
     return beatit::tests::window_alignment::run_window_alignment_case(cfg);
 }
