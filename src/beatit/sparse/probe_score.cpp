@@ -274,7 +274,6 @@ IntroPhaseMetrics sparse_measure_intro_phase(const AnalysisResult& result,
     if (abs_offsets_ms.size() < 8) {
         return metrics;
     }
-    metrics.count = abs_offsets_ms.size();
     metrics.median_abs_ms = sparse_median_inplace(&abs_offsets_ms);
 
     std::vector<double> odd;

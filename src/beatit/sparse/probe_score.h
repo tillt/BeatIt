@@ -20,7 +20,6 @@ namespace detail {
 struct IntroPhaseMetrics {
     double median_abs_ms = std::numeric_limits<double>::infinity();
     double odd_even_gap_ms = std::numeric_limits<double>::infinity();
-    std::size_t count = 0;
 };
 
 struct WindowPhaseGate {

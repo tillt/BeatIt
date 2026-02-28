@@ -117,21 +117,6 @@ SparseWindowPhaseMetrics measure_sparse_window_phase(const AnalysisResult& resul
     metrics.signed_limit_exceed_ratio =
         static_cast<double>(signed_exceed_count) / static_cast<double>(signed_offsets_ms.size());
 
-    auto quantile = [](std::vector<double> values, double q) {
-        if (values.empty()) {
-            return std::numeric_limits<double>::infinity();
-        }
-        q = std::clamp(q, 0.0, 1.0);
-        const std::size_t index = static_cast<std::size_t>(
-            std::llround(q * static_cast<double>(values.size() - 1)));
-        std::nth_element(values.begin(),
-                         values.begin() + static_cast<long>(index),
-                         values.end());
-        return values[index];
-    };
-    metrics.abs_p90_ms = quantile(abs_offsets_ms, 0.90);
-    metrics.abs_p95_ms = quantile(abs_offsets_ms, 0.95);
-
     std::vector<double> odd;
     std::vector<double> even;
     odd.reserve(signed_offsets_ms.size() / 2);
