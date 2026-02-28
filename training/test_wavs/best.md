@@ -12,3 +12,12 @@
   - start/end delta: `12.426ms`
   - odd/even gap: `4.399ms`
   - edge BPM delta: `0`
+- Drift probe:
+  - between median abs offset: `111.406ms`
+  - middle median abs offset: `63.537ms`
+  - unwrapped delta: `0.0711 beats`
+  - `one_beat_linear_signature = 0`
+  - `wrapped_middle_signature = 1`
+- Current status:
+  - downbeat phase is correct
+  - tempo/grid is not acceptable yet; projected grid drifts through the interior

@@ -39,5 +39,8 @@ int main() {
     cfg.max_odd_even_median_gap_ms = 4.5;
     cfg.max_tempo_edge_bpm_delta = 0.0005;
 
+    cfg.use_interior_windows = true;
+    cfg.fail_wrapped_middle_signature = true;
+
     return beatit::tests::window_alignment::run_window_alignment_case(cfg);
 }
