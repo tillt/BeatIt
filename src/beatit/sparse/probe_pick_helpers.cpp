@@ -99,16 +99,9 @@ void push_unique_probe(std::vector<ProbeResult>& probes, ProbeResult&& probe) {
     probes.push_back(std::move(probe));
 }
 
-SelectionDecisionSnapshot make_selection_decision(const std::vector<ProbeResult>& probes,
-                                                  const ProbeMetricsSnapshot& metrics) {
-    SelectionDecisionSnapshot snapshot;
-    snapshot.decision = sparse_decide_unified(probes, metrics.mode_errors, metrics.intro_metrics);
-    snapshot.selected_index = snapshot.decision.selected_index;
-    snapshot.selected_score = snapshot.decision.selected_score;
-    snapshot.score_margin = snapshot.decision.score_margin;
-    snapshot.low_confidence = snapshot.decision.low_confidence;
-    snapshot.selected_intro_metrics = metrics.intro_metrics[snapshot.selected_index];
-    return snapshot;
+DecisionOutcome make_selection_decision(const std::vector<ProbeResult>& probes,
+                                        const ProbeMetricsSnapshot& metrics) {
+    return sparse_decide_unified(probes, metrics.mode_errors, metrics.intro_metrics);
 }
 
 bool should_add_disagreement_probe(const std::vector<ProbeResult>& probes,

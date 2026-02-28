@@ -63,15 +63,6 @@ struct ProbeBuildContext {
     std::size_t max_quality_shifts = 0;
 };
 
-struct SelectionDecisionSnapshot {
-    DecisionOutcome decision;
-    std::size_t selected_index = 0;
-    double selected_score = 0.0;
-    double score_margin = 0.0;
-    bool low_confidence = true;
-    IntroPhaseMetrics selected_intro_metrics;
-};
-
 double clamp_probe_start(const ProbeBuildContext& context, double start_s);
 
 ProbeResult run_probe_observation(const ProbeBuildContext& context, double start_s);
@@ -82,8 +73,8 @@ ProbeResult seek_quality_probe(const ProbeBuildContext& context,
 
 void push_unique_probe(std::vector<ProbeResult>& probes, ProbeResult&& probe);
 
-SelectionDecisionSnapshot make_selection_decision(const std::vector<ProbeResult>& probes,
-                                                  const ProbeMetricsSnapshot& metrics);
+DecisionOutcome make_selection_decision(const std::vector<ProbeResult>& probes,
+                                        const ProbeMetricsSnapshot& metrics);
 
 bool should_add_disagreement_probe(const std::vector<ProbeResult>& probes,
                                    const ProbeMetricsSnapshot& metrics);

@@ -171,9 +171,12 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
     }
 
     const double anchor_start = left_anchor_start;
-    SelectionDecisionSnapshot selection = make_selection_decision(probes, metrics);
+    DecisionOutcome selection = make_selection_decision(probes, metrics);
     SelectedProbeDiagnostics diagnostics;
     bool interior_probe_added = false;
+    const auto selected_intro_metrics = [&]() -> const IntroPhaseMetrics& {
+        return metrics.intro_metrics[selection.selected_index];
+    };
 
     const auto refresh_selected = [&]() {
         const double bpm_hint =
@@ -221,12 +224,12 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
     append_probe_debug_line(debug_stream,
                             probes,
                             metrics,
-                            selection.decision,
+                            selection,
                             selection.selected_index,
                             selection.selected_score,
                             selection.score_margin,
                             selected_mode_error,
-                            selection.selected_intro_metrics,
+                            selected_intro_metrics(),
                             diagnostics,
                             anchor_start,
                             interior_probe_added,
@@ -238,7 +241,7 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
     out.between_probe_start = metrics.starts.between;
     out.middle_probe_start = metrics.starts.middle;
     out.low_confidence = selection.low_confidence;
-    out.selected_intro_median_abs_ms = selection.selected_intro_metrics.median_abs_ms;
+    out.selected_intro_median_abs_ms = selected_intro_metrics().median_abs_ms;
     out.have_consensus = metrics.have_consensus;
     out.consensus_bpm = metrics.consensus_bpm;
     return out;
