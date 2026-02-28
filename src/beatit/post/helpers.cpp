@@ -374,10 +374,10 @@ void trace_grid_peak_alignment(const std::vector<std::size_t>& beat_grid,
                                        << " count=" << count);
     };
 
-    std::vector<std::size_t> beat_peaks;
-    std::vector<std::size_t> downbeat_peaks;
-    beat_peaks = collect_activation_peaks(beat_activation, activation_floor);
-    downbeat_peaks = collect_activation_peaks(downbeat_activation, activation_floor);
+    const std::vector<std::size_t> beat_peaks =
+        collect_activation_peaks(beat_activation, activation_floor);
+    const std::vector<std::size_t> downbeat_peaks =
+        collect_activation_peaks(downbeat_activation, activation_floor);
     compute_offsets(beat_grid, beat_peaks, "beat");
     compute_offsets(downbeat_grid, downbeat_peaks, "downbeat");
 }
