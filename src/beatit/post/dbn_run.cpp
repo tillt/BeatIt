@@ -138,30 +138,6 @@ bool run_dbn_postprocess(const DBNRunRequest& request) {
         }
     };
 
-    auto select_dbn_window = [&](const std::vector<float>& activation,
-                                 double window_seconds,
-                                 bool intro_mid_outro,
-                                 float local_min_bpm,
-                                 float local_max_bpm,
-                                 float peak_threshold) -> std::pair<std::size_t, std::size_t> {
-        return detail::select_dbn_window(activation,
-                                         window_seconds,
-                                         intro_mid_outro,
-                                         local_min_bpm,
-                                         local_max_bpm,
-                                         peak_threshold,
-                                         fps);
-    };
-
-    auto select_dbn_window_energy = [&](const std::vector<float>& energy,
-                                        double window_seconds,
-                                        bool intro_mid_outro) -> std::pair<std::size_t, std::size_t> {
-        return detail::select_dbn_window_energy(energy,
-                                                window_seconds,
-                                                intro_mid_outro,
-                                                fps);
-    };
-
     std::size_t window_start = 0;
     std::size_t window_end = used_frames;
     bool use_window = false;
@@ -177,17 +153,19 @@ bool run_dbn_postprocess(const DBNRunRequest& request) {
         const bool phase_energy_ok =
             phase_energy && !phase_energy->empty() && phase_energy->size() >= used_frames;
         if (phase_energy_ok) {
-            window = select_dbn_window_energy(*phase_energy,
-                                              config.dbn_window_seconds,
-                                              false);
+            window = detail::select_dbn_window_energy(*phase_energy,
+                                                      config.dbn_window_seconds,
+                                                      false,
+                                                      fps);
             selected_by_energy = true;
         } else {
-            window = select_dbn_window(result.beat_activation,
-                                       config.dbn_window_seconds,
-                                       true,
-                                       min_bpm,
-                                       max_bpm,
-                                       window_peak_threshold);
+            window = detail::select_dbn_window(result.beat_activation,
+                                               config.dbn_window_seconds,
+                                               true,
+                                               min_bpm,
+                                               max_bpm,
+                                               window_peak_threshold,
+                                               fps);
         }
         window_energy = selected_by_energy;
         window_start = window.first;
