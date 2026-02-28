@@ -129,6 +129,10 @@ ActivationLogData build_activation_logs(const std::vector<float>& beat_activatio
 }
 
 void log_decoded_candidates(const DBNDecodeResult& decoded, double fps) {
+    if (!beatit_should_log("debug")) {
+        return;
+    }
+
     constexpr std::size_t kDumpCount = 10;
     log_frame_preview("DBN calmdad: first beats (frame->s):",
                       decoded.beat_frames,
