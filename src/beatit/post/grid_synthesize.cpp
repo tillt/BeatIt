@@ -79,6 +79,39 @@ double median_offset_window(const std::vector<OffsetSample>& samples,
     return *mid;
 }
 
+double grid_phase_score(const std::vector<float>& activation,
+                        double start_frame,
+                        double step_frames,
+                        std::size_t used_frames) {
+    if (start_frame < 0.0 || step_frames <= 0.0) {
+        return -1.0;
+    }
+
+    double score = 0.0;
+    std::size_t hits = 0;
+    double cursor = start_frame;
+    while (cursor >= step_frames) {
+        cursor -= step_frames;
+    }
+    while (cursor < static_cast<double>(used_frames) && hits < 128) {
+        const long long idx_ll = static_cast<long long>(std::llround(cursor));
+        if (idx_ll >= 0 && static_cast<std::size_t>(idx_ll) < activation.size()) {
+            const std::size_t idx = static_cast<std::size_t>(idx_ll);
+            float value = activation[idx];
+            if (idx > 0) {
+                value = std::max(value, activation[idx - 1]);
+            }
+            if (idx + 1 < activation.size()) {
+                value = std::max(value, activation[idx + 1]);
+            }
+            score += static_cast<double>(value);
+            hits += 1;
+        }
+        cursor += step_frames;
+    }
+    return hits > 0 ? (score / static_cast<double>(hits)) : -1.0;
+}
+
 } // namespace
 
 void synthesize_uniform_grid(GridProjectionState& state,
@@ -153,38 +186,11 @@ void synthesize_uniform_grid(GridProjectionState& state,
     }
     if (!reliable_downbeat_start && state.step_frames > 1.0 &&
         result.beat_activation.size() >= 8) {
-        const auto phase_score = [&](double start_frame) -> double {
-            if (start_frame < 0.0) {
-                return -1.0;
-            }
-            double score = 0.0;
-            std::size_t hits = 0;
-            double cursor_local = start_frame;
-            while (cursor_local >= state.step_frames) {
-                cursor_local -= state.step_frames;
-            }
-            while (cursor_local < static_cast<double>(used_frames) && hits < 128) {
-                const long long idx_ll = static_cast<long long>(std::llround(cursor_local));
-                if (idx_ll >= 0 &&
-                    static_cast<std::size_t>(idx_ll) < result.beat_activation.size()) {
-                    const std::size_t idx = static_cast<std::size_t>(idx_ll);
-                    float value = result.beat_activation[idx];
-                    if (idx > 0) {
-                        value = std::max(value, result.beat_activation[idx - 1]);
-                    }
-                    if (idx + 1 < result.beat_activation.size()) {
-                        value = std::max(value, result.beat_activation[idx + 1]);
-                    }
-                    score += static_cast<double>(value);
-                    hits += 1;
-                }
-                cursor_local += state.step_frames;
-            }
-            return hits > 0 ? (score / static_cast<double>(hits)) : -1.0;
-        };
         const double alt_start = grid_start + (0.5 * state.step_frames);
-        const double base_score = phase_score(grid_start);
-        const double alt_score = phase_score(alt_start);
+        const double base_score =
+            grid_phase_score(result.beat_activation, grid_start, state.step_frames, used_frames);
+        const double alt_score =
+            grid_phase_score(result.beat_activation, alt_start, state.step_frames, used_frames);
         if (alt_score > base_score) {
             grid_start = alt_start;
             BEATIT_LOG_DEBUG("DBN grid: half-step phase shift selected"
