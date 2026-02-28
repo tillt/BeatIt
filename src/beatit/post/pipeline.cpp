@@ -40,6 +40,11 @@ struct TempoWindowConfig {
     bool has_alt_window = false;
 };
 
+struct BpmRange {
+    float min_bpm = 1.0f;
+    float max_bpm = 2.0f;
+};
+
 void clamp_tempo_window(float& min_bpm, float& max_bpm, float hard_min_bpm, float hard_max_bpm) {
     min_bpm = std::max(hard_min_bpm, min_bpm);
     max_bpm = std::min(hard_max_bpm, max_bpm);
@@ -74,6 +79,19 @@ TempoWindowConfig build_tempo_window_config(const BeatitConfig& config, float re
 
     clamp_tempo_window(out.min_bpm, out.max_bpm, out.hard_min_bpm, out.hard_max_bpm);
     clamp_tempo_window(out.min_bpm_alt, out.max_bpm_alt, out.hard_min_bpm, out.hard_max_bpm);
+    return out;
+}
+
+BpmRange build_dbn_bpm_range(const BeatitConfig& config, const TempoWindowConfig& tempo_window) {
+    BpmRange out{tempo_window.min_bpm, tempo_window.max_bpm};
+    if (config.prefer_double_time && tempo_window.has_alt_window) {
+        out.min_bpm = std::min(out.min_bpm, tempo_window.min_bpm_alt);
+        out.max_bpm = std::max(out.max_bpm, tempo_window.max_bpm_alt);
+    }
+    clamp_tempo_window(out.min_bpm,
+                       out.max_bpm,
+                       tempo_window.hard_min_bpm,
+                       tempo_window.hard_max_bpm);
     return out;
 }
 
@@ -356,16 +374,7 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                                                 peaks_ms);
         return result;
     }
-    float dbn_min_bpm = tempo_window.min_bpm;
-    float dbn_max_bpm = tempo_window.max_bpm;
-    if (config.prefer_double_time && tempo_window.has_alt_window) {
-        dbn_min_bpm = std::min(dbn_min_bpm, tempo_window.min_bpm_alt);
-        dbn_max_bpm = std::max(dbn_max_bpm, tempo_window.max_bpm_alt);
-    }
-    clamp_tempo_window(dbn_min_bpm,
-                       dbn_max_bpm,
-                       tempo_window.hard_min_bpm,
-                       tempo_window.hard_max_bpm);
+    const BpmRange dbn_bpm_range = build_dbn_bpm_range(config, tempo_window);
     const detail::DBNRunRequest dbn_request{
         result,
         phase_energy,
@@ -373,8 +382,8 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
         sample_rate,
         reference_bpm,
         grid_total_frames,
-        dbn_min_bpm,
-        dbn_max_bpm,
+        dbn_bpm_range.min_bpm,
+        dbn_bpm_range.max_bpm,
         fps,
         hop_scale,
         analysis_latency_frames,
