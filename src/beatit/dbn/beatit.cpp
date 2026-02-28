@@ -178,8 +178,12 @@ DBNDecodeResult decode_dbn_beats_beatit(const std::vector<float>& beat_activatio
         return (cand_idx * tempo_count + tempo_idx) * phase_count + phase_idx;
     };
 
+    auto frame_for_candidate = [&](std::size_t cand_idx) {
+        return use_all_candidates ? cand_idx : candidates[cand_idx];
+    };
+
     for (std::size_t ci = 0; ci < candidate_count; ++ci) {
-        const std::size_t frame = use_all_candidates ? ci : candidates[ci];
+        const std::size_t frame = frame_for_candidate(ci);
         const double beat_obs = beat_log[frame];
         for (std::size_t tempo_idx = 0; tempo_idx < tempo_count; ++tempo_idx) {
             const auto& tempo = tempos[tempo_idx];
@@ -274,9 +278,10 @@ DBNDecodeResult decode_dbn_beats_beatit(const std::vector<float>& beat_activatio
     std::size_t phase_idx = best_phase;
 
     while (true) {
-        beat_frames.push_back(use_all_candidates ? ci : candidates[ci]);
+        const std::size_t frame = frame_for_candidate(ci);
+        beat_frames.push_back(frame);
         if (phase_idx == 0) {
-            downbeat_frames.push_back(use_all_candidates ? ci : candidates[ci]);
+            downbeat_frames.push_back(frame);
         }
         const std::size_t idx = state_index(ci, tempo_idx, phase_idx);
         const Backref ref = backrefs[idx];
