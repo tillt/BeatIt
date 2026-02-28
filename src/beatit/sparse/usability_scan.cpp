@@ -402,7 +402,7 @@ std::size_t find_covering_sparse_usability_window(const std::vector<SparseUsabil
     for (std::size_t i = 0; i < windows.size(); ++i) {
         const double start_seconds = windows[i].start_seconds;
         const double end_seconds = start_seconds + windows[i].duration_seconds;
-        if (target_seconds < start_seconds || target_seconds > end_seconds) {
+        if (target_seconds < start_seconds || target_seconds >= end_seconds) {
             continue;
         }
 
@@ -486,6 +486,73 @@ SparseUsabilityTargets pick_sparse_usability_targets(
                                                      min_score,
                                                      kDistanceWeight);
     }
+    return targets;
+}
+
+SparseInteriorWindowTargets resolve_sparse_interior_targets(
+    const std::vector<SparseUsabilityWindow>& windows,
+    double current_middle_start_seconds,
+    double current_between_start_seconds,
+    double min_score) {
+    SparseInteriorWindowTargets targets;
+    targets.middle_start_seconds = current_middle_start_seconds;
+    targets.between_start_seconds = current_between_start_seconds;
+    if (windows.empty()) {
+        return targets;
+    }
+
+    double start_seconds = windows.front().start_seconds;
+    double end_seconds = windows.front().start_seconds + windows.front().duration_seconds;
+    for (const auto& window : windows) {
+        start_seconds = std::min(start_seconds, window.start_seconds);
+        end_seconds = std::max(end_seconds, window.start_seconds + window.duration_seconds);
+    }
+    const double max_snap_seconds = std::max(0.0, end_seconds - start_seconds);
+    const auto is_current_usable = [&](double current_start_seconds) {
+        const std::size_t index =
+            find_covering_sparse_usability_window(windows, current_start_seconds);
+        return index < windows.size() && windows[index].usable;
+    };
+    const auto pick_replacement_start = [&](double target_start_seconds, double fallback_start) {
+        const std::size_t index = pick_sparse_usability_window(
+            windows,
+            SparseUsabilityPickRequest{
+                target_start_seconds,
+                max_snap_seconds,
+                0.01,
+                min_score
+            });
+        if (index >= windows.size()) {
+            return fallback_start;
+        }
+        return windows[index].start_seconds;
+    };
+
+    if (!is_current_usable(current_middle_start_seconds)) {
+        const double middle_start =
+            pick_replacement_start(current_middle_start_seconds, current_middle_start_seconds);
+        targets.middle_overridden = middle_start != current_middle_start_seconds;
+        targets.middle_start_seconds = middle_start;
+    }
+
+    if (targets.middle_overridden) {
+        targets.between_start_seconds = targets.middle_start_seconds;
+        targets.between_overridden = true;
+        return targets;
+    }
+
+    if (!is_current_usable(current_between_start_seconds)) {
+        if (is_current_usable(targets.middle_start_seconds)) {
+            targets.between_start_seconds = targets.middle_start_seconds;
+            targets.between_overridden = true;
+            return targets;
+        }
+        const double between_start =
+            pick_replacement_start(current_between_start_seconds, current_between_start_seconds);
+        targets.between_overridden = between_start != current_between_start_seconds;
+        targets.between_start_seconds = between_start;
+    }
+
     return targets;
 }
 

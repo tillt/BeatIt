@@ -65,6 +65,13 @@ struct SparseUsabilityTargets {
     std::size_t middle_index = std::numeric_limits<std::size_t>::max();
 };
 
+struct SparseInteriorWindowTargets {
+    double middle_start_seconds = 0.0;
+    double between_start_seconds = 0.0;
+    bool middle_overridden = false;
+    bool between_overridden = false;
+};
+
 double score_sparse_usability_window(const SparseUsabilityFeatures& features);
 
 bool sparse_window_is_usable(const SparseUsabilityFeatures& features);
@@ -93,6 +100,12 @@ std::size_t find_covering_sparse_usability_window(const std::vector<SparseUsabil
 
 SparseUsabilityTargets pick_sparse_usability_targets(
     const std::vector<SparseUsabilityWindow>& windows,
+    double min_score);
+
+SparseInteriorWindowTargets resolve_sparse_interior_targets(
+    const std::vector<SparseUsabilityWindow>& windows,
+    double current_middle_start_seconds,
+    double current_between_start_seconds,
     double min_score);
 
 } // namespace detail
