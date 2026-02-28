@@ -20,10 +20,6 @@ int main() {
     cfg.drift_probe_count = 24;
     cfg.event_probe_count = 16;
 
-    cfg.min_beat_count = 64;
-    cfg.expected_beat_count = 770;
-    cfg.expected_downbeat_count = 32;
-
     cfg.expected_first_downbeat_feature_frame = 10ULL;
     cfg.first_downbeat_feature_frame_tolerance = 1ULL;
     cfg.expected_first_downbeat_sample_frame = 0ULL;

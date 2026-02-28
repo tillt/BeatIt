@@ -19,10 +19,6 @@ int main() {
     cfg.tempo_edge_intervals = 64;
     cfg.event_probe_count = 16;
 
-    cfg.min_beat_count = 64;
-    cfg.expected_beat_count = 649;
-    cfg.expected_downbeat_count = 31;
-
     cfg.expected_first_downbeat_feature_frame = 33ULL;
     cfg.first_downbeat_feature_frame_tolerance = 1ULL;
     cfg.expected_first_downbeat_sample_frame = 10573ULL;

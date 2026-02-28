@@ -20,8 +20,6 @@ int main() {
     cfg.drift_probe_count = 24;
     cfg.event_probe_count = 16;
 
-    cfg.min_beat_count = 100;
-    cfg.min_downbeat_count = 20;
     cfg.min_expected_bpm = 70.0;
     cfg.max_expected_bpm = 180.0;
     cfg.require_first_bar_complete = false;

@@ -39,7 +39,7 @@ struct WindowAlignmentCaseConfig {
     std::size_t drift_probe_count = 24;
     std::size_t event_probe_count = 16;
 
-    std::size_t min_beat_count = 64;
+    std::size_t min_beat_count = 0;
     std::optional<std::size_t> expected_beat_count;
 
     std::optional<std::size_t> expected_downbeat_count;

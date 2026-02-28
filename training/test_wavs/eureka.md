@@ -1,7 +1,7 @@
 # eureka.wav
 
 - Path: `training/eureka.wav`
-- Tempo (BPM): `120.209` (stable, CPU sparse-window alignment test)
+- Tempo (BPM): current CPU sparse-window baseline is within `119.95 - 120.30`
 - Beat events: `719`
 - Downbeat events: `30`
 - Projected beat events: `719`
