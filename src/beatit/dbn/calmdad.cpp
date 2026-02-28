@@ -103,13 +103,6 @@ void log_frame_preview(const char* label,
 struct ActivationLogData {
     std::vector<double> beat_log;
     std::vector<double> downbeat_log;
-    double beat_min = std::numeric_limits<double>::infinity();
-    double beat_max = 0.0;
-    double downbeat_min = std::numeric_limits<double>::infinity();
-    double downbeat_max = 0.0;
-    double combined_max = 0.0;
-    std::size_t beat_above_floor = 0;
-    std::size_t downbeat_above_floor = 0;
 };
 
 ActivationLogData build_activation_logs(const std::vector<float>& beat_activation,
@@ -127,20 +120,9 @@ ActivationLogData build_activation_logs(const std::vector<float>& beat_activatio
         const double downbeat_value =
             static_cast<double>(raw_downbeat) * (1.0 - epsilon) + floor_value;
         const double combined_beat = std::max(floor_value, beat_value - downbeat_value);
-        logs.beat_min = std::min<double>(logs.beat_min, beat_value);
-        logs.beat_max = std::max<double>(logs.beat_max, beat_value);
-        logs.downbeat_min = std::min<double>(logs.downbeat_min, downbeat_value);
-        logs.downbeat_max = std::max<double>(logs.downbeat_max, downbeat_value);
-        logs.combined_max = std::max<double>(logs.combined_max, combined_beat);
-        if (combined_beat > floor_value) {
-            ++logs.beat_above_floor;
-        }
         logs.beat_log[i] = std::log(combined_beat);
         if (i < downbeat_activation.size()) {
             logs.downbeat_log[i] = std::log(downbeat_value);
-            if (downbeat_value > floor_value) {
-                ++logs.downbeat_above_floor;
-            }
         }
     }
     return logs;
@@ -371,18 +353,11 @@ DBNDecodeResult CalmdadDecoder::decode(const CalmdadDecodeRequest& request) cons
     std::size_t best_bpb = 0;
     BEATIT_LOG_DEBUG("DBN calmdad: frames=" << beat_activation.size()
                      << " floor=" << floor_value
-                     << " epsilon=" << epsilon
                      << " tol=" << tolerance
                      << " bpm=[" << local_min << "," << local_max << "]"
                      << " step=" << local_step
                      << " lambda=" << transition_lambda
-                     << " use_downbeat=" << (use_downbeat ? "true" : "false")
-                     << " beat[min,max]=[" << logs.beat_min << "," << logs.beat_max << "]"
-                     << " downbeat[min,max]=[" << logs.downbeat_min << "," << logs.downbeat_max
-                     << "]"
-                     << " combined_max=" << logs.combined_max
-                     << " beat>floor=" << logs.beat_above_floor
-                     << " downbeat>floor=" << logs.downbeat_above_floor);
+                     << " use_downbeat=" << (use_downbeat ? "true" : "false"));
     for (std::size_t bpb : bpb_options) {
         DBNPathResult path = decode_dbn_beats_candidate(
             logs.beat_log,
