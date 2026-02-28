@@ -50,6 +50,27 @@ long long quantized_sample_frame(double sample_position, long long latency_sampl
     return std::max<long long>(0, sample_frame);
 }
 
+std::size_t sample_to_feature_frame(unsigned long long sample_frame,
+                                    const BeatitConfig& config,
+                                    double hop_scale) {
+    const double feature_pos =
+        (static_cast<double>(sample_frame) / hop_scale) /
+        static_cast<double>(config.hop_size);
+    return static_cast<std::size_t>(std::llround(feature_pos));
+}
+
+void reset_aligned_beats(std::vector<unsigned long long>& feature_frames,
+                         std::vector<unsigned long long>& sample_frames,
+                         std::vector<float>& strengths,
+                         std::size_t reserve_count) {
+    feature_frames.clear();
+    feature_frames.reserve(reserve_count);
+    sample_frames.clear();
+    sample_frames.reserve(reserve_count);
+    strengths.clear();
+    strengths.reserve(reserve_count);
+}
+
 void dedupe_aligned_beats(std::vector<unsigned long long>& sample_frames,
                           std::vector<unsigned long long>& feature_frames,
                           std::vector<float>& strengths) {
@@ -131,12 +152,10 @@ void fill_beats_from_frames(CoreMLResult& result,
                             std::size_t analysis_latency_frames,
                             double analysis_latency_frames_f,
                             std::size_t refine_window) {
-    result.beat_feature_frames.clear();
-    result.beat_feature_frames.reserve(frames.size());
-    result.beat_sample_frames.clear();
-    result.beat_sample_frames.reserve(frames.size());
-    result.beat_strengths.clear();
-    result.beat_strengths.reserve(frames.size());
+    reset_aligned_beats(result.beat_feature_frames,
+                        result.beat_sample_frames,
+                        result.beat_strengths,
+                        frames.size());
 
     const long long latency_samples = static_cast<long long>(
         std::llround(config.output_latency_seconds * sample_rate));
@@ -175,9 +194,7 @@ void fill_beats_from_bpm_grid_into(const std::vector<float>& beat_activation,
                                    std::vector<unsigned long long>& out_feature_frames,
                                    std::vector<unsigned long long>& out_sample_frames,
                                    std::vector<float>& out_strengths) {
-    out_feature_frames.clear();
-    out_sample_frames.clear();
-    out_strengths.clear();
+    reset_aligned_beats(out_feature_frames, out_sample_frames, out_strengths, 0);
 
     if (bpm <= 0.0 || fps <= 0.0 || total_frames == 0) {
         return;
@@ -246,10 +263,7 @@ void fill_beats_from_bpm_grid_into(const std::vector<float>& beat_activation,
 
     for (unsigned long long sample_frame : grid_samples) {
         out_sample_frames.push_back(sample_frame);
-        const double feature_pos =
-            (static_cast<double>(sample_frame) / hop_scale) /
-            static_cast<double>(config.hop_size);
-        const std::size_t frame = static_cast<std::size_t>(std::llround(feature_pos));
+        const std::size_t frame = sample_to_feature_frame(sample_frame, config, hop_scale);
         out_feature_frames.push_back(static_cast<unsigned long long>(frame));
 
         if (!beat_activation.empty() && frame < beat_activation.size()) {
