@@ -41,7 +41,6 @@ DBNDecodeResult decode_dbn_beats_beatit(const std::vector<float>& beat_activatio
 
     std::vector<std::size_t> candidates;
     std::size_t candidate_count = beat_activation.size();
-    const std::size_t raw_candidate_count = candidate_count;
     if (!use_all_candidates) {
         candidates.reserve(beat_activation.size());
         for (std::size_t i = 0; i < beat_activation.size(); ++i) {
@@ -52,7 +51,6 @@ DBNDecodeResult decode_dbn_beats_beatit(const std::vector<float>& beat_activatio
         candidate_count = candidates.size();
     }
 
-    std::size_t pruned_count = 0;
     if (!use_all_candidates && candidates.size() > max_candidates) {
         std::vector<std::size_t> sorted = candidates;
         std::nth_element(sorted.begin(),
@@ -64,7 +62,6 @@ DBNDecodeResult decode_dbn_beats_beatit(const std::vector<float>& beat_activatio
         sorted.resize(max_candidates);
         std::sort(sorted.begin(), sorted.end());
         candidates.swap(sorted);
-        pruned_count = candidate_count - candidates.size();
     }
 
     if (config.dbn_trace && beatit_should_log("debug")) {
@@ -122,18 +119,14 @@ DBNDecodeResult decode_dbn_beats_beatit(const std::vector<float>& beat_activatio
 
     BEATIT_LOG_DEBUG("DBN config: all_candidates="
                      << (use_all_candidates ? "true" : "false")
-                     << " raw_candidates=" << raw_candidate_count
                      << " used_candidates=" << candidate_count
-                     << " pruned=" << pruned_count
                      << " floor=" << activation_floor
                      << " tol=" << tolerance
-                     << " max_cand=" << max_candidates
                      << " bpm=[" << min_bpm << "," << max_bpm << "]"
                      << " step=" << bpm_step
                      << " tempos=" << tempo_count
                      << " bpb=" << beats_per_bar
-                     << " reference_bpm=" << reference_bpm
-                     << " prior_weight=" << tempo_prior_weight);
+                     << " reference_bpm=" << reference_bpm);
 
     std::vector<double> beat_log(beat_activation.size(), 0.0);
     for (std::size_t i = 0; i < beat_activation.size(); ++i) {
