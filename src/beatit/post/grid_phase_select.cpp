@@ -237,6 +237,7 @@ void select_downbeat_phase(GridProjectionState& state,
             ? static_cast<std::size_t>(
                   std::llround(config.dbn_downbeat_phase_max_delay_seconds * local_frame_rate))
             : 0;
+    const bool trace_enabled = config.dbn_trace && beatit_should_log("debug");
     const float onset_ratio = 0.35f;
     const std::size_t onset_max_back = max_delay_frames > 0 ? max_delay_frames : 8;
 
@@ -271,7 +272,7 @@ void select_downbeat_phase(GridProjectionState& state,
                 }
             }
         }
-        if (config.dbn_trace && allow_downbeat_phase) {
+        if (trace_enabled && allow_downbeat_phase) {
             auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
             debug_stream << "DBN: phase selection window=["
                          << phase_window_start << "," << phase_window_end << ")"
@@ -344,7 +345,7 @@ void select_downbeat_phase(GridProjectionState& state,
                      << " best_score=" << state.best_score);
     decoded.downbeat_frames =
         project_downbeats_from_beats(decoded.beat_frames, state.bpb, state.best_phase);
-    if (config.dbn_trace) {
+    if (trace_enabled) {
         const std::size_t preview = std::min<std::size_t>(6, decoded.downbeat_frames.size());
         auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
         debug_stream << "DBN: downbeat frames head:";
