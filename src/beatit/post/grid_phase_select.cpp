@@ -27,7 +27,6 @@ namespace {
 
 struct PhaseScore {
     double score = -std::numeric_limits<double>::infinity();
-    std::size_t hits = 0;
     const char* source = "none";
 };
 
@@ -93,6 +92,7 @@ PhaseScore fallback_phase_score(const std::vector<std::size_t>& phase_frames,
     PhaseScore out;
     const std::size_t max_checks = std::min<std::size_t>(phase_frames.size(), 3);
     double sum = 0.0;
+    std::size_t hits = 0;
 
     if (allow_downbeat_phase) {
         const float threshold =
@@ -103,18 +103,18 @@ PhaseScore fallback_phase_score(const std::vector<std::size_t>& phase_frames,
                 const float value = result.downbeat_activation[frame];
                 if (value >= threshold) {
                     sum += value;
-                    out.hits += 1;
+                    hits += 1;
                 }
             }
         }
-        if (out.hits == 0) {
+        if (hits == 0) {
             for (std::size_t i = 0; i < max_checks; ++i) {
                 const std::size_t frame = phase_frames[i];
                 if (frame < result.downbeat_activation.size()) {
                     sum += result.downbeat_activation[frame];
                 }
             }
-            out.hits = max_checks;
+            hits = max_checks;
         }
         out.source = "fallback_downbeat";
     } else {
@@ -124,11 +124,11 @@ PhaseScore fallback_phase_score(const std::vector<std::size_t>& phase_frames,
                 sum += result.beat_activation[frame];
             }
         }
-        out.hits = max_checks;
+        hits = max_checks;
         out.source = "fallback_beat";
     }
 
-    if (out.hits > 0) {
+    if (hits > 0) {
         const double penalty = 0.01 * static_cast<double>(phase_frames.front());
         out.score = sum - penalty;
     }
@@ -161,7 +161,6 @@ PhaseScore score_beat_phase_window(const std::vector<std::size_t>& phase_frames,
         }
         if (weight > 0.0) {
             out.score = sum / weight;
-            out.hits = static_cast<std::size_t>(weight);
             out.source = "beat_peak_mask";
         }
         return out;
@@ -183,7 +182,6 @@ PhaseScore score_beat_phase_window(const std::vector<std::size_t>& phase_frames,
     }
     if (weight > 0.0) {
         out.score = sum / weight;
-        out.hits = static_cast<std::size_t>(weight);
         out.source = "beat_threshold";
     }
     return out;
@@ -216,7 +214,6 @@ PhaseScore score_downbeat_phase_window(const std::vector<std::size_t>& phase_fra
     }
     if (weight > 0.0) {
         out.score = sum / weight;
-        out.hits = static_cast<std::size_t>(weight + 0.5);
         out.source = "downbeat_window_decay";
     }
     return out;
