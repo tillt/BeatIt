@@ -43,11 +43,6 @@ struct SelectedProbeDiagnostics {
     WindowPhaseGate between_gate;
     WindowPhaseGate left_gate;
     WindowPhaseGate right_gate;
-    bool middle_gate_triggered = false;
-    bool consistency_gate_triggered = false;
-    bool consistency_edges_low_mismatch = false;
-    bool consistency_between_high_mismatch = false;
-    bool consistency_middle_high_mismatch = false;
 };
 
 struct ProbeBuildContext {
@@ -101,6 +96,16 @@ ProbeMetricsSnapshot recompute_probe_metrics(const std::vector<ProbeResult>& pro
 bool window_has_high_mismatch(const SparseWindowPhaseMetrics& metrics, const WindowPhaseGate& gate);
 
 bool window_has_low_mismatch(const SparseWindowPhaseMetrics& metrics, const WindowPhaseGate& gate);
+
+bool selected_middle_gate_triggered(const SelectedProbeDiagnostics& diagnostics);
+
+bool selected_consistency_edges_low_mismatch(const SelectedProbeDiagnostics& diagnostics);
+
+bool selected_consistency_between_high_mismatch(const SelectedProbeDiagnostics& diagnostics);
+
+bool selected_consistency_middle_high_mismatch(const SelectedProbeDiagnostics& diagnostics);
+
+bool selected_consistency_gate_triggered(const SelectedProbeDiagnostics& diagnostics);
 
 SelectedProbeDiagnostics evaluate_selected_probe_diagnostics(const ProbeResult& selected_probe,
                                                              const SparseWindowPhaseMetrics& middle_metrics,

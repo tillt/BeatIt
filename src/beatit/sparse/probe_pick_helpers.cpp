@@ -211,6 +211,29 @@ bool window_has_low_mismatch(const SparseWindowPhaseMetrics& metrics, const Wind
            metrics.signed_limit_exceed_ratio <= kLowMismatchSignedRatio;
 }
 
+bool selected_middle_gate_triggered(const SelectedProbeDiagnostics& diagnostics) {
+    return diagnostics.middle_gate.unstable_or;
+}
+
+bool selected_consistency_edges_low_mismatch(const SelectedProbeDiagnostics& diagnostics) {
+    return window_has_low_mismatch(diagnostics.left, diagnostics.left_gate) &&
+           window_has_low_mismatch(diagnostics.right, diagnostics.right_gate);
+}
+
+bool selected_consistency_between_high_mismatch(const SelectedProbeDiagnostics& diagnostics) {
+    return window_has_high_mismatch(diagnostics.between, diagnostics.between_gate);
+}
+
+bool selected_consistency_middle_high_mismatch(const SelectedProbeDiagnostics& diagnostics) {
+    return window_has_high_mismatch(diagnostics.middle, diagnostics.middle_gate);
+}
+
+bool selected_consistency_gate_triggered(const SelectedProbeDiagnostics& diagnostics) {
+    return selected_consistency_edges_low_mismatch(diagnostics) &&
+           (selected_consistency_between_high_mismatch(diagnostics) ||
+            selected_consistency_middle_high_mismatch(diagnostics));
+}
+
 SelectedProbeDiagnostics evaluate_selected_probe_diagnostics(const ProbeResult& selected_probe,
                                                              const SparseWindowPhaseMetrics& middle_metrics,
                                                              double bpm_hint,
@@ -221,7 +244,6 @@ SelectedProbeDiagnostics evaluate_selected_probe_diagnostics(const ProbeResult& 
     SelectedProbeDiagnostics diagnostics;
     diagnostics.middle = middle_metrics;
     diagnostics.middle_gate = sparse_evaluate_window_phase_gate(diagnostics.middle, bpm_hint);
-    diagnostics.middle_gate_triggered = diagnostics.middle_gate.unstable_or;
 
     diagnostics.between = measure_sparse_window_phase(selected_probe.analysis,
                                                       bpm_hint,
@@ -245,18 +267,6 @@ SelectedProbeDiagnostics evaluate_selected_probe_diagnostics(const ProbeResult& 
     diagnostics.between_gate = sparse_evaluate_window_phase_gate(diagnostics.between, bpm_hint);
     diagnostics.left_gate = sparse_evaluate_window_phase_gate(diagnostics.left, bpm_hint);
     diagnostics.right_gate = sparse_evaluate_window_phase_gate(diagnostics.right, bpm_hint);
-
-    diagnostics.consistency_between_high_mismatch =
-        window_has_high_mismatch(diagnostics.between, diagnostics.between_gate);
-    diagnostics.consistency_middle_high_mismatch =
-        window_has_high_mismatch(diagnostics.middle, diagnostics.middle_gate);
-    diagnostics.consistency_edges_low_mismatch =
-        window_has_low_mismatch(diagnostics.left, diagnostics.left_gate) &&
-        window_has_low_mismatch(diagnostics.right, diagnostics.right_gate);
-    diagnostics.consistency_gate_triggered =
-        diagnostics.consistency_edges_low_mismatch &&
-        (diagnostics.consistency_between_high_mismatch ||
-         diagnostics.consistency_middle_high_mismatch);
 
     return diagnostics;
 }

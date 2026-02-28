@@ -32,6 +32,15 @@ void append_probe_debug_line(TLogStream& debug_stream,
                              double anchor_start,
                              bool interior_probe_added,
                              bool low_confidence) {
+    const bool middle_gate_triggered = selected_middle_gate_triggered(diagnostics);
+    const bool consistency_gate_triggered = selected_consistency_gate_triggered(diagnostics);
+    const bool consistency_edges_low_mismatch =
+        selected_consistency_edges_low_mismatch(diagnostics);
+    const bool consistency_between_high_mismatch =
+        selected_consistency_between_high_mismatch(diagnostics);
+    const bool consistency_middle_high_mismatch =
+        selected_consistency_middle_high_mismatch(diagnostics);
+
     debug_stream << "Sparse probes:";
     for (std::size_t i = 0; i < probes.size(); ++i) {
         debug_stream << " start=" << probes[i].start
@@ -56,15 +65,14 @@ void append_probe_debug_line(TLogStream& debug_stream,
                  << diagnostics.middle.abs_limit_exceed_ratio
                  << " selected_middle_signed_exceed_ratio="
                  << diagnostics.middle.signed_limit_exceed_ratio
-                 << " middle_gate_triggered=" << (diagnostics.middle_gate_triggered ? 1 : 0)
-                 << " consistency_gate_triggered="
-                 << (diagnostics.consistency_gate_triggered ? 1 : 0)
+                 << " middle_gate_triggered=" << (middle_gate_triggered ? 1 : 0)
+                 << " consistency_gate_triggered=" << (consistency_gate_triggered ? 1 : 0)
                  << " consistency_edges_low_mismatch="
-                 << (diagnostics.consistency_edges_low_mismatch ? 1 : 0)
+                 << (consistency_edges_low_mismatch ? 1 : 0)
                  << " consistency_between_high_mismatch="
-                 << (diagnostics.consistency_between_high_mismatch ? 1 : 0)
+                 << (consistency_between_high_mismatch ? 1 : 0)
                  << " consistency_middle_high_mismatch="
-                 << (diagnostics.consistency_middle_high_mismatch ? 1 : 0)
+                 << (consistency_middle_high_mismatch ? 1 : 0)
                  << " selected_between_abs_ms=" << diagnostics.between.median_abs_ms
                  << " selected_between_abs_exceed_ratio="
                  << diagnostics.between.abs_limit_exceed_ratio
@@ -192,7 +200,8 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
     refresh_selected();
 
     if (probes.size() == 2) {
-        if (diagnostics.middle_gate_triggered || diagnostics.consistency_gate_triggered) {
+        if (selected_middle_gate_triggered(diagnostics) ||
+            selected_consistency_gate_triggered(diagnostics)) {
             push_unique_probe(probes, run_probe_observation(context, metrics.starts.between));
             metrics = recompute_probe_metrics(probes,
                                               original_config,
@@ -206,7 +215,6 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
             interior_probe_added = true;
         }
     }
-    refresh_selected();
 
     AnalysisResult result = probes[selection.selected_index].analysis;
     const double selected_mode_error = metrics.mode_errors[selection.selected_index];
