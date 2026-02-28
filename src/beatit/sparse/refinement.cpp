@@ -20,6 +20,29 @@
 namespace beatit {
 namespace detail {
 
+namespace {
+
+std::size_t nearest_index(const std::vector<unsigned long long>& beats,
+                          unsigned long long frame) {
+    if (beats.empty()) {
+        return 0;
+    }
+    auto it = std::lower_bound(beats.begin(), beats.end(), frame);
+    if (it == beats.end()) {
+        return beats.size() - 1;
+    }
+    const std::size_t right = static_cast<std::size_t>(it - beats.begin());
+    if (right == 0) {
+        return 0;
+    }
+    const std::size_t left = right - 1;
+    const unsigned long long left_frame = beats[left];
+    const unsigned long long right_frame = beats[right];
+    return (frame - left_frame) <= (right_frame - frame) ? left : right;
+}
+
+} // namespace
+
 double sparse_median_frame_diff(const std::vector<unsigned long long>& frames) {
     if (frames.size() < 2) {
         return 0.0;
@@ -125,25 +148,6 @@ void apply_sparse_anchor_state_refit(AnalysisResult& result,
         double local_step = 0.0;
         double weight = 0.0;
         double start = 0.0;
-    };
-
-    auto nearest_index = [](const std::vector<unsigned long long>& beats,
-                            unsigned long long frame) -> std::size_t {
-        if (beats.empty()) {
-            return 0;
-        }
-        auto it = std::lower_bound(beats.begin(), beats.end(), frame);
-        if (it == beats.end()) {
-            return beats.size() - 1;
-        }
-        const std::size_t right = static_cast<std::size_t>(it - beats.begin());
-        if (right == 0) {
-            return 0;
-        }
-        const std::size_t left = right - 1;
-        const unsigned long long left_frame = beats[left];
-        const unsigned long long right_frame = beats[right];
-        return (frame - left_frame) <= (right_frame - frame) ? left : right;
     };
 
     auto local_step_around = [&](const std::vector<unsigned long long>& beats,

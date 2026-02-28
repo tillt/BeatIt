@@ -7,6 +7,7 @@
 //
 
 #include "beatit/analysis/internal.h"
+#include "beatit/post/window.h"
 #include "beatit/stream.h"
 #include "beatit/inference/window_merge.h"
 #include "beatit/inference/backend.h"
@@ -19,6 +20,76 @@
 #include <vector>
 
 namespace beatit {
+
+namespace {
+
+struct ProjectedPhaseState {
+    std::size_t bpb = 1;
+    std::size_t phase = 0;
+    bool valid = false;
+};
+
+std::vector<std::size_t> as_size_t_frames(const std::vector<unsigned long long>& frames) {
+    std::vector<std::size_t> converted;
+    converted.reserve(frames.size());
+    for (unsigned long long frame : frames) {
+        converted.push_back(static_cast<std::size_t>(frame));
+    }
+    return converted;
+}
+
+ProjectedPhaseState preserve_projected_phase(const std::vector<unsigned long long>& projected_beats,
+                                             const std::vector<unsigned long long>& projected_downbeats,
+                                             const BeatitConfig& config) {
+    if (projected_beats.size() < 2 || projected_downbeats.empty()) {
+        return {};
+    }
+
+    const std::vector<std::size_t> beat_frames = as_size_t_frames(projected_beats);
+    const std::vector<std::size_t> downbeat_frames = as_size_t_frames(projected_downbeats);
+    const auto inferred =
+        detail::infer_bpb_phase(beat_frames, downbeat_frames, {3, 4}, config);
+
+    ProjectedPhaseState state;
+    state.bpb = std::max<std::size_t>(1, inferred.first);
+    state.phase = inferred.second % state.bpb;
+    state.valid = true;
+    return state;
+}
+
+void rebuild_projected_downbeats(std::vector<unsigned long long>* projected_downbeats,
+                                 const std::vector<unsigned long long>& projected_beats_before_dedupe,
+                                 const std::vector<unsigned long long>& projected_beats_after_dedupe,
+                                 const ProjectedPhaseState& preserved_phase) {
+    if (!projected_downbeats || !preserved_phase.valid || projected_beats_after_dedupe.size() < 2) {
+        return;
+    }
+
+    const std::vector<std::size_t> beats_before = as_size_t_frames(projected_beats_before_dedupe);
+    const std::vector<std::size_t> beats_after = as_size_t_frames(projected_beats_after_dedupe);
+
+    std::size_t prefix_dropped = 0;
+    if (!beats_after.empty()) {
+        prefix_dropped = static_cast<std::size_t>(
+            std::lower_bound(beats_before.begin(), beats_before.end(), beats_after.front()) -
+            beats_before.begin());
+    }
+
+    const std::size_t adjusted_phase =
+        (preserved_phase.phase + preserved_phase.bpb - (prefix_dropped % preserved_phase.bpb)) %
+        preserved_phase.bpb;
+
+    const std::vector<std::size_t> rebuilt =
+        detail::project_downbeats_from_beats(beats_after, preserved_phase.bpb, adjusted_phase);
+
+    projected_downbeats->clear();
+    projected_downbeats->reserve(rebuilt.size());
+    for (std::size_t frame : rebuilt) {
+        projected_downbeats->push_back(static_cast<unsigned long long>(frame));
+    }
+}
+
+} // namespace
 
 AnalysisResult BeatitStream::finalize() {
     AnalysisResult result;
@@ -270,27 +341,20 @@ AnalysisResult BeatitStream::finalize() {
     dedupe_monotonic(result.coreml_beat_sample_frames,
                      &result.coreml_beat_feature_frames,
                      &result.coreml_beat_strengths);
+    const std::vector<unsigned long long> projected_beats_before_dedupe =
+        result.coreml_beat_projected_feature_frames;
+    const ProjectedPhaseState preserved_phase =
+        preserve_projected_phase(result.coreml_beat_projected_feature_frames,
+                                 result.coreml_downbeat_projected_feature_frames,
+                                 coreml_config_);
+
     dedupe_monotonic(result.coreml_beat_projected_sample_frames,
                      &result.coreml_beat_projected_feature_frames,
                      nullptr);
-
-    if (!result.coreml_beat_projected_feature_frames.empty() &&
-        result.coreml_beat_projected_feature_frames.size() >= 2) {
-        std::vector<unsigned long long> projected_downbeats;
-        projected_downbeats.reserve(result.coreml_downbeat_projected_feature_frames.size());
-        std::size_t down_idx = 0;
-        for (unsigned long long frame : result.coreml_downbeat_projected_feature_frames) {
-            while (down_idx < result.coreml_beat_projected_feature_frames.size() &&
-                   result.coreml_beat_projected_feature_frames[down_idx] < frame) {
-                ++down_idx;
-            }
-            if (down_idx < result.coreml_beat_projected_feature_frames.size() &&
-                result.coreml_beat_projected_feature_frames[down_idx] == frame) {
-                projected_downbeats.push_back(frame);
-            }
-        }
-        result.coreml_downbeat_projected_feature_frames = std::move(projected_downbeats);
-    }
+    rebuild_projected_downbeats(&result.coreml_downbeat_projected_feature_frames,
+                                projected_beats_before_dedupe,
+                                result.coreml_beat_projected_feature_frames,
+                                preserved_phase);
     const auto marker_start = std::chrono::steady_clock::now();
     rebuild_output_beat_events(result, sample_rate_, coreml_config_);
     const auto marker_end = std::chrono::steady_clock::now();

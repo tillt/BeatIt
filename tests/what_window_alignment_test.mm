@@ -1,0 +1,44 @@
+//
+//  what_window_alignment_test.mm
+//  BeatIt
+//
+//  Created by Till Toenshoff on 2026-02-28.
+//  Copyright © 2026 Till Toenshoff. All rights reserved.
+//
+
+#include "window_alignment_case.h"
+
+int main() {
+    beatit::tests::window_alignment::WindowAlignmentCaseConfig cfg;
+    cfg.name = "What";
+    cfg.audio_filename = "what.wav";
+    cfg.dump_env_var = "BEATIT_WHAT_DUMP_EVENTS";
+
+    cfg.edge_window_beats = 64;
+    cfg.alternation_window_beats = 24;
+    cfg.tempo_edge_intervals = 64;
+    cfg.drift_probe_count = 24;
+    cfg.event_probe_count = 16;
+
+    cfg.require_first_bar_complete = false;
+    cfg.expected_first_downbeat_feature_frame = 33ULL;
+    cfg.first_downbeat_feature_frame_tolerance = 2ULL;
+
+    cfg.min_expected_bpm = 121.8;
+    cfg.max_expected_bpm = 122.2;
+
+    cfg.max_offset_slope_ms_per_beat = 0.045;
+    cfg.max_start_end_delta_ms = 80.0;
+    cfg.max_start_end_delta_beats = 0.17;
+    cfg.max_odd_even_median_gap_ms = 12.0;
+    cfg.max_tempo_edge_bpm_delta = 0.01;
+
+    cfg.local_offset_windows = {
+        {"early", 0.12, 20.0},
+        {"middle", 0.50, 30.0},
+        {"late", 0.75, 55.0},
+        {"end", 0.90, 70.0},
+    };
+
+    return beatit::tests::window_alignment::run_window_alignment_case(cfg);
+}

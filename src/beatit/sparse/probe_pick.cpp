@@ -7,9 +7,12 @@
 //
 
 #include "beatit/logging.hpp"
+#include "beatit/analysis.h"
+#include "beatit/post/window.h"
 #include "probe_pick_internal.h"
 
 #include <algorithm>
+#include <cmath>
 #include <utility>
 #include <vector>
 
@@ -28,6 +31,37 @@ struct ProbeDebugView {
     double anchor_start = 0.0;
     bool interior_probe_added = false;
 };
+
+SparseProbeSelectionResult::PreservedDownbeatPhase preserve_downbeat_phase(
+    const AnalysisResult& analysis,
+    const BeatitConfig& config) {
+    const auto& beat_frames_ull = output_beat_feature_frames(analysis);
+    const auto& downbeat_frames_ull = output_downbeat_feature_frames(analysis);
+    if (beat_frames_ull.size() < 2 || downbeat_frames_ull.empty()) {
+        return {};
+    }
+
+    std::vector<std::size_t> beat_frames;
+    beat_frames.reserve(beat_frames_ull.size());
+    for (unsigned long long frame : beat_frames_ull) {
+        beat_frames.push_back(static_cast<std::size_t>(frame));
+    }
+
+    std::vector<std::size_t> downbeat_frames;
+    downbeat_frames.reserve(downbeat_frames_ull.size());
+    for (unsigned long long frame : downbeat_frames_ull) {
+        downbeat_frames.push_back(static_cast<std::size_t>(frame));
+    }
+
+    const auto inferred =
+        infer_bpb_phase(beat_frames, downbeat_frames, {3, 4}, config);
+
+    SparseProbeSelectionResult::PreservedDownbeatPhase preserved;
+    preserved.bpb = std::max<std::size_t>(1, inferred.first);
+    preserved.phase = inferred.second % preserved.bpb;
+    preserved.valid = true;
+    return preserved;
+}
 
 const IntroPhaseMetrics& selected_intro_metrics(const ProbeMetricsSnapshot& metrics,
                                                 const DecisionOutcome& selection) {
@@ -146,6 +180,65 @@ void append_probe_candidate_debug(TLogStream& debug_stream,
     }
 }
 
+bool should_override_to_left_anchor(const std::vector<ProbeResult>& probes,
+                                    const ProbeMetricsSnapshot& metrics,
+                                    const DecisionOutcome& selection,
+                                    const SelectedProbeDiagnostics& selected_diagnostics,
+                                    double probe_duration,
+                                    double sample_rate,
+                                    const SparseSampleProvider& provider) {
+    if (probes.size() < 2 || selection.selected_index >= probes.size()) {
+        return false;
+    }
+
+    std::size_t left_index = 0;
+    for (std::size_t i = 1; i < probes.size(); ++i) {
+        if (probes[i].start < probes[left_index].start) {
+            left_index = i;
+        }
+    }
+    if (left_index == selection.selected_index) {
+        return false;
+    }
+
+    if (!(std::isfinite(selected_diagnostics.middle.median_abs_ms) &&
+          std::isfinite(selected_diagnostics.right.median_abs_ms) &&
+          selected_diagnostics.middle.median_abs_ms >= 100.0 &&
+          selected_diagnostics.right.median_abs_ms >= 80.0)) {
+        return false;
+    }
+
+    const double bpm_hint = (metrics.consensus_bpm > 0.0)
+        ? metrics.consensus_bpm
+        : probes[left_index].bpm;
+    const auto left_diagnostics = evaluate_selected_probe_diagnostics(probes[left_index],
+                                                                      metrics.middle_metrics[left_index],
+                                                                      bpm_hint,
+                                                                      metrics.starts,
+                                                                      probe_duration,
+                                                                      sample_rate,
+                                                                      provider);
+    if (!(std::isfinite(left_diagnostics.middle.median_abs_ms) &&
+          std::isfinite(left_diagnostics.right.median_abs_ms) &&
+          left_diagnostics.middle.median_abs_ms <= 20.0 &&
+          left_diagnostics.right.median_abs_ms <= 20.0)) {
+        return false;
+    }
+
+    const double intro_gap_ms =
+        metrics.intro_metrics[left_index].median_abs_ms -
+        metrics.intro_metrics[selection.selected_index].median_abs_ms;
+    const double conf_gap =
+        probes[selection.selected_index].conf - probes[left_index].conf;
+    const double mode_gap =
+        metrics.mode_errors[left_index] - metrics.mode_errors[selection.selected_index];
+
+    return intro_gap_ms <= 20.0 &&
+           conf_gap <= 0.08 &&
+           mode_gap <= 0.002 &&
+           selection.score_margin <= 0.20;
+}
+
 } // namespace
 
 SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelectionParams& params) {
@@ -255,6 +348,35 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
             refresh_selected();
             interior_probe_added = true;
         }
+    }
+
+    if (should_override_to_left_anchor(probes,
+                                       metrics,
+                                       selection,
+                                       diagnostics,
+                                       probe_duration,
+                                       sample_rate_,
+                                       provider)) {
+        std::size_t left_index = 0;
+        std::size_t right_index = 0;
+        for (std::size_t i = 1; i < probes.size(); ++i) {
+            if (probes[i].start < probes[left_index].start) {
+                left_index = i;
+            }
+            if (probes[i].start > probes[right_index].start) {
+                right_index = i;
+            }
+        }
+        out.preserved_downbeat_phase =
+            preserve_downbeat_phase(probes[right_index].analysis, original_config);
+        auto dbg = BEATIT_LOG_DEBUG_STREAM();
+        dbg << "Sparse preserved phase override: right_index=" << right_index
+            << " bpb=" << out.preserved_downbeat_phase.bpb
+            << " phase=" << out.preserved_downbeat_phase.phase
+            << " valid=" << (out.preserved_downbeat_phase.valid ? 1 : 0);
+        selection.selected_index = left_index;
+        selection.mode = "left-anchor-override";
+        refresh_selected();
     }
 
     AnalysisResult result = probes[selection.selected_index].analysis;

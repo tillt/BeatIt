@@ -25,6 +25,7 @@ constexpr double kPhaseTryMinImprovementScore = 2.0;
 constexpr double kCleanInteriorAbsMs = 45.0;
 constexpr double kBadInteriorAbsMs = 90.0;
 constexpr double kInteriorRegressionMs = 40.0;
+constexpr double kInteriorTradeoffSlackMs = 35.0;
 
 struct PhaseScoreSummary {
     bool valid = false;
@@ -214,6 +215,35 @@ bool breaks_clean_interior(double base_abs_ms, double candidate_abs_ms) {
            candidate_abs_ms >= (base_abs_ms + kInteriorRegressionMs);
 }
 
+bool loses_too_much_interior_for_global_gain(const SparseEdgePhaseTryResult& result,
+                                             int candidate) {
+    const double candidate_global_delta_ms =
+        (candidate < 0) ? result.minus_global_delta_ms : result.plus_global_delta_ms;
+    const double candidate_between_abs_ms =
+        (candidate < 0) ? result.minus_between_abs_ms : result.plus_between_abs_ms;
+    const double candidate_middle_abs_ms =
+        (candidate < 0) ? result.minus_middle_abs_ms : result.plus_middle_abs_ms;
+
+    if (!std::isfinite(result.base_global_delta_ms) ||
+        !std::isfinite(candidate_global_delta_ms) ||
+        !std::isfinite(result.base_between_abs_ms) ||
+        !std::isfinite(candidate_between_abs_ms) ||
+        !std::isfinite(result.base_middle_abs_ms) ||
+        !std::isfinite(candidate_middle_abs_ms)) {
+        return false;
+    }
+
+    const double global_gain_ms =
+        std::max(0.0, result.base_global_delta_ms - candidate_global_delta_ms);
+    const double between_loss_ms =
+        std::max(0.0, candidate_between_abs_ms - result.base_between_abs_ms);
+    const double middle_loss_ms =
+        std::max(0.0, candidate_middle_abs_ms - result.base_middle_abs_ms);
+    const double interior_tradeoff_ms = middle_loss_ms + (0.5 * between_loss_ms);
+
+    return interior_tradeoff_ms > (global_gain_ms + kInteriorTradeoffSlackMs);
+}
+
 bool candidate_is_acceptable(const SparseEdgePhaseTryResult& result,
                              int candidate,
                              double candidate_score) {
@@ -227,6 +257,10 @@ bool candidate_is_acceptable(const SparseEdgePhaseTryResult& result,
         (candidate < 0) ? result.minus_middle_abs_ms : result.plus_middle_abs_ms;
     if (breaks_clean_interior(result.base_between_abs_ms, candidate_between_abs_ms) ||
         breaks_clean_interior(result.base_middle_abs_ms, candidate_middle_abs_ms)) {
+        return false;
+    }
+
+    if (loses_too_much_interior_for_global_gain(result, candidate)) {
         return false;
     }
 

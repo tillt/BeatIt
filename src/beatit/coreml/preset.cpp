@@ -83,7 +83,7 @@ public:
         config.dbn_activation_floor = 0.7f;
         config.dbn_downbeat_phase_peak_ratio = 0.2f;
         config.dbn_downbeat_phase_window_seconds = 2.0;
-        config.dbn_downbeat_phase_max_delay_seconds = 0.3;
+        config.dbn_downbeat_phase_max_delay_seconds = 0.9;
         config.use_minimal_postprocess = true;
         config.dbn_window_seconds = model_window_seconds;
         config.dbn_window_start_seconds = 0.0;

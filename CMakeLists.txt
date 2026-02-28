@@ -270,6 +270,39 @@ if(APPLE)
     target_link_libraries(beatit PRIVATE "-framework AVFoundation" "-framework Foundation" "-framework CoreMedia" "-framework AudioToolbox")
 endif()
 
+add_executable(beatit_tool_probe_runner
+    tools/probe_runner.mm
+)
+
+target_include_directories(beatit_tool_probe_runner PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_link_libraries(beatit_tool_probe_runner PRIVATE
+    beatit_lib
+)
+
+add_executable(beatit_tool_alignment_inspector
+    tools/alignment_inspector.mm
+)
+
+target_include_directories(beatit_tool_alignment_inspector PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_link_libraries(beatit_tool_alignment_inspector PRIVATE
+    beatit_lib
+)
+
+if(APPLE)
+    target_compile_options(beatit_tool_probe_runner PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
+    target_compile_options(beatit_tool_alignment_inspector PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
+    target_link_libraries(beatit_tool_probe_runner PRIVATE "-framework AVFoundation" "-framework CoreML" "-framework Foundation")
+    target_link_libraries(beatit_tool_alignment_inspector PRIVATE "-framework AVFoundation" "-framework CoreML" "-framework Foundation")
+endif()
+
 if(APPLE)
     set(BEATIT_PUBLIC_HEADERS
         "${CMAKE_CURRENT_SOURCE_DIR}/include/beatit/analysis.h"
@@ -468,6 +501,27 @@ if(APPLE)
 endif()
 
 add_test(NAME beatit_sparse_edge_phase_tests COMMAND beatit_sparse_edge_phase_tests)
+
+add_executable(beatit_sparse_edge_adjust_tests
+    tests/sparse_edge_adjust_test.cpp
+)
+
+target_link_libraries(beatit_sparse_edge_adjust_tests
+    PRIVATE
+        beatit_lib
+)
+
+target_include_directories(beatit_sparse_edge_adjust_tests
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/beatit
+)
+
+if(APPLE)
+    target_compile_options(beatit_sparse_edge_adjust_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
+endif()
+
+add_test(NAME beatit_sparse_edge_adjust_tests COMMAND beatit_sparse_edge_adjust_tests)
 
 add_executable(beatit_dbn_purelove_tests
     tests/dbn_purelove_test.mm
@@ -812,6 +866,162 @@ endif()
 
 add_test(NAME beatit_neural_window_alignment_sparse_tests COMMAND beatit_neural_window_alignment_sparse_tests)
 set_tests_properties(beatit_neural_window_alignment_sparse_tests PROPERTIES
+    ENVIRONMENT
+        "TMPDIR=${CMAKE_CURRENT_BINARY_DIR}/coreml_tmp;HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_home;XDG_CACHE_HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_cache"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    SKIP_RETURN_CODE 77
+)
+
+add_executable(beatit_samerano_window_alignment_sparse_tests
+    tests/samerano_window_alignment_test.mm
+)
+
+target_link_libraries(beatit_samerano_window_alignment_sparse_tests
+    PRIVATE
+        beatit_lib
+)
+
+target_compile_definitions(beatit_samerano_window_alignment_sparse_tests PRIVATE
+    BEATIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+)
+
+if(APPLE)
+    target_compile_options(beatit_samerano_window_alignment_sparse_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
+    target_link_libraries(beatit_samerano_window_alignment_sparse_tests PRIVATE "-framework AVFoundation" "-framework CoreML" "-framework Foundation")
+endif()
+
+add_test(NAME beatit_samerano_window_alignment_sparse_tests COMMAND beatit_samerano_window_alignment_sparse_tests)
+set_tests_properties(beatit_samerano_window_alignment_sparse_tests PROPERTIES
+    ENVIRONMENT
+        "TMPDIR=${CMAKE_CURRENT_BINARY_DIR}/coreml_tmp;HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_home;XDG_CACHE_HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_cache"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    SKIP_RETURN_CODE 77
+)
+
+add_executable(beatit_turbo_window_alignment_sparse_tests
+    tests/turbo_window_alignment_test.mm
+)
+
+target_link_libraries(beatit_turbo_window_alignment_sparse_tests
+    PRIVATE
+        beatit_lib
+)
+
+target_compile_definitions(beatit_turbo_window_alignment_sparse_tests PRIVATE
+    BEATIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+)
+
+if(APPLE)
+    target_compile_options(beatit_turbo_window_alignment_sparse_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
+    target_link_libraries(beatit_turbo_window_alignment_sparse_tests PRIVATE "-framework AVFoundation" "-framework CoreML" "-framework Foundation")
+endif()
+
+add_test(NAME beatit_turbo_window_alignment_sparse_tests COMMAND beatit_turbo_window_alignment_sparse_tests)
+set_tests_properties(beatit_turbo_window_alignment_sparse_tests PROPERTIES
+    ENVIRONMENT
+        "TMPDIR=${CMAKE_CURRENT_BINARY_DIR}/coreml_tmp;HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_home;XDG_CACHE_HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_cache"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    SKIP_RETURN_CODE 77
+)
+
+add_executable(beatit_rhodes_window_alignment_sparse_tests
+    tests/rhodes_window_alignment_test.mm
+)
+
+target_link_libraries(beatit_rhodes_window_alignment_sparse_tests
+    PRIVATE
+        beatit_lib
+)
+
+target_compile_definitions(beatit_rhodes_window_alignment_sparse_tests PRIVATE
+    BEATIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+)
+
+if(APPLE)
+    target_compile_options(beatit_rhodes_window_alignment_sparse_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
+    target_link_libraries(beatit_rhodes_window_alignment_sparse_tests PRIVATE "-framework AVFoundation" "-framework CoreML" "-framework Foundation")
+endif()
+
+add_test(NAME beatit_rhodes_window_alignment_sparse_tests COMMAND beatit_rhodes_window_alignment_sparse_tests)
+set_tests_properties(beatit_rhodes_window_alignment_sparse_tests PROPERTIES
+    ENVIRONMENT
+        "TMPDIR=${CMAKE_CURRENT_BINARY_DIR}/coreml_tmp;HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_home;XDG_CACHE_HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_cache"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    SKIP_RETURN_CODE 77
+)
+
+add_executable(beatit_moving_window_alignment_sparse_tests
+    tests/moving_window_alignment_test.mm
+)
+
+target_link_libraries(beatit_moving_window_alignment_sparse_tests
+    PRIVATE
+        beatit_lib
+)
+
+target_compile_definitions(beatit_moving_window_alignment_sparse_tests PRIVATE
+    BEATIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+)
+
+if(APPLE)
+    target_compile_options(beatit_moving_window_alignment_sparse_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
+    target_link_libraries(beatit_moving_window_alignment_sparse_tests PRIVATE "-framework AVFoundation" "-framework CoreML" "-framework Foundation")
+endif()
+
+add_test(NAME beatit_moving_window_alignment_sparse_tests COMMAND beatit_moving_window_alignment_sparse_tests)
+set_tests_properties(beatit_moving_window_alignment_sparse_tests PROPERTIES
+    ENVIRONMENT
+        "TMPDIR=${CMAKE_CURRENT_BINARY_DIR}/coreml_tmp;HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_home;XDG_CACHE_HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_cache"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    SKIP_RETURN_CODE 77
+)
+
+add_executable(beatit_street_window_alignment_sparse_tests
+    tests/street_window_alignment_test.mm
+)
+
+target_link_libraries(beatit_street_window_alignment_sparse_tests
+    PRIVATE
+        beatit_lib
+)
+
+target_compile_definitions(beatit_street_window_alignment_sparse_tests PRIVATE
+    BEATIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+)
+
+if(APPLE)
+    target_compile_options(beatit_street_window_alignment_sparse_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
+    target_link_libraries(beatit_street_window_alignment_sparse_tests PRIVATE "-framework AVFoundation" "-framework CoreML" "-framework Foundation")
+endif()
+
+add_test(NAME beatit_street_window_alignment_sparse_tests COMMAND beatit_street_window_alignment_sparse_tests)
+set_tests_properties(beatit_street_window_alignment_sparse_tests PROPERTIES
+    ENVIRONMENT
+        "TMPDIR=${CMAKE_CURRENT_BINARY_DIR}/coreml_tmp;HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_home;XDG_CACHE_HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_cache"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    SKIP_RETURN_CODE 77
+)
+
+add_executable(beatit_what_window_alignment_sparse_tests
+    tests/what_window_alignment_test.mm
+)
+
+target_link_libraries(beatit_what_window_alignment_sparse_tests
+    PRIVATE
+        beatit_lib
+)
+
+target_compile_definitions(beatit_what_window_alignment_sparse_tests PRIVATE
+    BEATIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+)
+
+if(APPLE)
+    target_compile_options(beatit_what_window_alignment_sparse_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
+    target_link_libraries(beatit_what_window_alignment_sparse_tests PRIVATE "-framework AVFoundation" "-framework CoreML" "-framework Foundation")
+endif()
+
+add_test(NAME beatit_what_window_alignment_sparse_tests COMMAND beatit_what_window_alignment_sparse_tests)
+set_tests_properties(beatit_what_window_alignment_sparse_tests PROPERTIES
     ENVIRONMENT
         "TMPDIR=${CMAKE_CURRENT_BINARY_DIR}/coreml_tmp;HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_home;XDG_CACHE_HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_cache"
     WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"

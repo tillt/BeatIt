@@ -154,8 +154,8 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
             measure_edge_offsets(last_window_beats, bpm_hint, true, sample_rate, provider)};
     };
     const double shift_step = std::clamp(probe_duration * 0.25, 5.0, 20.0);
-    double first_window_start = first_probe_start;
-    double last_window_start = last_probe_start;
+    double first_window_start = clamp_window_start(first_probe_start);
+    double last_window_start = clamp_window_start(last_probe_start);
     EdgeOffsetMetrics intro;
     EdgeOffsetMetrics outro;
     std::size_t quality_shift_rounds = 0;
@@ -381,6 +381,67 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
         first_window_start,
         last_window_start);
 
+    EdgeOffsetMetrics opening_guard_intro =
+        measure_edge_offsets(*projected, bpm_hint, false, sample_rate, provider);
+    EdgeOffsetMetrics opening_guard_outro =
+        measure_edge_offsets(*projected, bpm_hint, true, sample_rate, provider);
+    double opening_guard_ratio_applied = 1.0;
+    if (has_valid_edge_metrics(opening_guard_intro) &&
+        has_valid_edge_metrics(opening_guard_outro)) {
+        std::vector<unsigned long long> candidate = *projected;
+        const double opening_guard_ratio =
+            compute_sparse_edge_ratio(candidate, opening_guard_intro, opening_guard_outro, sample_rate);
+        opening_guard_ratio_applied =
+            apply_sparse_edge_scale_from_back(candidate, opening_guard_ratio, 0.9994, 1.0006, 1e-6);
+        if (opening_guard_ratio_applied != 1.0) {
+            const EdgeOffsetMetrics candidate_intro =
+                measure_edge_offsets(candidate, bpm_hint, false, sample_rate, provider);
+            const EdgeOffsetMetrics candidate_outro =
+                measure_edge_offsets(candidate, bpm_hint, true, sample_rate, provider);
+            if (should_accept_sparse_opening_anchor_guard(SparseOpeningAnchorGuardInput{
+                    std::abs(opening_guard_intro.median_ms),
+                    std::abs(opening_guard_outro.median_ms),
+                    std::abs(candidate_intro.median_ms),
+                    std::abs(candidate_outro.median_ms)})) {
+                *projected = std::move(candidate);
+                opening_guard_intro = candidate_intro;
+                opening_guard_outro = candidate_outro;
+            } else {
+                opening_guard_ratio_applied = 1.0;
+            }
+        }
+    }
+    if (has_valid_edge_metrics(opening_guard_intro) &&
+        has_valid_edge_metrics(opening_guard_outro) &&
+        (opening_guard_intro.median_ms * opening_guard_outro.median_ms) > 0.0) {
+        const double mean_ms = 0.5 * (opening_guard_intro.median_ms + opening_guard_outro.median_ms);
+        const double beat_ms = 60000.0 / std::max(1e-6, bpm_hint);
+        const double max_shift_ms = std::max(20.0, beat_ms * 0.18);
+        const double clamped_shift_ms = std::clamp(mean_ms, -max_shift_ms, max_shift_ms);
+        const long long shift_frames = static_cast<long long>(
+            std::llround((clamped_shift_ms * sample_rate) / 1000.0));
+        if (shift_frames != 0) {
+            std::vector<unsigned long long> candidate = *projected;
+            apply_sparse_uniform_shift(candidate, shift_frames);
+            const EdgeOffsetMetrics candidate_intro =
+                measure_edge_offsets(candidate, bpm_hint, false, sample_rate, provider);
+            const EdgeOffsetMetrics candidate_outro =
+                measure_edge_offsets(candidate, bpm_hint, true, sample_rate, provider);
+            if (has_valid_edge_metrics(candidate_intro) &&
+                has_valid_edge_metrics(candidate_outro)) {
+                const double base_worst =
+                    worst_abs_median_ms(opening_guard_intro, opening_guard_outro);
+                const double candidate_worst =
+                    worst_abs_median_ms(candidate_intro, candidate_outro);
+                if (candidate_worst + 3.0 < base_worst) {
+                    *projected = std::move(candidate);
+                    opening_guard_intro = candidate_intro;
+                    opening_guard_outro = candidate_outro;
+                }
+            }
+        }
+    }
+
     if (beatit_should_log("debug")) {
         const EdgeOffsetMetrics pre_global_intro =
             measure_edge_offsets(projected_before_refit, bpm_hint, false, sample_rate, provider);
@@ -458,6 +519,9 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
                          << phase_try.plus_middle_abs_ms
                          << " phase_try_selected=" << phase_try.selected
                          << " phase_try_applied=" << (phase_try.applied ? 1 : 0)
+                         << " opening_guard_intro_ms=" << opening_guard_intro.median_ms
+                         << " opening_guard_outro_ms=" << opening_guard_outro.median_ms
+                         << " opening_guard_ratio_applied=" << opening_guard_ratio_applied
                          << " global_ratio_applied=" << global_guard_ratio
                          << " delta_frames=" << err_delta_frames
                          << " ratio=" << ratio

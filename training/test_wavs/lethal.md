@@ -7,7 +7,7 @@
 - Projected beat events: `781`
 - Expected first downbeat feature frame: `32`
 - Expected first downbeat sample frame: `14390` (`0.326304s` @ 44.1 kHz output grid)
-- Current library output is one beat too early on the downbeat phase while keeping a stable 4/4 repeat pattern
+- Current library output is phase-correct on both beat grid and downbeat grid
 - Drift probe (CPU baseline):
   - `start_median_ms=-13.22`
   - `end_median_ms=11.7914`
@@ -41,8 +41,12 @@
   - `global_ratio_applied=1.00009`
   - `ratio_applied=1.00007`
   - `delta_frames=1144`
+- Finalize/downbeat preservation:
+  - projected downbeat phase is preserved through projected-beat dedupe
+  - first projected bar marker remains aligned to the canonical first full bar
+  - this was the critical fix for the previous one-beat-early downbeat regression
 
-Reproduce current failing regression:
+Validate current passing baseline:
 
 ```bash
 cmake --build build --target beatit_lethal_window_alignment_sparse_tests -j8
