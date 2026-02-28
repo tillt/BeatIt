@@ -23,6 +23,47 @@
 
 namespace beatit::detail {
 
+namespace {
+
+std::size_t onset_from_peak(const std::vector<float>& activation,
+                            std::size_t peak_frame,
+                            float onset_ratio,
+                            std::size_t onset_max_back) {
+    if (activation.empty() || peak_frame >= activation.size()) {
+        return peak_frame;
+    }
+    const float peak_value = activation[peak_frame];
+    if (peak_value <= 0.0f) {
+        return peak_frame;
+    }
+    const float threshold = peak_value * onset_ratio;
+    std::size_t frame = peak_frame;
+    std::size_t steps = 0;
+    while (frame > 0 && steps < onset_max_back) {
+        if (activation[frame] < threshold) {
+            return frame + 1;
+        }
+        --frame;
+        ++steps;
+    }
+    return frame;
+}
+
+std::vector<std::size_t> build_onset_frames(const std::vector<std::size_t>& frames,
+                                            const std::vector<float>& activation,
+                                            float onset_ratio,
+                                            std::size_t onset_max_back) {
+    std::vector<std::size_t> out;
+    out.reserve(frames.size());
+    for (std::size_t frame : frames) {
+        out.push_back(onset_from_peak(activation, frame, onset_ratio, onset_max_back));
+    }
+    detail::dedupe_frames(out);
+    return out;
+}
+
+} // namespace
+
 void select_downbeat_phase(GridProjectionState& state,
                            DBNDecodeResult& decoded,
                            const CoreMLResult& result,
@@ -55,37 +96,6 @@ void select_downbeat_phase(GridProjectionState& state,
             : 0;
     const float onset_ratio = 0.35f;
     const std::size_t onset_max_back = max_delay_frames > 0 ? max_delay_frames : 8;
-    auto onset_from_peak = [&](const std::vector<float>& activation,
-                               std::size_t peak_frame) -> std::size_t {
-        if (activation.empty() || peak_frame >= activation.size()) {
-            return peak_frame;
-        }
-        const float peak_value = activation[peak_frame];
-        if (peak_value <= 0.0f) {
-            return peak_frame;
-        }
-        const float threshold = peak_value * onset_ratio;
-        std::size_t frame = peak_frame;
-        std::size_t steps = 0;
-        while (frame > 0 && steps < onset_max_back) {
-            if (activation[frame] < threshold) {
-                return frame + 1;
-            }
-            --frame;
-            ++steps;
-        }
-        return frame;
-    };
-    auto build_onset_frames = [&](const std::vector<std::size_t>& frames,
-                                  const std::vector<float>& activation) {
-        std::vector<std::size_t> out;
-        out.reserve(frames.size());
-        for (std::size_t frame : frames) {
-            out.push_back(onset_from_peak(activation, frame));
-        }
-        detail::dedupe_frames(out);
-        return out;
-    };
 
     float max_beat = 0.0f;
     std::vector<uint8_t> phase_peak_mask;
@@ -103,16 +113,17 @@ void select_downbeat_phase(GridProjectionState& state,
         if (max_beat > 0.0f && phase_window_end > phase_window_start + 2) {
             const float beat_threshold =
                 static_cast<float>(max_beat * config.dbn_downbeat_phase_peak_ratio);
-            const float peak_eps = std::max(1e-6f, max_beat * 0.01f);
-            for (std::size_t i = phase_window_start + 1; i + 1 < phase_window_end; ++i) {
-                const float prev = result.beat_activation[i - 1];
-                const float curr = result.beat_activation[i];
-                const float next = result.beat_activation[i + 1];
-                if (curr >= beat_threshold && curr >= prev + peak_eps && curr >= next + peak_eps) {
-                    const std::size_t onset_frame = onset_from_peak(result.beat_activation, i);
-                    if (onset_frame < phase_peak_mask.size()) {
-                        phase_peak_mask[onset_frame] = 1;
-                    }
+                const float peak_eps = std::max(1e-6f, max_beat * 0.01f);
+                for (std::size_t i = phase_window_start + 1; i + 1 < phase_window_end; ++i) {
+                    const float prev = result.beat_activation[i - 1];
+                    const float curr = result.beat_activation[i];
+                    const float next = result.beat_activation[i + 1];
+                    if (curr >= beat_threshold && curr >= prev + peak_eps && curr >= next + peak_eps) {
+                        const std::size_t onset_frame =
+                            onset_from_peak(result.beat_activation, i, onset_ratio, onset_max_back);
+                        if (onset_frame < phase_peak_mask.size()) {
+                            phase_peak_mask[onset_frame] = 1;
+                        }
                     has_phase_peaks = true;
                 }
             }
@@ -140,7 +151,8 @@ void select_downbeat_phase(GridProjectionState& state,
         }
         const std::vector<float>& onset_activation =
             allow_downbeat_phase ? result.downbeat_activation : result.beat_activation;
-        const auto projected_onsets = build_onset_frames(projected, onset_activation);
+        const auto projected_onsets =
+            build_onset_frames(projected, onset_activation, onset_ratio, onset_max_back);
         const auto& phase_frames = projected_onsets.empty() ? projected : projected_onsets;
         double score = -std::numeric_limits<double>::infinity();
         std::size_t hits = 0;
