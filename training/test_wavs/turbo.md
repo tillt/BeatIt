@@ -8,6 +8,6 @@
   - break re-entry shows correct beat and downbeat alignment
   - late section remains aligned
 - Current dedicated regression:
-  - narrow canonical test
-  - BPM sanity plus 4/4 structure
+  - minimal canonical test
+  - BPM sanity plus default 4/4 structure only
   - broad analyzer-wide nearest-peak medians currently do not match the player view on this file and are not used as hard truth here
