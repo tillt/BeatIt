@@ -7,6 +7,8 @@
 //
 
 #include "beatit/logging.hpp"
+#include "beatit/analysis.h"
+#include "beatit/post/window.h"
 #include "probe_pick_internal.h"
 
 #include <algorithm>
@@ -29,6 +31,37 @@ struct ProbeDebugView {
     double anchor_start = 0.0;
     bool interior_probe_added = false;
 };
+
+SparseProbeSelectionResult::PreservedDownbeatPhase preserve_downbeat_phase(
+    const AnalysisResult& analysis,
+    const BeatitConfig& config) {
+    const auto& beat_frames_ull = output_beat_feature_frames(analysis);
+    const auto& downbeat_frames_ull = output_downbeat_feature_frames(analysis);
+    if (beat_frames_ull.size() < 2 || downbeat_frames_ull.empty()) {
+        return {};
+    }
+
+    std::vector<std::size_t> beat_frames;
+    beat_frames.reserve(beat_frames_ull.size());
+    for (unsigned long long frame : beat_frames_ull) {
+        beat_frames.push_back(static_cast<std::size_t>(frame));
+    }
+
+    std::vector<std::size_t> downbeat_frames;
+    downbeat_frames.reserve(downbeat_frames_ull.size());
+    for (unsigned long long frame : downbeat_frames_ull) {
+        downbeat_frames.push_back(static_cast<std::size_t>(frame));
+    }
+
+    const auto inferred =
+        infer_bpb_phase(beat_frames, downbeat_frames, {3, 4}, config);
+
+    SparseProbeSelectionResult::PreservedDownbeatPhase preserved;
+    preserved.bpb = std::max<std::size_t>(1, inferred.first);
+    preserved.phase = inferred.second % preserved.bpb;
+    preserved.valid = true;
+    return preserved;
+}
 
 const IntroPhaseMetrics& selected_intro_metrics(const ProbeMetricsSnapshot& metrics,
                                                 const DecisionOutcome& selection) {
@@ -325,11 +358,22 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
                                        sample_rate_,
                                        provider)) {
         std::size_t left_index = 0;
+        std::size_t right_index = 0;
         for (std::size_t i = 1; i < probes.size(); ++i) {
             if (probes[i].start < probes[left_index].start) {
                 left_index = i;
             }
+            if (probes[i].start > probes[right_index].start) {
+                right_index = i;
+            }
         }
+        out.preserved_downbeat_phase =
+            preserve_downbeat_phase(probes[right_index].analysis, original_config);
+        auto dbg = BEATIT_LOG_DEBUG_STREAM();
+        dbg << "Sparse preserved phase override: right_index=" << right_index
+            << " bpb=" << out.preserved_downbeat_phase.bpb
+            << " phase=" << out.preserved_downbeat_phase.phase
+            << " valid=" << (out.preserved_downbeat_phase.valid ? 1 : 0);
         selection.selected_index = left_index;
         selection.mode = "left-anchor-override";
         refresh_selected();

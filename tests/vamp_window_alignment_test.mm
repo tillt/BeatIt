@@ -35,5 +35,9 @@ int main() {
         {"late", 0.90, 35.0},
     };
 
+    // FIXME(2026-02-28): Vamp still shows incorrect downbeat/bar phase after the long break.
+    // The current sparse path is acceptable on beat anchoring and overall drift again, but bar
+    // phase at re-entry is not reliable enough to keep this as a hard regression gate yet.
+
     return beatit::tests::window_alignment::run_window_alignment_case(cfg);
 }

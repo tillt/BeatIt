@@ -25,6 +25,12 @@ struct SparseProbeSelectionParams {
 };
 
 struct SparseProbeSelectionResult {
+    struct PreservedDownbeatPhase {
+        std::size_t bpb = 1;
+        std::size_t phase = 0;
+        bool valid = false;
+    };
+
     AnalysisResult result;
     std::vector<SparseProbeObservation> probes;
     double probe_duration = 0.0;
@@ -33,6 +39,7 @@ struct SparseProbeSelectionResult {
     bool low_confidence = true;
     double selected_intro_median_abs_ms = std::numeric_limits<double>::infinity();
     double consensus_bpm = 0.0;
+    PreservedDownbeatPhase preserved_downbeat_phase;
 };
 
 SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelectionParams& params);

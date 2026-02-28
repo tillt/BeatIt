@@ -7,6 +7,7 @@
 //
 
 #include "beatit/sparse/probe.h"
+#include "beatit/post/window.h"
 #include "beatit/sparse/probe_pick.h"
 #include "beatit/sparse/refinement.h"
 
@@ -16,6 +17,47 @@
 
 namespace beatit {
 namespace detail {
+
+namespace {
+
+void rebuild_sparse_projected_downbeats(
+    AnalysisResult& result,
+    const SparseProbeSelectionResult::PreservedDownbeatPhase& preserved_phase) {
+    if (!preserved_phase.valid) {
+        return;
+    }
+
+    const auto& beat_feature_frames = output_beat_feature_frames(result);
+    if (beat_feature_frames.size() < 2) {
+        return;
+    }
+
+    std::vector<std::size_t> beat_frames;
+    beat_frames.reserve(beat_feature_frames.size());
+    for (unsigned long long frame : beat_feature_frames) {
+        beat_frames.push_back(static_cast<std::size_t>(frame));
+    }
+
+    const std::vector<std::size_t> downbeats =
+        project_downbeats_from_beats(beat_frames, preserved_phase.bpb, preserved_phase.phase);
+
+    auto dbg = BEATIT_LOG_DEBUG_STREAM();
+    dbg << "Sparse rebuilt projected downbeats: bpb=" << preserved_phase.bpb
+        << " phase=" << preserved_phase.phase
+        << " head=";
+    for (std::size_t i = 0; i < std::min<std::size_t>(downbeats.size(), 6); ++i) {
+        dbg << ' ' << downbeats[i];
+    }
+
+    result.coreml_downbeat_projected_feature_frames.clear();
+    result.coreml_downbeat_projected_feature_frames.reserve(downbeats.size());
+    for (std::size_t frame : downbeats) {
+        result.coreml_downbeat_projected_feature_frames.push_back(
+            static_cast<unsigned long long>(frame));
+    }
+}
+
+} // namespace
 
 AnalysisResult analyze_sparse_probe_window(const BeatitConfig& original_config,
                                            double sample_rate,
@@ -71,6 +113,7 @@ AnalysisResult analyze_sparse_probe_window(const BeatitConfig& original_config,
     waveform_refit_params.between_probe_start = selected.between_probe_start;
     waveform_refit_params.middle_probe_start = selected.middle_probe_start;
     apply_sparse_waveform_edge_refit(result, waveform_refit_params);
+    rebuild_sparse_projected_downbeats(result, selected.preserved_downbeat_phase);
 
     {
         // Keep reported BPM consistent with the returned beat grid.

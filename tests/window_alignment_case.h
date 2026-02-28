@@ -29,11 +29,18 @@ struct WindowAlignmentCaseConfig {
         double max_median_abs_ms = 0.0;
     };
 
+    struct LocalBarOffsetWindowCheck {
+        const char* label = "";
+        double center_fraction = 0.0;
+        double max_median_abs_ms = 0.0;
+    };
+
     const char* name = "Window";
     const char* audio_filename = nullptr;
     const char* dump_env_var = nullptr;
 
     std::size_t edge_window_beats = 64;
+    std::size_t edge_window_bars = 16;
     std::size_t alternation_window_beats = 24;
     std::size_t tempo_edge_intervals = 64;
     std::size_t drift_probe_count = 24;
@@ -80,6 +87,7 @@ struct WindowAlignmentCaseConfig {
     double max_seed_order_grid_median_delta_frames = 1.0;
 
     std::vector<LocalOffsetWindowCheck> local_offset_windows;
+    std::vector<LocalBarOffsetWindowCheck> local_bar_offset_windows;
 };
 
 inline int fail_case(const WindowAlignmentCaseConfig& cfg, const std::string& message) {
@@ -499,6 +507,50 @@ inline int run_window_alignment_case(const WindowAlignmentCaseConfig& cfg) {
                              std::string("local window '") + local_window.label +
                                  "' median abs offset " + std::to_string(local_median_abs_ms) +
                                  "ms > " + std::to_string(local_window.max_median_abs_ms) + "ms.");
+        }
+    }
+
+    if (!cfg.local_bar_offset_windows.empty()) {
+        std::vector<unsigned long long> bar_frames;
+        bar_frames.reserve(result.coreml_beat_events.size() / 4);
+        for (const auto& event : result.coreml_beat_events) {
+            if (is_bar_event(event)) {
+                bar_frames.push_back(event.frame);
+            }
+        }
+
+        const std::vector<double> bar_offsets_ms =
+            compute_strong_peak_offsets_ms(bar_frames, mono, sample_rate, result.estimated_bpm);
+        if (bar_offsets_ms.size() < cfg.edge_window_bars) {
+            return fail_case(cfg, "too few bar offsets for local bar window checks.");
+        }
+
+        for (const auto& local_window : cfg.local_bar_offset_windows) {
+            const std::size_t max_start =
+                bar_offsets_ms.size() > cfg.edge_window_bars
+                    ? (bar_offsets_ms.size() - cfg.edge_window_bars)
+                    : 0;
+            const double center_fraction = std::clamp(local_window.center_fraction, 0.0, 1.0);
+            const std::size_t center_index = static_cast<std::size_t>(
+                std::llround(center_fraction * static_cast<double>(bar_offsets_ms.size() - 1)));
+            const std::size_t half_window = cfg.edge_window_bars / 2;
+            const std::size_t start_index =
+                std::min(max_start,
+                         center_index > half_window ? (center_index - half_window) : std::size_t{0});
+            std::vector<double> window(
+                bar_offsets_ms.begin() + static_cast<long>(start_index),
+                bar_offsets_ms.begin() + static_cast<long>(start_index + cfg.edge_window_bars));
+            for (double& v : window) {
+                v = std::fabs(v);
+            }
+            const double local_median_abs_ms = median(window);
+            if (local_median_abs_ms > local_window.max_median_abs_ms) {
+                return fail_case(cfg,
+                                 std::string("local bar window '") + local_window.label +
+                                     "' median abs offset " +
+                                     std::to_string(local_median_abs_ms) + "ms > " +
+                                     std::to_string(local_window.max_median_abs_ms) + "ms.");
+            }
         }
     }
 
