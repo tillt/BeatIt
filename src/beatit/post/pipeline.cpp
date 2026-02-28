@@ -343,38 +343,34 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                                                 peaks_ms);
         return result;
     }
-
-
-    if (config.use_dbn) {
-        float dbn_min_bpm = tempo_window.min_bpm;
-        float dbn_max_bpm = tempo_window.max_bpm;
-        if (config.prefer_double_time && tempo_window.has_alt_window) {
-            dbn_min_bpm = std::min(dbn_min_bpm, tempo_window.min_bpm_alt);
-            dbn_max_bpm = std::max(dbn_max_bpm, tempo_window.max_bpm_alt);
-        }
-        clamp_tempo_window(dbn_min_bpm,
-                           dbn_max_bpm,
-                           tempo_window.hard_min_bpm,
-                           tempo_window.hard_max_bpm);
-        const detail::DBNRunRequest dbn_request{
-            result,
-            phase_energy,
-            config,
-            sample_rate,
-            reference_bpm,
-            grid_total_frames,
-            dbn_min_bpm,
-            dbn_max_bpm,
-            fps,
-            hop_scale,
-            analysis_latency_frames,
-            analysis_latency_frames_f,
-            peaks_ms,
-            dbn_ms,
-        };
-        if (detail::run_dbn_postprocess(dbn_request)) {
-            return result;
-        }
+    float dbn_min_bpm = tempo_window.min_bpm;
+    float dbn_max_bpm = tempo_window.max_bpm;
+    if (config.prefer_double_time && tempo_window.has_alt_window) {
+        dbn_min_bpm = std::min(dbn_min_bpm, tempo_window.min_bpm_alt);
+        dbn_max_bpm = std::max(dbn_max_bpm, tempo_window.max_bpm_alt);
+    }
+    clamp_tempo_window(dbn_min_bpm,
+                       dbn_max_bpm,
+                       tempo_window.hard_min_bpm,
+                       tempo_window.hard_max_bpm);
+    const detail::DBNRunRequest dbn_request{
+        result,
+        phase_energy,
+        config,
+        sample_rate,
+        reference_bpm,
+        grid_total_frames,
+        dbn_min_bpm,
+        dbn_max_bpm,
+        fps,
+        hop_scale,
+        analysis_latency_frames,
+        analysis_latency_frames_f,
+        peaks_ms,
+        dbn_ms,
+    };
+    if (detail::run_dbn_postprocess(dbn_request)) {
+        return result;
     }
 
     std::vector<std::size_t> peaks =
