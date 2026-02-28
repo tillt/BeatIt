@@ -103,6 +103,70 @@ DBNQualityMetrics calculate_dbn_quality_metrics(const std::vector<float>& activa
     return metrics;
 }
 
+struct DBNWindowSelection {
+    std::size_t start = 0;
+    std::size_t end = 0;
+    bool use_window = false;
+    bool selected_by_energy = false;
+    std::vector<float> beat_slice;
+    std::vector<float> downbeat_slice;
+};
+
+DBNWindowSelection select_dbn_processing_window(const CoreMLResult& result,
+                                                const std::vector<float>* phase_energy,
+                                                const BeatitConfig& config,
+                                                double fps,
+                                                float min_bpm,
+                                                float max_bpm) {
+    DBNWindowSelection selection;
+    selection.end = result.beat_activation.size();
+
+    const float window_peak_threshold =
+        std::max(config.activation_threshold, config.dbn_activation_floor);
+    std::pair<std::size_t, std::size_t> window{0, selection.end};
+    const bool phase_energy_ok =
+        phase_energy && !phase_energy->empty() && phase_energy->size() >= selection.end;
+
+    if (phase_energy_ok) {
+        window = detail::select_dbn_window_energy(*phase_energy,
+                                                  config.dbn_window_seconds,
+                                                  false,
+                                                  fps);
+        selection.selected_by_energy = true;
+    } else {
+        window = detail::select_dbn_window(result.beat_activation,
+                                           config.dbn_window_seconds,
+                                           true,
+                                           min_bpm,
+                                           max_bpm,
+                                           window_peak_threshold,
+                                           fps);
+    }
+
+    selection.start = window.first;
+    selection.end = window.second;
+    selection.use_window = (selection.start > 0 || selection.end < result.beat_activation.size());
+    if (!selection.use_window) {
+        return selection;
+    }
+
+    selection.beat_slice.assign(result.beat_activation.begin() + selection.start,
+                                result.beat_activation.begin() + selection.end);
+    if (!result.downbeat_activation.empty()) {
+        selection.downbeat_slice.assign(result.downbeat_activation.begin() + selection.start,
+                                        result.downbeat_activation.begin() + selection.end);
+    }
+
+    BEATIT_LOG_DEBUG("DBN window: start=" << selection.start
+                     << " end=" << selection.end
+                     << " frames=" << (selection.end - selection.start)
+                     << " (" << ((selection.end - selection.start) / fps) << "s)"
+                     << " selector="
+                     << (selection.selected_by_energy ? "best-energy-phase" : "tempo")
+                     << " energy=" << (selection.selected_by_energy ? "phase" : "beat"));
+    return selection;
+}
+
 } // namespace
 
 bool run_dbn_postprocess(const DBNRunRequest& request) {
@@ -138,59 +202,12 @@ bool run_dbn_postprocess(const DBNRunRequest& request) {
         }
     };
 
-    std::size_t window_start = 0;
-    std::size_t window_end = used_frames;
-    bool use_window = false;
-    bool window_energy = false;
-    std::vector<float> beat_slice;
-    std::vector<float> downbeat_slice;
-
-    auto process_window_selection = [&] {
-        const float window_peak_threshold =
-            std::max(config.activation_threshold, config.dbn_activation_floor);
-        std::pair<std::size_t, std::size_t> window{0, used_frames};
-        bool selected_by_energy = false;
-        const bool phase_energy_ok =
-            phase_energy && !phase_energy->empty() && phase_energy->size() >= used_frames;
-        if (phase_energy_ok) {
-            window = detail::select_dbn_window_energy(*phase_energy,
-                                                      config.dbn_window_seconds,
-                                                      false,
-                                                      fps);
-            selected_by_energy = true;
-        } else {
-            window = detail::select_dbn_window(result.beat_activation,
-                                               config.dbn_window_seconds,
-                                               true,
-                                               min_bpm,
-                                               max_bpm,
-                                               window_peak_threshold,
-                                               fps);
-        }
-        window_energy = selected_by_energy;
-        window_start = window.first;
-        window_end = window.second;
-        use_window = (window_start > 0 || window_end < used_frames);
-        std::vector<float> local_beat_slice;
-        std::vector<float> local_downbeat_slice;
-        if (use_window) {
-            local_beat_slice.assign(result.beat_activation.begin() + window_start,
-                                    result.beat_activation.begin() + window_end);
-            if (!result.downbeat_activation.empty()) {
-                local_downbeat_slice.assign(result.downbeat_activation.begin() + window_start,
-                                            result.downbeat_activation.begin() + window_end);
-            }
-            BEATIT_LOG_DEBUG("DBN window: start=" << window_start
-                             << " end=" << window_end
-                             << " frames=" << (window_end - window_start)
-                             << " (" << ((window_end - window_start) / fps) << "s)"
-                             << " selector="
-                             << (window_energy ? "best-energy-phase" : "tempo")
-                             << " energy=" << (window_energy ? "phase" : "beat"));
-        }
-        beat_slice = std::move(local_beat_slice);
-        downbeat_slice = std::move(local_downbeat_slice);
-    };
+    const DBNWindowSelection window_selection =
+        select_dbn_processing_window(result, phase_energy, config, fps, min_bpm, max_bpm);
+    const std::size_t window_start = window_selection.start;
+    const bool use_window = window_selection.use_window;
+    const std::vector<float>& beat_slice = window_selection.beat_slice;
+    const std::vector<float>& downbeat_slice = window_selection.downbeat_slice;
 
     double quality_qpar = 0.0;
     double quality_qkur = 0.0;
@@ -268,10 +285,8 @@ bool run_dbn_postprocess(const DBNRunRequest& request) {
                                               max_bpm,
                                               config,
                                               reference_bpm);
-        }
+            }
     };
-
-    process_window_selection();
 
     if (fps > 0.0) {
         process_quality_gate();
