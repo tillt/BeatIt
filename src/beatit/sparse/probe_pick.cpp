@@ -29,6 +29,24 @@ struct ProbeDebugView {
     bool interior_probe_added = false;
 };
 
+const IntroPhaseMetrics& selected_intro_metrics(const ProbeMetricsSnapshot& metrics,
+                                                const DecisionOutcome& selection) {
+    return metrics.intro_metrics[selection.selected_index];
+}
+
+double selected_mode_error(const ProbeMetricsSnapshot& metrics,
+                           const DecisionOutcome& selection) {
+    return metrics.mode_errors[selection.selected_index];
+}
+
+double selected_bpm_hint(const ProbeMetricsSnapshot& metrics,
+                         const std::vector<ProbeResult>& probes,
+                         const DecisionOutcome& selection) {
+    return (metrics.consensus_bpm > 0.0)
+        ? metrics.consensus_bpm
+        : probes[selection.selected_index].bpm;
+}
+
 template <typename TLogStream>
 void append_probe_debug_line(TLogStream& debug_stream, const ProbeDebugView& view) {
     const bool middle_gate_triggered = selected_middle_gate_triggered(view.diagnostics);
@@ -177,13 +195,9 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
     DecisionOutcome selection = make_selection_decision(probes, metrics);
     SelectedProbeDiagnostics diagnostics;
     bool interior_probe_added = false;
-    const auto selected_intro_metrics = [&]() -> const IntroPhaseMetrics& {
-        return metrics.intro_metrics[selection.selected_index];
-    };
 
     const auto refresh_selected = [&]() {
-        const double bpm_hint =
-            (metrics.consensus_bpm > 0.0) ? metrics.consensus_bpm : probes[selection.selected_index].bpm;
+        const double bpm_hint = selected_bpm_hint(metrics, probes, selection);
         diagnostics = evaluate_selected_probe_diagnostics(probes[selection.selected_index],
                                                           metrics.middle_metrics[selection.selected_index],
                                                           bpm_hint,
@@ -212,13 +226,8 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
     }
 
     AnalysisResult result = probes[selection.selected_index].analysis;
-    const double selected_mode_error = metrics.mode_errors[selection.selected_index];
     if (selection.low_confidence) {
-        const double repair_bpm = (metrics.consensus_bpm > 0.0)
-            ? metrics.consensus_bpm
-            : (probes[selection.selected_index].bpm > 0.0
-                   ? probes[selection.selected_index].bpm
-                   : 0.0);
+        const double repair_bpm = std::max(0.0, selected_bpm_hint(metrics, probes, selection));
         const double repair_start = select_repair_start(probes, metrics, anchor_start);
         result = run_probe_fn(repair_start, probe_duration, repair_bpm);
     }
@@ -228,9 +237,9 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
                             ProbeDebugView{probes,
                                            metrics,
                                            selection,
-                                           selected_intro_metrics(),
+                                           selected_intro_metrics(metrics, selection),
                                            diagnostics,
-                                           selected_mode_error,
+                                           selected_mode_error(metrics, selection),
                                            anchor_start,
                                            interior_probe_added});
 
@@ -240,7 +249,7 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
     out.between_probe_start = metrics.starts.between;
     out.middle_probe_start = metrics.starts.middle;
     out.low_confidence = selection.low_confidence;
-    out.selected_intro_median_abs_ms = selected_intro_metrics().median_abs_ms;
+    out.selected_intro_median_abs_ms = selected_intro_metrics(metrics, selection).median_abs_ms;
     out.consensus_bpm = metrics.consensus_bpm;
     return out;
 }
