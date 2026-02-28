@@ -23,9 +23,9 @@ int main() {
     cfg.expected_beat_count = 781;
     cfg.expected_downbeat_count = 30;
 
-    cfg.expected_first_downbeat_feature_frame = 7ULL;
+    cfg.expected_first_downbeat_feature_frame = 32ULL;
     cfg.first_downbeat_feature_frame_tolerance = 1ULL;
-    cfg.expected_first_downbeat_sample_frame = 0ULL;
+    cfg.expected_first_downbeat_sample_frame = 14390ULL;
     cfg.first_downbeat_sample_tolerance_ms = 10.0;
 
     cfg.target_bpm = 122.009;

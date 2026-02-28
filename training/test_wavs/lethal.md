@@ -5,9 +5,9 @@
 - Beat events: `781`
 - Downbeat events: `30`
 - Projected beat events: `781`
-- First downbeat feature frame: `7` (`0.140s` @ 50 fps feature timeline)
-- First downbeat sample frame: `0` (`0.000000s` @ 44.1 kHz output grid)
-- 4/4 bar phase: first bar complete, bars repeat every 4 beats
+- Expected first downbeat feature frame: `32`
+- Expected first downbeat sample frame: `14390` (`0.326304s` @ 44.1 kHz output grid)
+- Current library output is one beat too early on the downbeat phase while keeping a stable 4/4 repeat pattern
 - Drift probe (CPU baseline):
   - `start_median_ms=-13.22`
   - `end_median_ms=11.7914`
@@ -42,7 +42,7 @@
   - `ratio_applied=1.00007`
   - `delta_frames=1144`
 
-Reproduce baseline:
+Reproduce current failing regression:
 
 ```bash
 cmake --build build --target beatit_lethal_window_alignment_sparse_tests -j8
