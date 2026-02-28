@@ -54,6 +54,11 @@ SparseUsabilityWindow build_sparse_usability_window(double start_seconds,
                                                     double duration_seconds,
                                                     const SparseUsabilityFeatures& features);
 
+SparseUsabilityFeatures measure_sparse_usability_features(const std::vector<float>& samples,
+                                                          double sample_rate,
+                                                          double min_bpm,
+                                                          double max_bpm);
+
 std::size_t pick_sparse_usability_window(const std::vector<SparseUsabilityWindow>& windows,
                                          const SparseUsabilityPickRequest& request);
 

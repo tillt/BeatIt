@@ -152,6 +152,57 @@ bool test_span_builder_groups_contiguous_usable_windows() {
     return true;
 }
 
+std::vector<float> make_pulse_train(double sample_rate,
+                                    double duration_seconds,
+                                    double bpm) {
+    const std::size_t total_samples =
+        static_cast<std::size_t>(std::llround(sample_rate * duration_seconds));
+    std::vector<float> samples(total_samples, 0.0f);
+    const std::size_t interval =
+        static_cast<std::size_t>(std::llround((60.0 / bpm) * sample_rate));
+    const std::size_t width =
+        static_cast<std::size_t>(std::llround(0.02 * sample_rate));
+    for (std::size_t start = 0; start < total_samples; start += interval) {
+        const std::size_t end = std::min(total_samples, start + width);
+        for (std::size_t i = start; i < end; ++i) {
+            samples[i] = 1.0f;
+        }
+    }
+    return samples;
+}
+
+std::vector<float> make_sustained_pad(double sample_rate,
+                                      double duration_seconds) {
+    const std::size_t total_samples =
+        static_cast<std::size_t>(std::llround(sample_rate * duration_seconds));
+    return std::vector<float>(total_samples, 0.2f);
+}
+
+bool test_feature_measurement_distinguishes_pulses_from_pad() {
+    constexpr double sample_rate = 1000.0;
+    const auto pulses = make_pulse_train(sample_rate, 30.0, 120.0);
+    const auto pad = make_sustained_pad(sample_rate, 30.0);
+
+    const auto pulse_features =
+        beatit::detail::measure_sparse_usability_features(pulses, sample_rate, 70.0, 180.0);
+    const auto pad_features =
+        beatit::detail::measure_sparse_usability_features(pad, sample_rate, 70.0, 180.0);
+
+    if (!(pulse_features.periodicity > pad_features.periodicity)) {
+        std::cerr << "Sparse usability scan test failed: pulse periodicity should exceed pad periodicity.\n";
+        return false;
+    }
+    if (!(pulse_features.transient_strength > pad_features.transient_strength)) {
+        std::cerr << "Sparse usability scan test failed: pulse transient strength should exceed pad.\n";
+        return false;
+    }
+    if (!(pulse_features.instability < pad_features.instability)) {
+        std::cerr << "Sparse usability scan test failed: pulse instability should be lower than pad instability.\n";
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 int main() {
@@ -171,6 +222,9 @@ int main() {
         return 1;
     }
     if (!test_span_builder_groups_contiguous_usable_windows()) {
+        return 1;
+    }
+    if (!test_feature_measurement_distinguishes_pulses_from_pad()) {
         return 1;
     }
 
