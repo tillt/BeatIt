@@ -17,11 +17,6 @@
 
 namespace beatit::detail {
 
-std::vector<double> interpolated_peak_positions(const std::vector<float>& activation,
-                                                const std::vector<std::size_t>& peaks);
-
-std::vector<double> positive_intervals(const std::vector<double>& positions);
-
 namespace {
 
 double median_value(std::vector<double>& values) {
@@ -42,11 +37,6 @@ std::vector<double> positive_frame_intervals(const std::vector<std::size_t>& fra
         }
     }
     return intervals;
-}
-
-std::vector<double> positive_interpolated_peak_intervals(const std::vector<float>& activation,
-                                                         const std::vector<std::size_t>& peaks) {
-    return positive_intervals(interpolated_peak_positions(activation, peaks));
 }
 
 } // namespace
@@ -87,6 +77,15 @@ std::vector<double> positive_intervals(const std::vector<double>& positions) {
     }
     return intervals;
 }
+
+namespace {
+
+std::vector<double> positive_interpolated_peak_intervals(const std::vector<float>& activation,
+                                                         const std::vector<std::size_t>& peaks) {
+    return positive_intervals(interpolated_peak_positions(activation, peaks));
+}
+
+} // namespace
 
 void fill_bpm_bins(IntervalStats& stats,
                    const std::vector<double>& intervals,
