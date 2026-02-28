@@ -360,6 +360,7 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
         total_frames_full > used_frames ? total_frames_full : used_frames;
     const TempoWindowConfig tempo_window = build_tempo_window_config(config, reference_bpm);
     const AnalysisLatencyConfig analysis_latency = build_analysis_latency_config(config, used_frames);
+    const bool use_alt_window = config.prefer_double_time && tempo_window.has_alt_window;
 
     const double fps = static_cast<double>(config.sample_rate) / static_cast<double>(config.hop_size);
     const double hop_scale = sample_rate / static_cast<double>(config.sample_rate);
@@ -410,7 +411,7 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                           used_frames,
                           tempo_window.min_bpm,
                           tempo_window.max_bpm,
-                          config.prefer_double_time && tempo_window.has_alt_window,
+                          use_alt_window,
                           tempo_window.min_bpm_alt,
                           tempo_window.max_bpm_alt,
                           peaks_ms);
@@ -441,7 +442,7 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                               used_frames,
                               tempo_window.min_bpm,
                               tempo_window.max_bpm,
-                              config.prefer_double_time && tempo_window.has_alt_window,
+                              use_alt_window,
                               tempo_window.min_bpm_alt,
                               tempo_window.max_bpm_alt,
                               peaks_ms);
