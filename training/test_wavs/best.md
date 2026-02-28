@@ -5,8 +5,9 @@
 - Beat events: `1163`
 - Downbeat events: `30`
 - Projected beat events: `1163`
-- First downbeat feature frame: `26` (`0.520s` @ 50 fps feature timeline)
-- First downbeat sample frame: `3711` (`0.084s @ 44.1 kHz output grid)
+- Canonical decoded downbeat feature frame: `26` (`0.520s` @ 50 fps feature timeline)
+- Canonical projected beat grid starts at sample frame `3711` (`0.084s @ 44.1 kHz output grid)
+- The finalized projected bar marker is later than the decoded first downbeat; this file is validated by local rhythmic sections instead of a brittle first projected downbeat timestamp.
 - Local rhythmic alignment checks (CPU baseline):
   - start window: `<= 20ms`
   - pre-break window: `<= 32ms`

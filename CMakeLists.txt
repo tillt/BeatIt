@@ -270,6 +270,39 @@ if(APPLE)
     target_link_libraries(beatit PRIVATE "-framework AVFoundation" "-framework Foundation" "-framework CoreMedia" "-framework AudioToolbox")
 endif()
 
+add_executable(beatit_tool_probe_runner
+    tools/probe_runner.mm
+)
+
+target_include_directories(beatit_tool_probe_runner PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_link_libraries(beatit_tool_probe_runner PRIVATE
+    beatit_lib
+)
+
+add_executable(beatit_tool_alignment_inspector
+    tools/alignment_inspector.mm
+)
+
+target_include_directories(beatit_tool_alignment_inspector PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_link_libraries(beatit_tool_alignment_inspector PRIVATE
+    beatit_lib
+)
+
+if(APPLE)
+    target_compile_options(beatit_tool_probe_runner PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
+    target_compile_options(beatit_tool_alignment_inspector PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
+    target_link_libraries(beatit_tool_probe_runner PRIVATE "-framework AVFoundation" "-framework CoreML" "-framework Foundation")
+    target_link_libraries(beatit_tool_alignment_inspector PRIVATE "-framework AVFoundation" "-framework CoreML" "-framework Foundation")
+endif()
+
 if(APPLE)
     set(BEATIT_PUBLIC_HEADERS
         "${CMAKE_CURRENT_SOURCE_DIR}/include/beatit/analysis.h"

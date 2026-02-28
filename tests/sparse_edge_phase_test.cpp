@@ -54,6 +54,30 @@ bool test_phase_try_accepts_clear_minus_improvement() {
     return true;
 }
 
+bool test_phase_try_rejects_large_interior_tradeoff() {
+    beatit::detail::SparseEdgePhaseTryResult result;
+    result.base_score = 561.738;
+    result.minus_score = 525.461;
+    result.plus_score = 526.155;
+    result.base_global_delta_ms = 139.796;
+    result.minus_global_delta_ms = 113.016;
+    result.plus_global_delta_ms = 167.551;
+    result.base_between_abs_ms = 223.469;
+    result.base_middle_abs_ms = 55.6916;
+    result.minus_between_abs_ms = 50.7937;
+    result.minus_middle_abs_ms = 219.773;
+    result.plus_between_abs_ms = 126.213;
+    result.plus_middle_abs_ms = 150.499;
+
+    const int selected = beatit::detail::select_sparse_edge_phase_candidate(result);
+    if (selected != 0) {
+        std::cerr << "Sparse edge phase test failed: expected base candidate for large interior tradeoff, got "
+                  << selected << ".\n";
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 int main() {
@@ -61,6 +85,9 @@ int main() {
         return 1;
     }
     if (!test_phase_try_accepts_clear_minus_improvement()) {
+        return 1;
+    }
+    if (!test_phase_try_rejects_large_interior_tradeoff()) {
         return 1;
     }
 
