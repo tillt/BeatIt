@@ -81,7 +81,7 @@ AnalysisResult analyze_sparse_probe_window(const BeatitConfig& original_config,
             std::max(std::max(1.0f, original_config.min_bpm) + 1.0f, original_config.max_bpm));
         if (grid_bpm > 0.0f) {
             result.estimated_bpm = grid_bpm;
-        } else if (selected.have_consensus && selected.consensus_bpm > 0.0) {
+        } else if (selected.consensus_bpm > 0.0) {
             result.estimated_bpm = static_cast<float>(selected.consensus_bpm);
         }
     }

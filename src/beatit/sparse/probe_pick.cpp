@@ -180,7 +180,7 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
 
     const auto refresh_selected = [&]() {
         const double bpm_hint =
-            metrics.have_consensus ? metrics.consensus_bpm : probes[selection.selected_index].bpm;
+            (metrics.consensus_bpm > 0.0) ? metrics.consensus_bpm : probes[selection.selected_index].bpm;
         diagnostics = evaluate_selected_probe_diagnostics(probes[selection.selected_index],
                                                           metrics.middle_metrics[selection.selected_index],
                                                           bpm_hint,
@@ -211,7 +211,7 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
     AnalysisResult result = probes[selection.selected_index].analysis;
     const double selected_mode_error = metrics.mode_errors[selection.selected_index];
     if (selection.low_confidence) {
-        const double repair_bpm = metrics.have_consensus
+        const double repair_bpm = (metrics.consensus_bpm > 0.0)
             ? metrics.consensus_bpm
             : (probes[selection.selected_index].bpm > 0.0
                    ? probes[selection.selected_index].bpm
@@ -242,7 +242,6 @@ SparseProbeSelectionResult select_sparse_probe_result(const SparseProbeSelection
     out.middle_probe_start = metrics.starts.middle;
     out.low_confidence = selection.low_confidence;
     out.selected_intro_median_abs_ms = selected_intro_metrics().median_abs_ms;
-    out.have_consensus = metrics.have_consensus;
     out.consensus_bpm = metrics.consensus_bpm;
     return out;
 }

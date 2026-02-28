@@ -116,7 +116,7 @@ bool should_add_disagreement_probe(const std::vector<ProbeResult>& probes,
 double select_repair_start(const std::vector<ProbeResult>& probes,
                            const ProbeMetricsSnapshot& metrics,
                            double fallback_start) {
-    if (!metrics.have_consensus || probes.empty()) {
+    if (!(metrics.consensus_bpm > 0.0) || probes.empty()) {
         return fallback_start;
     }
 
@@ -171,7 +171,6 @@ ProbeMetricsSnapshot recompute_probe_metrics(const std::vector<ProbeResult>& pro
                                              const SparseSampleProvider& provider) {
     ProbeMetricsSnapshot snapshot;
     snapshot.consensus_bpm = sparse_consensus_from_probes(probes, config.min_bpm, config.max_bpm);
-    snapshot.have_consensus = snapshot.consensus_bpm > 0.0;
     snapshot.mode_errors =
         sparse_probe_mode_errors(probes, snapshot.consensus_bpm, config.min_bpm, config.max_bpm);
     snapshot.starts = compute_probe_window_starts(probes, min_allowed_start, max_allowed_start);
@@ -179,7 +178,7 @@ ProbeMetricsSnapshot recompute_probe_metrics(const std::vector<ProbeResult>& pro
     snapshot.intro_metrics.assign(probes.size(), IntroPhaseMetrics{});
     snapshot.middle_metrics.assign(probes.size(), SparseWindowPhaseMetrics{});
     for (std::size_t i = 0; i < probes.size(); ++i) {
-        const double bpm_hint = snapshot.have_consensus ? snapshot.consensus_bpm : probes[i].bpm;
+        const double bpm_hint = (snapshot.consensus_bpm > 0.0) ? snapshot.consensus_bpm : probes[i].bpm;
         snapshot.intro_metrics[i] = probe_intro_metrics_match_bpm_hint(probes[i], bpm_hint)
             ? cached_intro_phase_metrics(probes[i])
             : sparse_measure_intro_phase(probes[i].analysis, bpm_hint, sample_rate, provider);

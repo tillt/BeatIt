@@ -27,7 +27,6 @@ struct ProbeWindowStarts {
 };
 
 struct ProbeMetricsSnapshot {
-    bool have_consensus = false;
     double consensus_bpm = 0.0;
     std::vector<double> mode_errors;
     std::vector<IntroPhaseMetrics> intro_metrics;
