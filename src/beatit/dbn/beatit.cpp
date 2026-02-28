@@ -231,8 +231,8 @@ DBNDecodeResult decode_dbn_beats_beatit(const std::vector<float>& beat_activatio
                         }
                         const double tempo_penalty =
                             tempo_change_penalty * std::abs(tempo.bpm - tempos[prev_tempo].bpm);
-                        const double candidate = prev_score + obs - tempo_penalty;
-                        const double rewarded = candidate + transition_reward;
+                        const double rewarded =
+                            prev_score + obs - tempo_penalty + transition_reward;
                         if (rewarded > best_score) {
                             best_score = rewarded;
                             best_backref.prev_idx = static_cast<int>(cj);
