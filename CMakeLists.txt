@@ -150,7 +150,9 @@ set(BEATIT_LIB_SOURCES
     src/beatit/sparse/probe_pick.cpp
     src/beatit/sparse/probe_pick_helpers.cpp
     src/beatit/sparse/probe_score.cpp
+    src/beatit/sparse/usability_scan.cpp
     src/beatit/sparse/phase_metrics.cpp
+    src/beatit/sparse/interior_select.cpp
     src/beatit/sparse/refinement.cpp
     src/beatit/sparse/edge.cpp
     src/beatit/sparse/edge_adjust.cpp
@@ -404,6 +406,69 @@ endif()
 
 add_test(NAME beatit_dbn_grid_stage_tests COMMAND beatit_dbn_grid_stage_tests)
 
+add_executable(beatit_sparse_usability_scan_tests
+    tests/sparse_usability_scan_test.cpp
+)
+
+target_link_libraries(beatit_sparse_usability_scan_tests
+    PRIVATE
+        beatit_lib
+)
+
+target_include_directories(beatit_sparse_usability_scan_tests
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/beatit
+)
+
+if(APPLE)
+    target_compile_options(beatit_sparse_usability_scan_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
+endif()
+
+add_test(NAME beatit_sparse_usability_scan_tests COMMAND beatit_sparse_usability_scan_tests)
+
+add_executable(beatit_sparse_interior_select_tests
+    tests/sparse_interior_select_test.cpp
+)
+
+target_link_libraries(beatit_sparse_interior_select_tests
+    PRIVATE
+        beatit_lib
+)
+
+target_include_directories(beatit_sparse_interior_select_tests
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/beatit
+)
+
+if(APPLE)
+    target_compile_options(beatit_sparse_interior_select_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
+endif()
+
+add_test(NAME beatit_sparse_interior_select_tests COMMAND beatit_sparse_interior_select_tests)
+
+add_executable(beatit_sparse_edge_phase_tests
+    tests/sparse_edge_phase_test.cpp
+)
+
+target_link_libraries(beatit_sparse_edge_phase_tests
+    PRIVATE
+        beatit_lib
+)
+
+target_include_directories(beatit_sparse_edge_phase_tests
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/beatit
+)
+
+if(APPLE)
+    target_compile_options(beatit_sparse_edge_phase_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
+endif()
+
+add_test(NAME beatit_sparse_edge_phase_tests COMMAND beatit_sparse_edge_phase_tests)
+
 add_executable(beatit_dbn_purelove_tests
     tests/dbn_purelove_test.mm
 )
@@ -639,6 +704,86 @@ endif()
 
 add_test(NAME beatit_intelligence_window_alignment_sparse_tests COMMAND beatit_intelligence_window_alignment_sparse_tests)
 set_tests_properties(beatit_intelligence_window_alignment_sparse_tests PROPERTIES
+    ENVIRONMENT
+        "TMPDIR=${CMAKE_CURRENT_BINARY_DIR}/coreml_tmp;HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_home;XDG_CACHE_HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_cache"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    SKIP_RETURN_CODE 77
+)
+
+add_executable(beatit_best_window_alignment_sparse_tests
+    tests/best_window_alignment_test.mm
+)
+
+target_link_libraries(beatit_best_window_alignment_sparse_tests
+    PRIVATE
+        beatit_lib
+)
+
+target_compile_definitions(beatit_best_window_alignment_sparse_tests PRIVATE
+    BEATIT_TEST_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/models/beatit.mlpackage"
+    BEATIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+    BEATIT_TEST_SPARSE_PROBE_MODE=1
+)
+
+if(APPLE)
+    target_compile_options(beatit_best_window_alignment_sparse_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
+    target_link_libraries(beatit_best_window_alignment_sparse_tests PRIVATE "-framework AVFoundation" "-framework CoreML" "-framework Foundation")
+endif()
+
+add_test(NAME beatit_best_window_alignment_sparse_tests COMMAND beatit_best_window_alignment_sparse_tests)
+set_tests_properties(beatit_best_window_alignment_sparse_tests PROPERTIES
+    ENVIRONMENT
+        "TMPDIR=${CMAKE_CURRENT_BINARY_DIR}/coreml_tmp;HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_home;XDG_CACHE_HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_cache"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    SKIP_RETURN_CODE 77
+)
+
+add_executable(beatit_moderat_window_alignment_sparse_tests
+    tests/moderat_window_alignment_test.mm
+)
+
+target_link_libraries(beatit_moderat_window_alignment_sparse_tests
+    PRIVATE
+        beatit_lib
+)
+
+target_compile_definitions(beatit_moderat_window_alignment_sparse_tests PRIVATE
+    BEATIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+)
+
+if(APPLE)
+    target_compile_options(beatit_moderat_window_alignment_sparse_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
+    target_link_libraries(beatit_moderat_window_alignment_sparse_tests PRIVATE "-framework AVFoundation" "-framework CoreML" "-framework Foundation")
+endif()
+
+add_test(NAME beatit_moderat_window_alignment_sparse_tests COMMAND beatit_moderat_window_alignment_sparse_tests)
+set_tests_properties(beatit_moderat_window_alignment_sparse_tests PROPERTIES
+    ENVIRONMENT
+        "TMPDIR=${CMAKE_CURRENT_BINARY_DIR}/coreml_tmp;HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_home;XDG_CACHE_HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_cache"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    SKIP_RETURN_CODE 77
+)
+
+add_executable(beatit_lethal_window_alignment_sparse_tests
+    tests/lethal_window_alignment_test.mm
+)
+
+target_link_libraries(beatit_lethal_window_alignment_sparse_tests
+    PRIVATE
+        beatit_lib
+)
+
+target_compile_definitions(beatit_lethal_window_alignment_sparse_tests PRIVATE
+    BEATIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+)
+
+if(APPLE)
+    target_compile_options(beatit_lethal_window_alignment_sparse_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
+    target_link_libraries(beatit_lethal_window_alignment_sparse_tests PRIVATE "-framework AVFoundation" "-framework CoreML" "-framework Foundation")
+endif()
+
+add_test(NAME beatit_lethal_window_alignment_sparse_tests COMMAND beatit_lethal_window_alignment_sparse_tests)
+set_tests_properties(beatit_lethal_window_alignment_sparse_tests PROPERTIES
     ENVIRONMENT
         "TMPDIR=${CMAKE_CURRENT_BINARY_DIR}/coreml_tmp;HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_home;XDG_CACHE_HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_cache"
     WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"

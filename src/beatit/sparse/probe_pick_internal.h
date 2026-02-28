@@ -34,6 +34,8 @@ struct ProbeMetricsSnapshot {
 };
 
 struct SelectedProbeDiagnostics {
+    double middle_start = 0.0;
+    double between_start = 0.0;
     SparseWindowPhaseMetrics middle;
     SparseWindowPhaseMetrics between;
     SparseWindowPhaseMetrics left;

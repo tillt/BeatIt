@@ -23,6 +23,12 @@
 namespace beatit::tests::window_alignment {
 
 struct WindowAlignmentCaseConfig {
+    struct LocalOffsetWindowCheck {
+        const char* label = "";
+        double center_fraction = 0.0;
+        double max_median_abs_ms = 0.0;
+    };
+
     const char* name = "Window";
     const char* audio_filename = nullptr;
     const char* dump_env_var = nullptr;
@@ -72,6 +78,8 @@ struct WindowAlignmentCaseConfig {
     bool check_seed_order = false;
     double max_seed_order_bpm_delta = 0.01;
     double max_seed_order_grid_median_delta_frames = 1.0;
+
+    std::vector<LocalOffsetWindowCheck> local_offset_windows;
 };
 
 inline int fail_case(const WindowAlignmentCaseConfig& cfg, const std::string& message) {
@@ -465,6 +473,33 @@ inline int run_window_alignment_case(const WindowAlignmentCaseConfig& cfg) {
             middle_median_abs_ms.has_value() &&
             *middle_median_abs_ms > phase_hot_threshold_ms;
         wrapped_middle_signature = edges_calm && (between_hot || middle_hot);
+    }
+
+    for (const auto& local_window : cfg.local_offset_windows) {
+        if (offsets_ms.size() < cfg.edge_window_beats) {
+            return fail_case(cfg, "too few offsets for local window checks.");
+        }
+        const std::size_t max_start =
+            offsets_ms.size() > cfg.edge_window_beats ? (offsets_ms.size() - cfg.edge_window_beats) : 0;
+        const double center_fraction = std::clamp(local_window.center_fraction, 0.0, 1.0);
+        const std::size_t center_index = static_cast<std::size_t>(
+            std::llround(center_fraction * static_cast<double>(offsets_ms.size() - 1)));
+        const std::size_t half_window = cfg.edge_window_beats / 2;
+        const std::size_t start_index =
+            std::min(max_start,
+                     center_index > half_window ? (center_index - half_window) : std::size_t{0});
+        std::vector<double> window(offsets_ms.begin() + static_cast<long>(start_index),
+                                   offsets_ms.begin() + static_cast<long>(start_index + cfg.edge_window_beats));
+        for (double& v : window) {
+            v = std::fabs(v);
+        }
+        const double local_median_abs_ms = median(window);
+        if (local_median_abs_ms > local_window.max_median_abs_ms) {
+            return fail_case(cfg,
+                             std::string("local window '") + local_window.label +
+                                 "' median abs offset " + std::to_string(local_median_abs_ms) +
+                                 "ms > " + std::to_string(local_window.max_median_abs_ms) + "ms.");
+        }
     }
 
     if (env_enabled(cfg.dump_env_var)) {

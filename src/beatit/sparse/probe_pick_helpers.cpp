@@ -7,6 +7,8 @@
 //
 
 #include "probe_pick_internal.h"
+#include "beatit/sparse/interior_select.h"
+#include "beatit/sparse/usability_scan.h"
 #include "beatit/sparse/waveform.h"
 
 #include <algorithm>
@@ -16,6 +18,45 @@
 namespace beatit {
 namespace detail {
 namespace {
+
+std::vector<SparseUsabilityWindow> scan_diagnostic_usability_windows(const ProbeWindowStarts& starts,
+                                                                     double probe_duration,
+                                                                     double sample_rate,
+                                                                     double bpm_hint,
+                                                                     const SparseSampleProvider& provider) {
+    if (!(sample_rate > 0.0) || !(bpm_hint > 0.0) || !provider) {
+        return {};
+    }
+
+    const double scan_start = std::max(0.0, starts.left);
+    const double scan_total_seconds = std::max(0.0, (starts.right - starts.left) + probe_duration);
+    if (!(scan_total_seconds > 0.0)) {
+        return {};
+    }
+
+    const double scan_window_seconds = std::clamp(probe_duration * 0.5, 20.0, 30.0);
+    const double scan_hop_seconds = std::max(10.0, 0.5 * scan_window_seconds);
+    const SparseSampleProvider scan_provider =
+        [&provider, scan_start](double start_seconds,
+                                double duration_seconds,
+                                std::vector<float>* out_samples) -> std::size_t {
+            return provider(scan_start + start_seconds, duration_seconds, out_samples);
+        };
+
+    auto windows = scan_sparse_usability_windows(SparseUsabilityScanRequest{
+        scan_total_seconds,
+        scan_window_seconds,
+        scan_hop_seconds,
+        sample_rate,
+        std::max(40.0, bpm_hint * 0.75),
+        std::min(240.0, bpm_hint * 1.25),
+        &scan_provider
+    });
+    for (auto& window : windows) {
+        window.start_seconds += scan_start;
+    }
+    return windows;
+}
 
 bool probe_intro_metrics_match_bpm_hint(const ProbeResult& probe, double bpm_hint) {
     if (!(probe.intro_phase_bpm > 0.0) || !(bpm_hint > 0.0)) {
@@ -29,6 +70,53 @@ IntroPhaseMetrics cached_intro_phase_metrics(const ProbeResult& probe) {
     metrics.median_abs_ms = probe.phase_abs_ms;
     metrics.odd_even_gap_ms = probe.intro_odd_even_gap_ms;
     return metrics;
+}
+
+ProbeWindowStarts resolve_diagnostic_window_starts(const ProbeWindowStarts& starts,
+                                                   const AnalysisResult& analysis,
+                                                   double probe_duration,
+                                                   double sample_rate,
+                                                   double bpm_hint,
+                                                   const SparseSampleProvider& provider) {
+    ProbeWindowStarts resolved = starts;
+    const auto windows =
+        scan_diagnostic_usability_windows(starts, probe_duration, sample_rate, bpm_hint, provider);
+    if (windows.empty()) {
+        return resolved;
+    }
+
+    const SparseInteriorWindowTargets interior_targets =
+        resolve_sparse_interior_targets(windows, starts.middle, starts.between, 0.0);
+    resolved.between = interior_targets.between_start_seconds;
+
+    std::vector<SparseInteriorCandidate> candidates;
+    candidates.reserve(windows.size());
+    for (const auto& window : windows) {
+        if (!window.usable || window.score < 0.0) {
+            continue;
+        }
+        if (window.start_seconds + 0.5 < interior_targets.middle_start_seconds) {
+            continue;
+        }
+        candidates.push_back(SparseInteriorCandidate{
+            window.start_seconds,
+            measure_sparse_window_phase(analysis,
+                                        bpm_hint,
+                                        window.start_seconds,
+                                        probe_duration,
+                                        sample_rate,
+                                        provider)
+        });
+    }
+
+    const SparseInteriorPickResult middle_pick =
+        pick_best_sparse_interior_candidate(candidates);
+    if (middle_pick.index < candidates.size()) {
+        resolved.middle = candidates[middle_pick.index].start_seconds;
+    } else {
+        resolved.middle = interior_targets.middle_start_seconds;
+    }
+    return resolved;
 }
 
 } // namespace
@@ -247,12 +335,29 @@ SelectedProbeDiagnostics evaluate_selected_probe_diagnostics(const ProbeResult& 
                                                              double sample_rate,
                                                              const SparseSampleProvider& provider) {
     SelectedProbeDiagnostics diagnostics;
-    diagnostics.middle = middle_metrics;
+    const ProbeWindowStarts diagnostic_starts =
+        resolve_diagnostic_window_starts(starts,
+                                         selected_probe.analysis,
+                                         probe_duration,
+                                         sample_rate,
+                                         bpm_hint,
+                                         provider);
+    diagnostics.middle_start = diagnostic_starts.middle;
+    diagnostics.between_start = diagnostic_starts.between;
+
+    diagnostics.middle = (diagnostic_starts.middle == starts.middle)
+        ? middle_metrics
+        : measure_sparse_window_phase(selected_probe.analysis,
+                                      bpm_hint,
+                                      diagnostic_starts.middle,
+                                      probe_duration,
+                                      sample_rate,
+                                      provider);
     diagnostics.middle_gate = sparse_evaluate_window_phase_gate(diagnostics.middle, bpm_hint);
 
     diagnostics.between = measure_sparse_window_phase(selected_probe.analysis,
                                                       bpm_hint,
-                                                      starts.between,
+                                                      diagnostic_starts.between,
                                                       probe_duration,
                                                       sample_rate,
                                                       provider);

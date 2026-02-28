@@ -20,9 +20,20 @@ struct SparseEdgePhaseTryResult {
     double base_score = std::numeric_limits<double>::infinity();
     double minus_score = std::numeric_limits<double>::infinity();
     double plus_score = std::numeric_limits<double>::infinity();
+    double base_global_delta_ms = std::numeric_limits<double>::infinity();
+    double minus_global_delta_ms = std::numeric_limits<double>::infinity();
+    double plus_global_delta_ms = std::numeric_limits<double>::infinity();
+    double base_between_abs_ms = std::numeric_limits<double>::infinity();
+    double minus_between_abs_ms = std::numeric_limits<double>::infinity();
+    double plus_between_abs_ms = std::numeric_limits<double>::infinity();
+    double base_middle_abs_ms = std::numeric_limits<double>::infinity();
+    double minus_middle_abs_ms = std::numeric_limits<double>::infinity();
+    double plus_middle_abs_ms = std::numeric_limits<double>::infinity();
     int selected = 0;
     bool applied = false;
 };
+
+int select_sparse_edge_phase_candidate(const SparseEdgePhaseTryResult& result);
 
 SparseEdgePhaseTryResult apply_sparse_edge_phase_try(
     std::vector<unsigned long long>* projected,
