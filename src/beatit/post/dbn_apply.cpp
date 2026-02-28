@@ -23,6 +23,41 @@
 
 namespace beatit::detail {
 
+namespace {
+
+void apply_window_offset(DBNDecodeResult& decoded, bool use_window, std::size_t window_start) {
+    if (!use_window) {
+        return;
+    }
+    for (std::size_t& frame : decoded.beat_frames) {
+        frame += window_start;
+    }
+    for (std::size_t& frame : decoded.downbeat_frames) {
+        frame += window_start;
+    }
+}
+
+void clear_projected_grid_outputs(CoreMLResult& result) {
+    result.beat_projected_feature_frames.clear();
+    result.beat_projected_sample_frames.clear();
+    result.beat_projected_strengths.clear();
+    result.downbeat_projected_feature_frames.clear();
+}
+
+void emit_downbeat_feature_frames(CoreMLResult& result,
+                                  const DBNDecodeResult& decoded,
+                                  std::size_t analysis_latency_frames) {
+    result.downbeat_feature_frames.clear();
+    const std::vector<std::size_t> adjusted_downbeats =
+        detail::apply_latency_to_frames(decoded.downbeat_frames, analysis_latency_frames);
+    result.downbeat_feature_frames.reserve(adjusted_downbeats.size());
+    for (std::size_t frame : adjusted_downbeats) {
+        result.downbeat_feature_frames.push_back(static_cast<unsigned long long>(frame));
+    }
+}
+
+} // namespace
+
 bool run_dbn_decoded_postprocess(CoreMLResult& result,
                                  DBNDecodeResult& decoded,
                                  const DBNDecodedPostprocessContext& context) {
@@ -49,17 +84,6 @@ bool run_dbn_decoded_postprocess(CoreMLResult& result,
     const bool quality_valid = context.quality.valid;
     const double quality_qkur = context.quality.qkur;
 
-    auto fill_beats_from_frames = [&](const std::vector<std::size_t>& frames) {
-        detail::fill_beats_from_frames(result,
-                                       frames,
-                                       config,
-                                       sample_rate,
-                                       hop_scale,
-                                       analysis_latency_frames,
-                                       analysis_latency_frames_f,
-                                       refine_window);
-    };
-
     auto refine_frame_to_peak = [&](std::size_t frame,
                                     const std::vector<float>& activation) -> std::size_t {
         return detail::refine_frame_to_peak(frame, activation, refine_window);
@@ -84,28 +108,12 @@ bool run_dbn_decoded_postprocess(CoreMLResult& result,
                                               out_strengths);
     };
 
-    auto apply_latency_to_frames = [&](const std::vector<std::size_t>& frames) {
-        return detail::apply_latency_to_frames(frames, analysis_latency_frames);
-    };
-
     auto infer_bpb_phase = [&](const std::vector<std::size_t>& beats,
                                const std::vector<std::size_t>& downbeats,
                                const std::vector<std::size_t>& candidates) {
         return detail::infer_bpb_phase(beats, downbeats, candidates, config);
     };
     double projected_bpm = 0.0;
-
-    auto apply_window_offset = [&] {
-        if (!use_window) {
-            return;
-        }
-        for (std::size_t& frame : decoded.beat_frames) {
-            frame += window_start;
-        }
-        for (std::size_t& frame : decoded.downbeat_frames) {
-            frame += window_start;
-        }
-    };
 
     auto process_grid_projection = [&] {
         if (!config.dbn_project_grid) {
@@ -223,31 +231,25 @@ bool run_dbn_decoded_postprocess(CoreMLResult& result,
                     static_cast<unsigned long long>(frame));
             }
         } else {
-            result.beat_projected_feature_frames.clear();
-            result.beat_projected_sample_frames.clear();
-            result.beat_projected_strengths.clear();
-            result.downbeat_projected_feature_frames.clear();
+            clear_projected_grid_outputs(result);
         }
     };
 
-    auto emit_downbeat_outputs = [&] {
-        result.downbeat_feature_frames.clear();
-        const std::vector<std::size_t> adjusted_downbeats =
-            apply_latency_to_frames(decoded.downbeat_frames);
-        result.downbeat_feature_frames.reserve(adjusted_downbeats.size());
-        for (std::size_t frame : adjusted_downbeats) {
-            result.downbeat_feature_frames.push_back(static_cast<unsigned long long>(frame));
-        }
-    };
-
-    apply_window_offset();
+    detail::apply_window_offset(decoded, use_window, window_start);
     process_grid_projection();
 
     // Use the refined peak interpolation path for decoded DBN beats as well,
     // so sample-frame timing is not quantized to integer feature frames.
-    fill_beats_from_frames(decoded.beat_frames);
+    detail::fill_beats_from_frames(result,
+                                   decoded.beat_frames,
+                                   config,
+                                   sample_rate,
+                                   hop_scale,
+                                   analysis_latency_frames,
+                                   analysis_latency_frames_f,
+                                   refine_window);
     emit_projected_grid_outputs();
-    emit_downbeat_outputs();
+    detail::emit_downbeat_feature_frames(result, decoded, analysis_latency_frames);
     return true;
 }
 
