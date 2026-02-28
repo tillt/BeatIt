@@ -51,6 +51,16 @@ bool test_rejects_invalid_candidate() {
     return true;
 }
 
+bool test_rejects_wrapped_sign_candidate() {
+    const auto wrapped = make_metrics(18.0, 0.10, 0.90, 5.0);
+    const double score = beatit::detail::score_sparse_interior_candidate(wrapped);
+    if (std::isfinite(score)) {
+        std::cerr << "Sparse interior select test failed: wrapped-sign candidate should score infinite.\n";
+        return false;
+    }
+    return true;
+}
+
 bool test_picks_best_candidate() {
     std::vector<beatit::detail::SparseInteriorCandidate> candidates{
         {30.0, make_metrics(42.0, 0.35, 0.45, 12.0)},
@@ -73,6 +83,9 @@ int main() {
         return 1;
     }
     if (!test_rejects_invalid_candidate()) {
+        return 1;
+    }
+    if (!test_rejects_wrapped_sign_candidate()) {
         return 1;
     }
     if (!test_picks_best_candidate()) {

@@ -15,11 +15,14 @@ namespace beatit {
 namespace detail {
 
 double score_sparse_interior_candidate(const SparseWindowPhaseMetrics& metrics) {
+    constexpr double kMaxSignedExceedRatio = 0.85;
+
     if (metrics.count < 8 ||
         !std::isfinite(metrics.median_abs_ms) ||
         !std::isfinite(metrics.abs_limit_exceed_ratio) ||
         !std::isfinite(metrics.signed_limit_exceed_ratio) ||
-        !std::isfinite(metrics.odd_even_gap_ms)) {
+        !std::isfinite(metrics.odd_even_gap_ms) ||
+        metrics.signed_limit_exceed_ratio >= kMaxSignedExceedRatio) {
         return std::numeric_limits<double>::infinity();
     }
 
