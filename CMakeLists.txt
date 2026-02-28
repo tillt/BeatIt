@@ -150,6 +150,7 @@ set(BEATIT_LIB_SOURCES
     src/beatit/sparse/probe_pick.cpp
     src/beatit/sparse/probe_pick_helpers.cpp
     src/beatit/sparse/probe_score.cpp
+    src/beatit/sparse/usability_scan.cpp
     src/beatit/sparse/phase_metrics.cpp
     src/beatit/sparse/refinement.cpp
     src/beatit/sparse/edge.cpp
@@ -403,6 +404,27 @@ if(APPLE)
 endif()
 
 add_test(NAME beatit_dbn_grid_stage_tests COMMAND beatit_dbn_grid_stage_tests)
+
+add_executable(beatit_sparse_usability_scan_tests
+    tests/sparse_usability_scan_test.cpp
+)
+
+target_link_libraries(beatit_sparse_usability_scan_tests
+    PRIVATE
+        beatit_lib
+)
+
+target_include_directories(beatit_sparse_usability_scan_tests
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/beatit
+)
+
+if(APPLE)
+    target_compile_options(beatit_sparse_usability_scan_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
+endif()
+
+add_test(NAME beatit_sparse_usability_scan_tests COMMAND beatit_sparse_usability_scan_tests)
 
 add_executable(beatit_dbn_purelove_tests
     tests/dbn_purelove_test.mm
