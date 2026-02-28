@@ -168,18 +168,14 @@ float estimate_bpm_from_activation(const std::vector<float>& activation,
         (interval_stats.mean > 0.0) ? (60.0 * context.fps / interval_stats.mean) : 0.0;
     const double bpm_median =
         (interval_stats.median > 0.0) ? (60.0 * context.fps / interval_stats.median) : 0.0;
-    {
-        auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
-        debug_stream << "BPM debug: activation peaks=" << peaks.size()
+    BEATIT_LOG_DEBUG("BPM debug: activation peaks=" << peaks.size()
                      << " threshold=" << threshold
                      << " bins=" << bins
                      << " interval_mean=" << interval_stats.mean
                      << " interval_median=" << interval_stats.median
                      << " interval_std=" << interval_stats.stddev
                      << " bpm_mean=" << bpm_mean
-                     << " bpm_median=" << bpm_median;
-    }
-    BEATIT_LOG_DEBUG("BPM debug: peak_median_bpm=" << bpm_median);
+                     << " bpm_median=" << bpm_median);
 
     double best_score = 0.0;
     std::size_t best_idx = 0;
@@ -225,12 +221,9 @@ float estimate_bpm_from_activation(const std::vector<float>& activation,
     const double refined = (weight_total > 0.0)
         ? (weighted_sum / weight_total)
         : (context.min_bpm + static_cast<double>(best_idx) * kBpmBin);
-    {
-        auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
-        debug_stream << "BPM debug: activation_bpm=" << refined
+    BEATIT_LOG_DEBUG("BPM debug: activation_bpm=" << refined
                      << " best_idx=" << best_idx
-                     << " score=" << best_score;
-    }
+                     << " score=" << best_score);
 
     return static_cast<float>(refined);
 }
@@ -317,12 +310,11 @@ float estimate_bpm_from_activation_autocorr(const std::vector<float>& activation
     }
 
     const double bpm = (60.0 * fps_decim) / refined_lag;
-    auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
-    debug_stream << "BPM debug: autocorr frames=" << series.size()
-                 << " stride=" << stride
-                 << " lag=" << refined_lag
-                 << " bpm=" << bpm
-                 << " score=" << best_score;
+    BEATIT_LOG_DEBUG("BPM debug: autocorr frames=" << series.size()
+                     << " stride=" << stride
+                     << " lag=" << refined_lag
+                     << " bpm=" << bpm
+                     << " score=" << best_score);
     return static_cast<float>(bpm);
 }
 
@@ -387,12 +379,9 @@ float estimate_bpm_from_activation_comb(const std::vector<float>& activation,
     }
 
     const double bpm = (60.0 * context.fps) / static_cast<double>(best_lag);
-    {
-        auto debug_stream = BEATIT_LOG_DEBUG_STREAM();
-        debug_stream << "BPM debug: comb_bpm=" << bpm
+    BEATIT_LOG_DEBUG("BPM debug: comb_bpm=" << bpm
                      << " comb_lag=" << best_lag
-                     << " comb_score=" << best_score;
-    }
+                     << " comb_score=" << best_score);
 
     return static_cast<float>(bpm);
 }
