@@ -30,6 +30,53 @@ using detail::median_interval_frames;
 using detail::pick_peaks;
 using detail::score_peaks;
 
+struct TempoWindowConfig {
+    float hard_min_bpm = 1.0f;
+    float hard_max_bpm = 2.0f;
+    float min_bpm = 1.0f;
+    float max_bpm = 2.0f;
+    float min_bpm_alt = 1.0f;
+    float max_bpm_alt = 2.0f;
+    bool has_alt_window = false;
+};
+
+void clamp_tempo_window(float& min_bpm, float& max_bpm, float hard_min_bpm, float hard_max_bpm) {
+    min_bpm = std::max(hard_min_bpm, min_bpm);
+    max_bpm = std::min(hard_max_bpm, max_bpm);
+    if (max_bpm <= min_bpm) {
+        min_bpm = hard_min_bpm;
+        max_bpm = hard_max_bpm;
+    }
+}
+
+TempoWindowConfig build_tempo_window_config(const BeatitConfig& config, float reference_bpm) {
+    TempoWindowConfig out;
+    out.hard_min_bpm = std::max(1.0f, config.min_bpm);
+    out.hard_max_bpm = std::max(out.hard_min_bpm + 1.0f, config.max_bpm);
+    out.min_bpm = out.hard_min_bpm;
+    out.max_bpm = out.hard_max_bpm;
+    out.min_bpm_alt = out.min_bpm;
+    out.max_bpm_alt = out.max_bpm;
+
+    if (config.tempo_window_percent <= 0.0f || reference_bpm <= 0.0f) {
+        return out;
+    }
+
+    const float window = config.tempo_window_percent / 100.0f;
+    out.min_bpm = reference_bpm * (1.0f - window);
+    out.max_bpm = reference_bpm * (1.0f + window);
+    if (config.prefer_double_time) {
+        const float doubled = reference_bpm * 2.0f;
+        out.min_bpm_alt = doubled * (1.0f - window);
+        out.max_bpm_alt = doubled * (1.0f + window);
+        out.has_alt_window = true;
+    }
+
+    clamp_tempo_window(out.min_bpm, out.max_bpm, out.hard_min_bpm, out.hard_max_bpm);
+    clamp_tempo_window(out.min_bpm_alt, out.max_bpm_alt, out.hard_min_bpm, out.hard_max_bpm);
+    return out;
+}
+
 std::vector<std::size_t> compute_post_peaks(const std::vector<float>& activation,
                                             double fps,
                                             float min_bpm,
@@ -200,36 +247,7 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
     }
     const std::size_t grid_total_frames =
         total_frames_full > used_frames ? total_frames_full : used_frames;
-
-    const float hard_min_bpm = std::max(1.0f, config.min_bpm);
-    const float hard_max_bpm = std::max(hard_min_bpm + 1.0f, config.max_bpm);
-    auto clamp_bpm_range = [&](float& min_value, float& max_value) {
-        min_value = std::max(hard_min_bpm, min_value);
-        max_value = std::min(hard_max_bpm, max_value);
-        if (max_value <= min_value) {
-            min_value = hard_min_bpm;
-            max_value = hard_max_bpm;
-        }
-    };
-
-    float min_bpm = hard_min_bpm;
-    float max_bpm = hard_max_bpm;
-    float min_bpm_alt = min_bpm;
-    float max_bpm_alt = max_bpm;
-    bool has_window = false;
-    if (config.tempo_window_percent > 0.0f && reference_bpm > 0.0f) {
-        const float window = config.tempo_window_percent / 100.0f;
-        min_bpm = reference_bpm * (1.0f - window);
-        max_bpm = reference_bpm * (1.0f + window);
-        if (config.prefer_double_time) {
-            const float doubled = reference_bpm * 2.0f;
-            min_bpm_alt = doubled * (1.0f - window);
-            max_bpm_alt = doubled * (1.0f + window);
-            has_window = true;
-        }
-        clamp_bpm_range(min_bpm, max_bpm);
-        clamp_bpm_range(min_bpm_alt, max_bpm_alt);
-    }
+    const TempoWindowConfig tempo_window = build_tempo_window_config(config, reference_bpm);
 
     const double fps = static_cast<double>(config.sample_rate) / static_cast<double>(config.hop_size);
     const double hop_scale = sample_rate / static_cast<double>(config.sample_rate);
@@ -263,8 +281,8 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                                                 phase_energy,
                                                 config,
                                                 sample_rate,
-                                                min_bpm,
-                                                max_bpm,
+                                                tempo_window.min_bpm,
+                                                tempo_window.max_bpm,
                                                 grid_total_frames,
                                                 fps,
                                                 hop_scale,
@@ -277,13 +295,16 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
 
 
     if (config.use_dbn) {
-        float dbn_min_bpm = min_bpm;
-        float dbn_max_bpm = max_bpm;
-        if (config.prefer_double_time && has_window) {
-            dbn_min_bpm = std::min(dbn_min_bpm, min_bpm_alt);
-            dbn_max_bpm = std::max(dbn_max_bpm, max_bpm_alt);
+        float dbn_min_bpm = tempo_window.min_bpm;
+        float dbn_max_bpm = tempo_window.max_bpm;
+        if (config.prefer_double_time && tempo_window.has_alt_window) {
+            dbn_min_bpm = std::min(dbn_min_bpm, tempo_window.min_bpm_alt);
+            dbn_max_bpm = std::max(dbn_max_bpm, tempo_window.max_bpm_alt);
         }
-        clamp_bpm_range(dbn_min_bpm, dbn_max_bpm);
+        clamp_tempo_window(dbn_min_bpm,
+                           dbn_max_bpm,
+                           tempo_window.hard_min_bpm,
+                           tempo_window.hard_max_bpm);
         const detail::DBNRunRequest dbn_request{
             result,
             phase_energy,
@@ -310,11 +331,11 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                           config,
                           fps,
                           used_frames,
-                          min_bpm,
-                          max_bpm,
-                          config.prefer_double_time && has_window,
-                          min_bpm_alt,
-                          max_bpm_alt,
+                          tempo_window.min_bpm,
+                          tempo_window.max_bpm,
+                          config.prefer_double_time && tempo_window.has_alt_window,
+                          tempo_window.min_bpm_alt,
+                          tempo_window.max_bpm_alt,
                           peaks_ms);
 
     const float activation_floor = std::max(0.05f, config.activation_threshold * 0.2f);
@@ -364,11 +385,11 @@ CoreMLResult postprocess_coreml_activations(const std::vector<float>& beat_activ
                               config,
                               fps,
                               used_frames,
-                              min_bpm,
-                              max_bpm,
-                              config.prefer_double_time && has_window,
-                              min_bpm_alt,
-                              max_bpm_alt,
+                              tempo_window.min_bpm,
+                              tempo_window.max_bpm,
+                              config.prefer_double_time && tempo_window.has_alt_window,
+                              tempo_window.min_bpm_alt,
+                              tempo_window.max_bpm_alt,
                               peaks_ms);
         result.downbeat_feature_frames.clear();
         result.downbeat_feature_frames.reserve(down_peaks.size());
