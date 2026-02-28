@@ -178,6 +178,19 @@ std::vector<float> make_sustained_pad(double sample_rate,
     return std::vector<float>(total_samples, 0.2f);
 }
 
+std::vector<float> concat_samples(const std::vector<std::vector<float>>& chunks) {
+    std::size_t total = 0;
+    for (const auto& chunk : chunks) {
+        total += chunk.size();
+    }
+    std::vector<float> out;
+    out.reserve(total);
+    for (const auto& chunk : chunks) {
+        out.insert(out.end(), chunk.begin(), chunk.end());
+    }
+    return out;
+}
+
 bool test_feature_measurement_distinguishes_pulses_from_pad() {
     constexpr double sample_rate = 1000.0;
     const auto pulses = make_pulse_train(sample_rate, 30.0, 120.0);
@@ -198,6 +211,68 @@ bool test_feature_measurement_distinguishes_pulses_from_pad() {
     }
     if (!(pulse_features.instability < pad_features.instability)) {
         std::cerr << "Sparse usability scan test failed: pulse instability should be lower than pad instability.\n";
+        return false;
+    }
+    return true;
+}
+
+bool test_provider_scan_finds_rhythmic_regions() {
+    constexpr double sample_rate = 1000.0;
+    const auto audio = concat_samples({
+        make_sustained_pad(sample_rate, 20.0),
+        make_pulse_train(sample_rate, 20.0, 120.0),
+        make_sustained_pad(sample_rate, 20.0),
+        make_pulse_train(sample_rate, 20.0, 120.0),
+        make_sustained_pad(sample_rate, 20.0),
+    });
+
+    const beatit::detail::SparseSampleProvider provider =
+        [&audio](double start_seconds,
+                 double duration_seconds,
+                 std::vector<float>* out_samples) -> std::size_t {
+            const std::size_t total = audio.size();
+            const std::size_t start =
+                static_cast<std::size_t>(std::llround(std::max(0.0, start_seconds) * sample_rate));
+            const std::size_t count =
+                static_cast<std::size_t>(std::llround(std::max(0.0, duration_seconds) * sample_rate));
+            if (start >= total) {
+                out_samples->clear();
+                return 0;
+            }
+            const std::size_t end = std::min(total, start + count);
+            out_samples->assign(audio.begin() + static_cast<std::ptrdiff_t>(start),
+                                audio.begin() + static_cast<std::ptrdiff_t>(end));
+            return out_samples->size();
+        };
+
+    const beatit::detail::SparseUsabilityScanRequest request{
+        100.0, 20.0, 20.0, sample_rate, 70.0, 180.0, &provider
+    };
+    const auto windows = beatit::detail::scan_sparse_usability_windows(request);
+    if (windows.size() != 5) {
+        std::cerr << "Sparse usability scan test failed: expected 5 windows, got "
+                  << windows.size() << ".\n";
+        return false;
+    }
+
+    if (!(windows[1].score > windows[0].score)) {
+        std::cerr << "Sparse usability scan test failed: first rhythmic window should outscore intro pad.\n";
+        return false;
+    }
+    if (!(windows[3].score > windows[2].score)) {
+        std::cerr << "Sparse usability scan test failed: second rhythmic window should outscore mid pad.\n";
+        return false;
+    }
+
+    const auto spans = beatit::detail::build_sparse_usability_spans(windows, 0.0);
+    if (spans.size() != 2) {
+        std::cerr << "Sparse usability scan test failed: expected 2 usable spans from provider scan, got "
+                  << spans.size() << ".\n";
+        return false;
+    }
+    if (spans[0].first_index != 1 || spans[0].last_index != 1 ||
+        spans[1].first_index != 3 || spans[1].last_index != 3) {
+        std::cerr << "Sparse usability scan test failed: span index bounds did not isolate rhythmic windows.\n";
         return false;
     }
     return true;
@@ -225,6 +300,9 @@ int main() {
         return 1;
     }
     if (!test_feature_measurement_distinguishes_pulses_from_pad()) {
+        return 1;
+    }
+    if (!test_provider_scan_finds_rhythmic_regions()) {
         return 1;
     }
 

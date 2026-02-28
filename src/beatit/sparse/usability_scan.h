@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include "beatit/sparse/probe.h"
+
 #include <cstddef>
 #include <limits>
 #include <vector>
@@ -46,6 +48,16 @@ struct SparseUsabilitySpan {
     std::size_t last_index = 0;
 };
 
+struct SparseUsabilityScanRequest {
+    double total_duration_seconds = 0.0;
+    double window_duration_seconds = 30.0;
+    double hop_seconds = 15.0;
+    double sample_rate = 0.0;
+    double min_bpm = 70.0;
+    double max_bpm = 180.0;
+    const SparseSampleProvider* provider = nullptr;
+};
+
 double score_sparse_usability_window(const SparseUsabilityFeatures& features);
 
 bool sparse_window_is_usable(const SparseUsabilityFeatures& features);
@@ -65,6 +77,9 @@ std::size_t pick_sparse_usability_window(const std::vector<SparseUsabilityWindow
 std::vector<SparseUsabilitySpan> build_sparse_usability_spans(
     const std::vector<SparseUsabilityWindow>& windows,
     double min_score);
+
+std::vector<SparseUsabilityWindow> scan_sparse_usability_windows(
+    const SparseUsabilityScanRequest& request);
 
 } // namespace detail
 } // namespace beatit

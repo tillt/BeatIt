@@ -26,6 +26,29 @@ double window_distance_penalty(const SparseUsabilityWindow& window,
     return request.distance_weight * std::abs(window.start_seconds - request.target_seconds);
 }
 
+std::vector<double> build_window_starts(double total_duration_seconds,
+                                        double window_duration_seconds,
+                                        double hop_seconds) {
+    std::vector<double> starts;
+    if (!(total_duration_seconds > 0.0) ||
+        !(window_duration_seconds > 0.0) ||
+        !(hop_seconds > 0.0)) {
+        return starts;
+    }
+
+    const double max_start = std::max(0.0, total_duration_seconds - window_duration_seconds);
+    for (double start = 0.0; start <= max_start + 1e-9; start += hop_seconds) {
+        starts.push_back(std::min(start, max_start));
+        if (starts.back() >= max_start) {
+            break;
+        }
+    }
+    if (starts.empty()) {
+        starts.push_back(0.0);
+    }
+    return starts;
+}
+
 std::vector<double> build_envelope(const std::vector<float>& samples, std::size_t hop) {
     std::vector<double> envelope;
     if (hop == 0) {
@@ -127,17 +150,25 @@ double score_sparse_usability_window(const SparseUsabilityFeatures& features) {
         (0.40 * periodicity) +
         (0.30 * transient_strength);
     const double penalty =
-        (0.45 * silence_ratio) +
+        (0.20 * silence_ratio) +
         (0.35 * instability);
 
     return positive - penalty;
 }
 
 bool sparse_window_is_usable(const SparseUsabilityFeatures& features) {
-    return clamp_unit(features.silence_ratio) <= 0.45 &&
-           clamp_unit(features.periodicity) >= 0.35 &&
-           clamp_unit(features.transient_strength) >= 0.25 &&
-           clamp_unit(features.instability) <= 0.55;
+    const double silence_ratio = clamp_unit(features.silence_ratio);
+    const double periodicity = clamp_unit(features.periodicity);
+    const double transient_strength = clamp_unit(features.transient_strength);
+    const double instability = clamp_unit(features.instability);
+
+    if (silence_ratio >= 0.98 && periodicity < 0.50) {
+        return false;
+    }
+
+    return periodicity >= 0.35 &&
+           transient_strength >= 0.25 &&
+           instability <= 0.70;
 }
 
 SparseUsabilityWindow build_sparse_usability_window(double start_seconds,
@@ -284,6 +315,44 @@ std::vector<SparseUsabilitySpan> build_sparse_usability_spans(
     }
 
     return spans;
+}
+
+std::vector<SparseUsabilityWindow> scan_sparse_usability_windows(
+    const SparseUsabilityScanRequest& request) {
+    std::vector<SparseUsabilityWindow> windows;
+    if (!(request.total_duration_seconds > 0.0) ||
+        !(request.window_duration_seconds > 0.0) ||
+        !(request.hop_seconds > 0.0) ||
+        !(request.sample_rate > 0.0) ||
+        !(request.min_bpm > 0.0) ||
+        !(request.max_bpm >= request.min_bpm) ||
+        !request.provider) {
+        return windows;
+    }
+
+    const auto starts = build_window_starts(request.total_duration_seconds,
+                                            request.window_duration_seconds,
+                                            request.hop_seconds);
+    windows.reserve(starts.size());
+    for (double start_seconds : starts) {
+        std::vector<float> samples;
+        if ((*request.provider)(start_seconds, request.window_duration_seconds, &samples) == 0 ||
+            samples.empty()) {
+            windows.push_back(build_sparse_usability_window(start_seconds,
+                                                            request.window_duration_seconds,
+                                                            SparseUsabilityFeatures{}));
+            continue;
+        }
+
+        const auto features = measure_sparse_usability_features(samples,
+                                                                request.sample_rate,
+                                                                request.min_bpm,
+                                                                request.max_bpm);
+        windows.push_back(build_sparse_usability_window(start_seconds,
+                                                        request.window_duration_seconds,
+                                                        features));
+    }
+    return windows;
 }
 
 } // namespace detail
