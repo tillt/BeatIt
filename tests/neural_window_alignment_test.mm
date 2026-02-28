@@ -23,6 +23,8 @@ int main() {
     cfg.min_expected_bpm = 70.0;
     cfg.max_expected_bpm = 180.0;
     cfg.require_first_bar_complete = false;
+    cfg.expected_first_downbeat_sample_frame = 0ULL;
+    cfg.first_downbeat_sample_tolerance_ms = 10.0;
 
     cfg.max_intro_median_abs_ms = 25.0;
     cfg.max_offset_slope_ms_per_beat = 0.04;
