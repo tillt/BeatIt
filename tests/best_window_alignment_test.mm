@@ -39,8 +39,12 @@ int main() {
     cfg.max_odd_even_median_gap_ms = 4.5;
     cfg.max_tempo_edge_bpm_delta = 0.0005;
 
-    cfg.use_interior_windows = true;
-    cfg.fail_wrapped_middle_signature = true;
+    cfg.local_offset_windows = {
+        {"start", 0.03, 20.0},
+        {"pre_break", 0.32, 32.0},
+        {"post_break", 0.85, 32.0},
+        {"end", 0.97, 25.0},
+    };
 
     return beatit::tests::window_alignment::run_window_alignment_case(cfg);
 }
