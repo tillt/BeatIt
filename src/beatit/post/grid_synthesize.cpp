@@ -277,7 +277,7 @@ void synthesize_uniform_grid(GridProjectionState& state,
     decoded.beat_frames = std::move(uniform_beats);
     decoded.downbeat_frames =
         project_downbeats_from_beats(decoded.beat_frames, state.bpb, state.best_phase);
-    if (config.dbn_trace && fps > 0.0) {
+    if (config.dbn_trace && beatit_should_log("debug") && fps > 0.0) {
         trace_grid_peak_alignment(decoded.beat_frames,
                                   decoded.downbeat_frames,
                                   result.beat_activation,
