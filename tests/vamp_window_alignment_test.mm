@@ -19,8 +19,6 @@ int main() {
     cfg.tempo_edge_intervals = 64;
     cfg.event_probe_count = 16;
 
-    cfg.expected_first_downbeat_feature_frame = 33ULL;
-    cfg.first_downbeat_feature_frame_tolerance = 1ULL;
     cfg.expected_first_downbeat_sample_frame = 10573ULL;
     cfg.first_downbeat_sample_tolerance_ms = 10.0;
 

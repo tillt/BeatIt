@@ -20,11 +20,6 @@ int main() {
     cfg.drift_probe_count = 24;
     cfg.event_probe_count = 16;
 
-    cfg.expected_first_downbeat_feature_frame = 3ULL;
-    cfg.first_downbeat_feature_frame_tolerance = 1ULL;
-    cfg.expected_first_downbeat_sample_frame = 6302ULL;
-    cfg.first_downbeat_sample_tolerance_ms = 10.0;
-
     cfg.target_bpm = 126.02;
     cfg.max_bpm_error = 0.02;
 

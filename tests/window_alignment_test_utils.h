@@ -404,11 +404,12 @@ inline bool first_downbeat_sample_frame(const beatit::AnalysisResult& result,
 
 inline bool first_downbeat_feature_frame(const beatit::AnalysisResult& result,
                                          unsigned long long* out_frame) {
-    if (result.coreml_downbeat_feature_frames.empty()) {
+    const auto& downbeat_frames = beatit::output_downbeat_feature_frames(result);
+    if (downbeat_frames.empty()) {
         return false;
     }
     if (out_frame) {
-        *out_frame = result.coreml_downbeat_feature_frames.front();
+        *out_frame = downbeat_frames.front();
     }
     return true;
 }
