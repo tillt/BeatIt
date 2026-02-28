@@ -764,6 +764,32 @@ set_tests_properties(beatit_moderat_window_alignment_sparse_tests PROPERTIES
     SKIP_RETURN_CODE 77
 )
 
+add_executable(beatit_lethal_window_alignment_sparse_tests
+    tests/lethal_window_alignment_test.mm
+)
+
+target_link_libraries(beatit_lethal_window_alignment_sparse_tests
+    PRIVATE
+        beatit_lib
+)
+
+target_compile_definitions(beatit_lethal_window_alignment_sparse_tests PRIVATE
+    BEATIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+)
+
+if(APPLE)
+    target_compile_options(beatit_lethal_window_alignment_sparse_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
+    target_link_libraries(beatit_lethal_window_alignment_sparse_tests PRIVATE "-framework AVFoundation" "-framework CoreML" "-framework Foundation")
+endif()
+
+add_test(NAME beatit_lethal_window_alignment_sparse_tests COMMAND beatit_lethal_window_alignment_sparse_tests)
+set_tests_properties(beatit_lethal_window_alignment_sparse_tests PROPERTIES
+    ENVIRONMENT
+        "TMPDIR=${CMAKE_CURRENT_BINARY_DIR}/coreml_tmp;HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_home;XDG_CACHE_HOME=${CMAKE_CURRENT_BINARY_DIR}/coreml_cache"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    SKIP_RETURN_CODE 77
+)
+
 add_executable(beatit_neural_window_alignment_sparse_tests
     tests/neural_window_alignment_test.mm
 )
