@@ -195,6 +195,7 @@ double bpm_from_global_fit(const CoreMLResult& result,
     const std::size_t min_anchor_gap_frames = std::max<std::size_t>(
         window_frames, static_cast<std::size_t>(std::round(45.0 * fps)));
     const bool anchors_separated = anchor_gap_frames >= min_anchor_gap_frames;
+    const bool trace_enabled = config.dbn_trace && beatit_should_log("debug");
 
     auto decode_window_beats = [&](const std::pair<std::size_t, std::size_t>& w) {
         std::vector<std::size_t> beats;
@@ -232,7 +233,7 @@ double bpm_from_global_fit(const CoreMLResult& result,
     }
     const bool intro_valid = intro_beats.size() >= 8;
     const bool outro_valid = outro_beats.size() >= 8;
-    if (config.dbn_trace) {
+    if (trace_enabled) {
         auto print_window = [&](const char* name,
                                 const std::pair<std::size_t, std::size_t>& w,
                                 std::size_t beat_count) {
@@ -269,7 +270,7 @@ double bpm_from_global_fit(const CoreMLResult& result,
                     conf_sum;
             }
         }
-        if (config.dbn_trace) {
+        if (trace_enabled) {
             BEATIT_LOG_DEBUG("DBN tempo anchors: intro_bpm=" << intro_bpm
                              << " intro_conf=" << intro_conf
                              << " outro_bpm=" << outro_bpm
