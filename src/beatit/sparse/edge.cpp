@@ -436,8 +436,26 @@ void apply_sparse_waveform_edge_refit(AnalysisResult& result,
                          << " pre_phase_score=" << pre_phase_score
                          << " post_phase_score=" << post_phase_score
                          << " phase_try_base_score=" << phase_try.base_score
+                         << " phase_try_base_global_delta_ms="
+                         << phase_try.base_global_delta_ms
+                         << " phase_try_base_between_abs_ms="
+                         << phase_try.base_between_abs_ms
+                         << " phase_try_base_middle_abs_ms="
+                         << phase_try.base_middle_abs_ms
                          << " phase_try_minus_score=" << phase_try.minus_score
+                         << " phase_try_minus_global_delta_ms="
+                         << phase_try.minus_global_delta_ms
+                         << " phase_try_minus_between_abs_ms="
+                         << phase_try.minus_between_abs_ms
+                         << " phase_try_minus_middle_abs_ms="
+                         << phase_try.minus_middle_abs_ms
                          << " phase_try_plus_score=" << phase_try.plus_score
+                         << " phase_try_plus_global_delta_ms="
+                         << phase_try.plus_global_delta_ms
+                         << " phase_try_plus_between_abs_ms="
+                         << phase_try.plus_between_abs_ms
+                         << " phase_try_plus_middle_abs_ms="
+                         << phase_try.plus_middle_abs_ms
                          << " phase_try_selected=" << phase_try.selected
                          << " phase_try_applied=" << (phase_try.applied ? 1 : 0)
                          << " global_ratio_applied=" << global_guard_ratio

@@ -228,6 +228,9 @@ SparseEdgePhaseTryResult apply_sparse_edge_phase_try(
                                                   first_window_start,
                                                   last_window_start);
     out.base_score = base_score.score;
+    out.base_global_delta_ms = base_score.global_delta_ms;
+    out.base_between_abs_ms = base_score.between_abs_ms;
+    out.base_middle_abs_ms = base_score.middle_abs_ms;
     if (!base_score.valid) {
         return out;
     }
@@ -261,7 +264,13 @@ SparseEdgePhaseTryResult apply_sparse_edge_phase_try(
                                                   first_window_start,
                                                   last_window_start);
     out.minus_score = minus_score.score;
+    out.minus_global_delta_ms = minus_score.global_delta_ms;
+    out.minus_between_abs_ms = minus_score.between_abs_ms;
+    out.minus_middle_abs_ms = minus_score.middle_abs_ms;
     out.plus_score = plus_score.score;
+    out.plus_global_delta_ms = plus_score.global_delta_ms;
+    out.plus_between_abs_ms = plus_score.between_abs_ms;
+    out.plus_middle_abs_ms = plus_score.middle_abs_ms;
 
     double best_score = base_score.score;
     std::vector<unsigned long long> best_beats = *projected;
