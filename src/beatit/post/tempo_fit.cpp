@@ -48,6 +48,15 @@ struct TempoAnchorWindows {
     bool separated = false;
 };
 
+struct TempoWindowDecodeInput {
+    const CoreMLResult& result;
+    const CalmdadDecoder& calmdad_decoder;
+    double fps = 0.0;
+    float min_bpm = 0.0f;
+    float max_bpm = 0.0f;
+    float bpm_step = 0.0f;
+};
+
 std::pair<double, double> estimate_window_tempo(const std::vector<std::size_t>& beats,
                                                 double fps) {
     if (beats.size() < 8) {
@@ -190,6 +199,37 @@ TempoAnchorWindows build_tempo_anchor_windows(const BeatitConfig& config,
     return windows;
 }
 
+std::vector<std::size_t> decode_window_beats(const TempoWindowDecodeInput& input,
+                                             const FrameWindow& window) {
+    std::vector<std::size_t> beats;
+    if (window.end <= window.start || window.end > input.result.beat_activation.size()) {
+        return beats;
+    }
+
+    std::vector<float> beat_window(input.result.beat_activation.begin() + window.start,
+                                   input.result.beat_activation.begin() + window.end);
+    std::vector<float> downbeat_window;
+    if (!input.result.downbeat_activation.empty() &&
+        window.end <= input.result.downbeat_activation.size()) {
+        downbeat_window.assign(input.result.downbeat_activation.begin() + window.start,
+                               input.result.downbeat_activation.begin() + window.end);
+    }
+
+    DBNDecodeResult decoded = input.calmdad_decoder.decode({
+        beat_window,
+        downbeat_window,
+        input.fps,
+        input.min_bpm,
+        input.max_bpm,
+        input.bpm_step,
+    });
+    beats.reserve(decoded.beat_frames.size());
+    for (std::size_t frame : decoded.beat_frames) {
+        beats.push_back(frame + window.start);
+    }
+    return beats;
+}
+
 } // namespace
 
 double bpm_from_linear_fit(const std::vector<std::size_t>& beats, double fps) {
@@ -238,40 +278,20 @@ double bpm_from_global_fit(const CoreMLResult& result,
         return 0.0;
     }
     const bool trace_enabled = config.dbn_trace && beatit_should_log("debug");
-
-    auto decode_window_beats = [&](const FrameWindow& window) {
-        std::vector<std::size_t> beats;
-        if (window.end <= window.start || window.end > result.beat_activation.size()) {
-            return beats;
-        }
-        std::vector<float> w_beat(result.beat_activation.begin() + window.start,
-                                  result.beat_activation.begin() + window.end);
-        std::vector<float> w_downbeat;
-        if (!result.downbeat_activation.empty() &&
-            window.end <= result.downbeat_activation.size()) {
-            w_downbeat.assign(result.downbeat_activation.begin() + window.start,
-                              result.downbeat_activation.begin() + window.end);
-        }
-        DBNDecodeResult tmp = calmdad_decoder.decode({
-            w_beat,
-            w_downbeat,
-            fps,
-            min_bpm,
-            max_bpm,
-            config.dbn_bpm_step,
-        });
-        beats.reserve(tmp.beat_frames.size());
-        for (std::size_t frame : tmp.beat_frames) {
-            beats.push_back(frame + window.start);
-        }
-        return beats;
+    const TempoWindowDecodeInput decode_input{
+        result,
+        calmdad_decoder,
+        fps,
+        min_bpm,
+        max_bpm,
+        config.dbn_bpm_step,
     };
 
     std::vector<std::size_t> intro_beats;
     std::vector<std::size_t> outro_beats;
     if (windows.separated) {
-        intro_beats = decode_window_beats(windows.intro);
-        outro_beats = decode_window_beats(windows.outro);
+        intro_beats = decode_window_beats(decode_input, windows.intro);
+        outro_beats = decode_window_beats(decode_input, windows.outro);
     }
     const bool intro_valid = intro_beats.size() >= 8;
     const bool outro_valid = outro_beats.size() >= 8;
