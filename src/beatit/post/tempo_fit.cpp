@@ -18,6 +18,104 @@
 
 namespace beatit::detail {
 
+namespace {
+
+struct ModeCandidate {
+    double bpm = 0.0;
+    double conf = 0.0;
+    double mode = 1.0;
+};
+
+std::pair<double, double> estimate_window_tempo(const std::vector<std::size_t>& beats,
+                                                double fps) {
+    if (beats.size() < 8) {
+        return {0.0, 0.0};
+    }
+
+    std::vector<double> intervals;
+    intervals.reserve(beats.size() - 1);
+    for (std::size_t i = 1; i < beats.size(); ++i) {
+        if (beats[i] > beats[i - 1]) {
+            intervals.push_back(static_cast<double>(beats[i] - beats[i - 1]));
+        }
+    }
+    if (intervals.size() < 4) {
+        return {0.0, 0.0};
+    }
+
+    const std::size_t mid = intervals.size() / 2;
+    std::nth_element(intervals.begin(),
+                     intervals.begin() + static_cast<std::ptrdiff_t>(mid),
+                     intervals.end());
+    const double median_interval = intervals[mid];
+    if (!(median_interval > 0.0)) {
+        return {0.0, 0.0};
+    }
+
+    double sum = 0.0;
+    double sum_sq = 0.0;
+    for (double value : intervals) {
+        sum += value;
+        sum_sq += value * value;
+    }
+    const double n = static_cast<double>(intervals.size());
+    const double mean = sum / n;
+    const double variance = std::max(0.0, (sum_sq / n) - (mean * mean));
+    const double stdev = std::sqrt(variance);
+    const double cv = mean > 0.0 ? (stdev / mean) : 1.0;
+    const double confidence = (1.0 / (1.0 + cv)) * std::min(1.0, n / 32.0);
+
+    return {(60.0 * fps) / median_interval, confidence};
+}
+
+std::vector<ModeCandidate> expand_mode_candidates(double bpm,
+                                                  double conf,
+                                                  float min_bpm,
+                                                  float max_bpm) {
+    std::vector<ModeCandidate> out;
+    if (!(bpm > 0.0) || !(conf > 0.0)) {
+        return out;
+    }
+
+    static const double kModes[] = {0.5, 1.0, 2.0, 3.0, (2.0 / 3.0), 1.5};
+    for (double mode : kModes) {
+        const double candidate_bpm = bpm * mode;
+        if (candidate_bpm >= min_bpm && candidate_bpm <= max_bpm) {
+            out.push_back({candidate_bpm, conf, mode});
+        }
+    }
+    return out;
+}
+
+std::pair<ModeCandidate, ModeCandidate> match_mode_candidates(
+    const std::vector<ModeCandidate>& intro_modes,
+    const std::vector<ModeCandidate>& outro_modes) {
+    double best_err = std::numeric_limits<double>::infinity();
+    ModeCandidate best_intro{};
+    ModeCandidate best_outro{};
+
+    for (const auto& intro : intro_modes) {
+        for (const auto& outro : outro_modes) {
+            const double mean = 0.5 * (intro.bpm + outro.bpm);
+            if (!(mean > 0.0)) {
+                continue;
+            }
+            const double rel = std::abs(intro.bpm - outro.bpm) / mean;
+            const double weight = std::max(1e-6, intro.conf * outro.conf);
+            const double score = rel / weight;
+            if (score < best_err) {
+                best_err = score;
+                best_intro = intro;
+                best_outro = outro;
+            }
+        }
+    }
+
+    return {best_intro, best_outro};
+}
+
+} // namespace
+
 double bpm_from_linear_fit(const std::vector<std::size_t>& beats, double fps) {
     if (beats.size() < 4 || fps <= 0.0) {
         return 0.0;
@@ -153,95 +251,11 @@ double bpm_from_global_fit(const CoreMLResult& result,
     }
 
     if (intro_valid && outro_valid && anchors_separated) {
-        auto window_tempo = [&](const std::vector<std::size_t>& beats) {
-            if (beats.size() < 8) {
-                return std::pair<double, double>{0.0, 0.0};
-            }
-            std::vector<double> intervals;
-            intervals.reserve(beats.size() - 1);
-            for (std::size_t i = 1; i < beats.size(); ++i) {
-                if (beats[i] > beats[i - 1]) {
-                    intervals.push_back(
-                        static_cast<double>(beats[i] - beats[i - 1]));
-                }
-            }
-            if (intervals.size() < 4) {
-                return std::pair<double, double>{0.0, 0.0};
-            }
-            const std::size_t mid = intervals.size() / 2;
-            std::nth_element(intervals.begin(),
-                             intervals.begin() + static_cast<std::ptrdiff_t>(mid),
-                             intervals.end());
-            const double median_interval = intervals[mid];
-            if (!(median_interval > 0.0)) {
-                return std::pair<double, double>{0.0, 0.0};
-            }
-            double sum = 0.0;
-            double sum_sq = 0.0;
-            for (double v : intervals) {
-                sum += v;
-                sum_sq += v * v;
-            }
-            const double n = static_cast<double>(intervals.size());
-            const double mean = sum / n;
-            const double var = std::max(0.0, (sum_sq / n) - (mean * mean));
-            const double stdev = std::sqrt(var);
-            const double cv = mean > 0.0 ? (stdev / mean) : 1.0;
-            const double confidence =
-                (1.0 / (1.0 + cv)) *
-                std::min(1.0, n / 32.0);
-            return std::pair<double, double>{
-                (60.0 * fps) / median_interval,
-                confidence};
-        };
-        const auto [intro_bpm, intro_conf] = window_tempo(intro_beats);
-        const auto [outro_bpm, outro_conf] = window_tempo(outro_beats);
-
-        struct ModeCandidate {
-            double bpm = 0.0;
-            double conf = 0.0;
-            double mode = 1.0;
-        };
-
-        auto expand_modes = [&](double bpm, double conf) {
-            std::vector<ModeCandidate> out;
-            if (!(bpm > 0.0) || !(conf > 0.0)) {
-                return out;
-            }
-            static const double kModes[] = {
-                0.5, 1.0, 2.0, 3.0, (2.0 / 3.0), 1.5};
-            for (double m : kModes) {
-                const double cand = bpm * m;
-                if (cand >= min_bpm && cand <= max_bpm) {
-                    out.push_back({cand, conf, m});
-                }
-            }
-            return out;
-        };
-
-        const auto intro_modes = expand_modes(intro_bpm, intro_conf);
-        const auto outro_modes = expand_modes(outro_bpm, outro_conf);
-        double best_err = std::numeric_limits<double>::infinity();
-        ModeCandidate best_intro{};
-        ModeCandidate best_outro{};
-        for (const auto& a : intro_modes) {
-            for (const auto& b : outro_modes) {
-                const double mean = 0.5 * (a.bpm + b.bpm);
-                if (!(mean > 0.0)) {
-                    continue;
-                }
-                const double rel =
-                    std::abs(a.bpm - b.bpm) / mean;
-                const double weight =
-                    std::max(1e-6, a.conf * b.conf);
-                const double score = rel / weight;
-                if (score < best_err) {
-                    best_err = score;
-                    best_intro = a;
-                    best_outro = b;
-                }
-            }
-        }
+        const auto [intro_bpm, intro_conf] = estimate_window_tempo(intro_beats, fps);
+        const auto [outro_bpm, outro_conf] = estimate_window_tempo(outro_beats, fps);
+        const auto intro_modes = expand_mode_candidates(intro_bpm, intro_conf, min_bpm, max_bpm);
+        const auto outro_modes = expand_mode_candidates(outro_bpm, outro_conf, min_bpm, max_bpm);
+        const auto [best_intro, best_outro] = match_mode_candidates(intro_modes, outro_modes);
         const double agree_rel = (best_intro.bpm > 0.0 && best_outro.bpm > 0.0)
             ? (std::abs(best_intro.bpm - best_outro.bpm) /
                (0.5 * (best_intro.bpm + best_outro.bpm)))
