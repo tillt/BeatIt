@@ -366,16 +366,18 @@ if(APPLE)
         COMMENT "Copying CoreML model into BeatIt.framework resources"
     )
 
-    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/coreml_out_latest/BeatThis_small0.mlpackage")
+    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/models/BeatThis_small0.mlpackage")
         message(FATAL_ERROR
             "Missing required bundled BeatThis CoreML package: "
-            "${CMAKE_CURRENT_SOURCE_DIR}/coreml_out_latest/BeatThis_small0.mlpackage")
+            "${CMAKE_CURRENT_SOURCE_DIR}/models/BeatThis_small0.mlpackage")
     endif()
 
     add_custom_command(TARGET beatit_framework POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${CMAKE_CURRENT_SOURCE_DIR}/coreml_out_latest/BeatThis_small0.mlpackage"
+        COMMAND ${CMAKE_COMMAND} -E rm -rf
             "$<TARGET_FILE_DIR:beatit_framework>/Resources/BeatThis_small0.mlpackage"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/models/BeatThis_small0.mlpackage"
+            "$<TARGET_FILE_DIR:beatit_framework>/Resources/models/BeatThis_small0.mlpackage"
         COMMENT "Copying BeatThis small CoreML package into BeatIt.framework resources"
     )
 

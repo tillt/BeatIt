@@ -58,8 +58,10 @@ inline std::string resolve_beatthis_coreml_model_path() {
     }
 
     const std::vector<std::string> candidates = {
+        "models/BeatThis_small0.mlpackage",
         "coreml_out_latest/BeatThis_small0.mlpackage",
         "coreml_out_latest/BeatThis_small0.mlmodelc",
+        "models/BeatThis_final0.mlpackage",
         "coreml_out/BeatThis_small0.mlpackage",
         "coreml_out/BeatThis_small0.mlmodelc",
         "coreml_out_latest/BeatThis_final0.mlpackage",
