@@ -126,6 +126,7 @@ set(BEATIT_LIB_SOURCES
     src/beatit/inference/coreml/inference.mm
     src/beatit/inference/coreml/model_utils.mm
     src/beatit/inference/coreml/metadata.mm
+    src/beatit/inference/backend_base.cpp
     src/beatit/inference/torch_plugin.mm
     src/beatit/post/pipeline.cpp
     src/beatit/post/helpers.cpp
@@ -262,6 +263,20 @@ target_link_libraries(beatit
 )
 
 if(BEATIT_USE_TORCH)
+    add_library(beatit_torch_plugin_support STATIC
+        src/beatit/runtime/logging.cpp
+        src/beatit/audio/dsp.cpp
+        src/beatit/audio/features.cpp
+        src/beatit/inference/backend_base.cpp
+    )
+
+    target_include_directories(beatit_torch_plugin_support
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/src
+            ${CMAKE_CURRENT_BINARY_DIR}/generated
+    )
+
     add_library(beatit_backend_torch_plugin SHARED
         src/beatit/analysis/torch.cpp
         src/beatit/inference/backend_torch.cpp
@@ -279,7 +294,7 @@ if(BEATIT_USE_TORCH)
 
     target_link_libraries(beatit_backend_torch_plugin
         PRIVATE
-            beatit_lib
+            beatit_torch_plugin_support
     )
 
     set_target_properties(beatit_backend_torch_plugin PROPERTIES
@@ -302,6 +317,12 @@ if(APPLE)
     target_compile_options(beatit PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
     target_link_libraries(beatit_lib PRIVATE "-framework Accelerate" "-framework CoreML" "-framework Foundation")
     target_link_libraries(beatit PRIVATE "-framework AVFoundation" "-framework Foundation" "-framework CoreMedia" "-framework AudioToolbox")
+    if(TARGET beatit_torch_plugin_support)
+        target_link_libraries(beatit_torch_plugin_support PRIVATE "-framework Accelerate")
+    endif()
+    if(TARGET beatit_backend_torch_plugin)
+        target_link_libraries(beatit_backend_torch_plugin PRIVATE "-framework Accelerate")
+    endif()
 endif()
 
 add_executable(beatit_tool_probe_runner
