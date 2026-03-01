@@ -529,6 +529,9 @@ if(APPLE)
 endif()
 
 add_test(NAME beatit_coreml_metadata_tests COMMAND beatit_coreml_metadata_tests)
+set_tests_properties(beatit_coreml_metadata_tests PROPERTIES
+    SKIP_RETURN_CODE 77
+)
 
 add_executable(beatit_cli_version_tests
     tests/cli_version_test.mm
@@ -559,6 +562,9 @@ if(APPLE)
 endif()
 
 add_test(NAME beatit_cli_version_tests COMMAND beatit_cli_version_tests)
+set_tests_properties(beatit_cli_version_tests PROPERTIES
+    SKIP_RETURN_CODE 77
+)
 set_tests_properties(beatit_cli_version_tests PROPERTIES
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
 )
