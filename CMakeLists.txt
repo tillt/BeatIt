@@ -532,6 +532,39 @@ endif()
 
 add_test(NAME beatit_coreml_metadata_tests COMMAND beatit_coreml_metadata_tests)
 
+add_executable(beatit_cli_version_tests
+    tests/cli_version_test.mm
+)
+
+target_link_libraries(beatit_cli_version_tests
+    PRIVATE
+        beatit_lib
+        "-framework Foundation"
+)
+
+target_include_directories(beatit_cli_version_tests
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/beatit
+)
+
+target_compile_definitions(beatit_cli_version_tests
+    PRIVATE
+        BEATIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+        BEATIT_TEST_CLI_PATH="$<TARGET_FILE:beatit>"
+)
+
+add_dependencies(beatit_cli_version_tests beatit)
+
+if(APPLE)
+    target_compile_options(beatit_cli_version_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
+endif()
+
+add_test(NAME beatit_cli_version_tests COMMAND beatit_cli_version_tests)
+set_tests_properties(beatit_cli_version_tests PROPERTIES
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+)
+
 add_executable(beatit_sparse_interior_select_tests
     tests/sparse_interior_select_test.cpp
 )
