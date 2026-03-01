@@ -123,10 +123,11 @@ set(BEATIT_LIB_SOURCES
     src/beatit/audio/wav.cpp
     src/beatit/runtime/logging.cpp
     src/beatit/runtime/version.cpp
-    src/beatit/inference/coreml/inference.mm
     src/beatit/inference/coreml/model_utils.mm
     src/beatit/inference/coreml/metadata.mm
     src/beatit/inference/backend_base.cpp
+    src/beatit/inference/coreml_loader.mm
+    src/beatit/inference/coreml_plugin.mm
     src/beatit/inference/torch_plugin.mm
     src/beatit/post/pipeline.cpp
     src/beatit/post/helpers.cpp
@@ -153,7 +154,7 @@ set(BEATIT_LIB_SOURCES
     src/beatit/refiner/constant_regions.cpp
     src/beatit/inference/window_merge.cpp
     src/beatit/stream/finalize.cpp
-    src/beatit/inference/backend_coreml.cpp
+    src/beatit/inference/backend_coreml_loader.mm
     src/beatit/inference/backend_torch_loader.mm
     src/beatit/sparse/probe.cpp
     src/beatit/sparse/probe_pick.cpp
@@ -262,6 +263,54 @@ target_link_libraries(beatit
         beatit_lib
 )
 
+add_library(beatit_coreml_plugin_support STATIC
+    src/beatit/runtime/logging.cpp
+    src/beatit/audio/dsp.cpp
+    src/beatit/audio/features.cpp
+    src/beatit/inference/backend_base.cpp
+    src/beatit/inference/coreml/model_utils.mm
+)
+
+target_include_directories(beatit_coreml_plugin_support
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_BINARY_DIR}/generated
+)
+
+add_library(beatit_backend_coreml_plugin SHARED
+    src/beatit/inference/backend_coreml.cpp
+    src/beatit/inference/coreml/inference.mm
+)
+
+target_include_directories(beatit_backend_coreml_plugin
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_BINARY_DIR}/generated
+)
+
+target_compile_definitions(beatit_backend_coreml_plugin PRIVATE BEATIT_COREML_PLUGIN_BUILD=1)
+
+target_link_libraries(beatit_backend_coreml_plugin
+    PRIVATE
+        beatit_coreml_plugin_support
+)
+
+set_target_properties(beatit_backend_coreml_plugin PROPERTIES
+    OUTPUT_NAME "beatit_backend_coreml"
+)
+
+add_dependencies(beatit beatit_backend_coreml_plugin)
+add_custom_command(TARGET beatit POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        "$<TARGET_FILE_DIR:beatit>/plugins"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:beatit_backend_coreml_plugin>"
+        "$<TARGET_FILE_DIR:beatit>/plugins/$<TARGET_FILE_NAME:beatit_backend_coreml_plugin>"
+    COMMENT "Copying CoreML backend plugin next to beatit CLI"
+)
+
 if(BEATIT_USE_TORCH)
     add_library(beatit_torch_plugin_support STATIC
         src/beatit/runtime/logging.cpp
@@ -316,6 +365,8 @@ if(APPLE)
     target_compile_options(beatit_objects PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
     target_compile_options(beatit PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
     target_link_libraries(beatit_lib PRIVATE "-framework Accelerate" "-framework CoreML" "-framework Foundation")
+    target_link_libraries(beatit_coreml_plugin_support PRIVATE "-framework Accelerate" "-framework CoreML" "-framework Foundation")
+    target_link_libraries(beatit_backend_coreml_plugin PRIVATE "-framework Accelerate" "-framework CoreML" "-framework Foundation")
     target_link_libraries(beatit PRIVATE "-framework AVFoundation" "-framework Foundation" "-framework CoreMedia" "-framework AudioToolbox")
     if(TARGET beatit_torch_plugin_support)
         target_link_libraries(beatit_torch_plugin_support PRIVATE "-framework Accelerate")
@@ -431,6 +482,16 @@ if(APPLE)
         COMMENT "Copying BeatThis small CoreML package into BeatIt.framework resources"
     )
 
+    add_dependencies(beatit_framework beatit_backend_coreml_plugin)
+    add_custom_command(TARGET beatit_framework POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "$<TARGET_FILE_DIR:beatit_framework>/Resources/plugins"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:beatit_backend_coreml_plugin>"
+            "$<TARGET_FILE_DIR:beatit_framework>/Resources/plugins/$<TARGET_FILE_NAME:beatit_backend_coreml_plugin>"
+        COMMENT "Copying CoreML backend plugin into BeatIt.framework resources"
+    )
+
     if(BEATIT_USE_TORCH)
         add_dependencies(beatit_framework beatit_backend_torch_plugin)
         add_custom_command(TARGET beatit_framework POST_BUILD
@@ -526,6 +587,28 @@ if(APPLE)
 endif()
 
 add_test(NAME beatit_sparse_usability_scan_tests COMMAND beatit_sparse_usability_scan_tests)
+
+add_executable(beatit_coreml_plugin_load_tests
+    tests/coreml_plugin_load_test.mm
+)
+
+target_link_libraries(beatit_coreml_plugin_load_tests
+    PRIVATE
+        beatit_lib
+)
+
+target_include_directories(beatit_coreml_plugin_load_tests
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+add_dependencies(beatit_coreml_plugin_load_tests beatit_backend_coreml_plugin)
+
+if(APPLE)
+    target_compile_options(beatit_coreml_plugin_load_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
+endif()
+
+add_test(NAME beatit_coreml_plugin_load_tests COMMAND beatit_coreml_plugin_load_tests)
 
 add_executable(beatit_coreml_compile_cache_tests
     tests/coreml_compile_cache_test.mm

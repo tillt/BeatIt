@@ -45,10 +45,17 @@ static void apply_logits_to_probs(std::vector<float>& values, float temperature)
 
 } // namespace
 
+#ifdef BEATIT_COREML_PLUGIN_BUILD
+CoreMLResult coreml_plugin_analyze_with_coreml_impl(const std::vector<float>& samples,
+                                                    double sample_rate,
+                                                    const BeatitConfig& config,
+                                                    float reference_bpm) {
+#else
 CoreMLResult analyze_with_coreml(const std::vector<float>& samples,
                                  double sample_rate,
                                  const BeatitConfig& config,
                                  float reference_bpm) {
+#endif
     CoreMLResult result;
     if (samples.empty() || sample_rate <= 0.0) {
         return result;
@@ -331,6 +338,9 @@ CoreMLResult analyze_with_coreml(const std::vector<float>& samples,
             std::chrono::duration<double, std::milli>(infer_end - infer_start).count();
     }
 
+#ifdef BEATIT_COREML_PLUGIN_BUILD
+    return result;
+#else
     const auto post_start = std::chrono::steady_clock::now();
     result = postprocess_coreml_activations(result.beat_activation,
                                             result.downbeat_activation,
@@ -364,6 +374,7 @@ CoreMLResult analyze_with_coreml(const std::vector<float>& samples,
     }
 
     return result;
+#endif
 }
 
 } // namespace beatit
