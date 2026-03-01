@@ -452,15 +452,6 @@ if(APPLE)
         )
     endif()
 
-    if(BEATIT_USE_TORCH AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/models/beatthis_mps.pt")
-        add_custom_command(TARGET beatit_framework POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "${CMAKE_CURRENT_SOURCE_DIR}/models/beatthis_mps.pt"
-                "$<TARGET_FILE_DIR:beatit_framework>/Resources/beatthis_mps.pt"
-            COMMENT "Copying BeatThis MPS Torch model into BeatIt.framework resources"
-        )
-    endif()
-
     set(BEATIT_FRAMEWORK_HEADER_ROOT "$<TARGET_FILE_DIR:beatit_framework>/Headers")
     add_custom_command(TARGET beatit_framework POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E rm -rf
@@ -1239,6 +1230,7 @@ if(BEATIT_USE_TORCH)
             beatit_lib
     )
 
+    beatit_link_torch(beatit_beatthis_mps_tests)
     add_dependencies(beatit_beatthis_mps_tests beatit_backend_torch_plugin)
 
     target_compile_definitions(beatit_beatthis_mps_tests PRIVATE
