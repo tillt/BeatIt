@@ -13,6 +13,7 @@
 
 #include "model_utils.h"
 
+#include <algorithm>
 #include <string>
 
 // Fallback for older SDKs that do not expose metadata key constants.
@@ -32,6 +33,108 @@ static NSString* const MLModelMetadataKeyVersion = @"version";
 static NSString* const MLModelMetadataKeyUserDefined = @"userDefined";
 #endif
 
+namespace {
+
+NSDictionary* parse_coreml_metadata_json(NSData* metadata_data) {
+    if (!metadata_data) {
+        return nil;
+    }
+
+    NSError* json_error = nil;
+    id json_root = [NSJSONSerialization JSONObjectWithData:metadata_data options:0 error:&json_error];
+    if (json_error || ![json_root isKindOfClass:[NSArray class]]) {
+        return nil;
+    }
+
+    NSArray* entries = static_cast<NSArray*>(json_root);
+    if (entries.count == 0) {
+        return nil;
+    }
+
+    id first_entry = entries.firstObject;
+    if (![first_entry isKindOfClass:[NSDictionary class]]) {
+        return nil;
+    }
+
+    return static_cast<NSDictionary*>(first_entry);
+}
+
+NSDictionary* load_package_metadata_via_coremlcompiler(NSURL* source_model_url) {
+    if (!source_model_url ||
+        ![[source_model_url pathExtension].lowercaseString isEqualToString:@"mlpackage"]) {
+        return nil;
+    }
+
+    NSString* xcrun_path = @"/usr/bin/xcrun";
+    if (![[NSFileManager defaultManager] isExecutableFileAtPath:xcrun_path]) {
+        return nil;
+    }
+
+    NSTask* task = [[NSTask alloc] init];
+    task.launchPath = xcrun_path;
+    task.arguments = @[ @"coremlcompiler", @"metadata", source_model_url.path ];
+
+    NSPipe* stdout_pipe = [NSPipe pipe];
+    NSPipe* stderr_pipe = [NSPipe pipe];
+    task.standardOutput = stdout_pipe;
+    task.standardError = stderr_pipe;
+
+    @try {
+        [task launch];
+        [task waitUntilExit];
+    } @catch (NSException*) {
+        return nil;
+    }
+
+    if (task.terminationStatus != 0) {
+        return nil;
+    }
+
+    NSData* output_data = [[stdout_pipe fileHandleForReading] readDataToEndOfFile];
+    return parse_coreml_metadata_json(output_data);
+}
+
+NSURL* find_repo_metadata_json(NSURL* source_model_url) {
+    if (!source_model_url) {
+        return nil;
+    }
+
+    NSString* extension = [source_model_url pathExtension].lowercaseString;
+    if (![extension isEqualToString:@"mlpackage"] && ![extension isEqualToString:@"mlmodelc"]) {
+        return nil;
+    }
+
+    NSString* stem = [[source_model_url lastPathComponent] stringByDeletingPathExtension];
+    if (!stem.length) {
+        return nil;
+    }
+
+    NSString* model_dir = [source_model_url.path stringByDeletingLastPathComponent];
+    NSString* repo_root = [model_dir stringByDeletingLastPathComponent];
+    NSArray<NSString*>* candidates = @[
+        [[repo_root stringByAppendingPathComponent:@"models"]
+            stringByAppendingPathComponent:[stem stringByAppendingString:@".metadata.json"]],
+        [[repo_root stringByAppendingPathComponent:@"coreml_out_latest"]
+            stringByAppendingPathComponent:[stem stringByAppendingPathExtension:@"mlmodelc"]],
+        [[repo_root stringByAppendingPathComponent:@"coreml_out"]
+            stringByAppendingPathComponent:[stem stringByAppendingPathExtension:@"mlmodelc"]],
+    ];
+
+    for (NSString* directory in candidates) {
+        NSString* metadata_path = directory;
+        if ([[directory pathExtension].lowercaseString isEqualToString:@"mlmodelc"]) {
+            metadata_path = [directory stringByAppendingPathComponent:@"metadata.json"];
+        }
+        if ([[NSFileManager defaultManager] fileExistsAtPath:metadata_path]) {
+            return [NSURL fileURLWithPath:metadata_path];
+        }
+    }
+
+    return nil;
+}
+
+} // namespace
+
 namespace beatit {
 
 CoreMLMetadata load_coreml_metadata(const BeatitConfig& config) {
@@ -42,7 +145,8 @@ CoreMLMetadata load_coreml_metadata(const BeatitConfig& config) {
         return metadata;
     }
 
-    NSURL* model_url = [NSURL fileURLWithPath:model_path];
+    NSURL* source_model_url = [NSURL fileURLWithPath:model_path];
+    NSURL* model_url = source_model_url;
     NSError* error = nil;
     NSURL* compiled_url = detail::compile_model_if_needed(model_url, &error);
     if (compiled_url) {
@@ -50,35 +154,127 @@ CoreMLMetadata load_coreml_metadata(const BeatitConfig& config) {
     }
     MLModelConfiguration* model_config = [[MLModelConfiguration alloc] init];
     MLModel* model = [MLModel modelWithContentsOfURL:model_url configuration:model_config error:&error];
-    if (!model || error) {
+    if (model && !error) {
+        NSDictionary* info = model.modelDescription.metadata;
+        auto assign_string = [&](NSString* key, std::string* target) {
+            id value = [info objectForKey:key];
+            if ([value isKindOfClass:[NSString class]]) {
+                *target = [static_cast<NSString*>(value) UTF8String];
+            }
+        };
+
+        if (info) {
+            assign_string(MLModelMetadataKeyAuthor, &metadata.author);
+            assign_string(MLModelMetadataKeyShortDescription, &metadata.short_description);
+            assign_string(MLModelMetadataKeyLicense, &metadata.license);
+            assign_string(MLModelMetadataKeyVersion, &metadata.version);
+
+            id user = [info objectForKey:MLModelMetadataKeyUserDefined];
+            if ([user isKindOfClass:[NSDictionary class]]) {
+                NSDictionary* user_dict = static_cast<NSDictionary*>(user);
+                for (id key in user_dict) {
+                    id value = [user_dict objectForKey:key];
+                    if ([key isKindOfClass:[NSString class]] &&
+                        [value isKindOfClass:[NSString class]]) {
+                        metadata.user_defined.emplace_back(
+                            [static_cast<NSString*>(key) UTF8String],
+                            [static_cast<NSString*>(value) UTF8String]);
+                    }
+                }
+            }
+        }
+    }
+
+    const bool needs_json_fallback =
+        metadata.author.empty() ||
+        metadata.short_description.empty() ||
+        metadata.license.empty() ||
+        metadata.version.empty();
+    if (!needs_json_fallback) {
         return metadata;
     }
 
-    NSDictionary* info = model.modelDescription.metadata;
-    if (!info) {
+    auto load_metadata_dict = ^NSDictionary* {
+        NSMutableArray<NSURL*>* candidates = [NSMutableArray array];
+        if ([[source_model_url pathExtension].lowercaseString isEqualToString:@"mlpackage"]) {
+            NSURL* repo_metadata = find_repo_metadata_json(source_model_url);
+            if (repo_metadata) {
+                [candidates addObject:repo_metadata];
+            }
+        }
+
+        if ([[compiled_url pathExtension].lowercaseString isEqualToString:@"mlmodelc"]) {
+            [candidates addObject:[compiled_url URLByAppendingPathComponent:@"metadata.json"]];
+        }
+
+        if ([[source_model_url pathExtension].lowercaseString isEqualToString:@"mlpackage"]) {
+            NSString* package_path = source_model_url.path;
+            NSString* sibling_path = [[package_path stringByDeletingPathExtension]
+                stringByAppendingPathExtension:@"mlmodelc"];
+            NSURL* sibling_url = [NSURL fileURLWithPath:sibling_path];
+            [candidates addObject:[sibling_url URLByAppendingPathComponent:@"metadata.json"]];
+        }
+
+        for (NSURL* candidate in candidates) {
+            if (!candidate ||
+                ![[NSFileManager defaultManager] fileExistsAtPath:candidate.path]) {
+                continue;
+            }
+
+            NSData* metadata_data = [NSData dataWithContentsOfURL:candidate];
+            if (!metadata_data) {
+                continue;
+            }
+
+            NSDictionary* metadata_dict = parse_coreml_metadata_json(metadata_data);
+            if (metadata_dict) {
+                return metadata_dict;
+            }
+        }
+
+        NSDictionary* package_metadata = load_package_metadata_via_coremlcompiler(source_model_url);
+        if (package_metadata) {
+            return package_metadata;
+        }
+
+        return static_cast<NSDictionary*>(nil);
+    };
+
+    NSDictionary* metadata_dict = load_metadata_dict();
+    if (!metadata_dict) {
         return metadata;
     }
 
-    auto assign_string = [&](NSString* key, std::string* target) {
-        id value = [info objectForKey:key];
+    auto assign_json_string = [&](NSString* key, std::string* target) {
+        if (!target->empty()) {
+            return;
+        }
+        id value = [metadata_dict objectForKey:key];
         if ([value isKindOfClass:[NSString class]]) {
             *target = [static_cast<NSString*>(value) UTF8String];
         }
     };
 
-    assign_string(MLModelMetadataKeyAuthor, &metadata.author);
-    assign_string(MLModelMetadataKeyShortDescription, &metadata.short_description);
-    assign_string(MLModelMetadataKeyLicense, &metadata.license);
-    assign_string(MLModelMetadataKeyVersion, &metadata.version);
+    assign_json_string(@"author", &metadata.author);
+    assign_json_string(@"shortDescription", &metadata.short_description);
+    assign_json_string(@"license", &metadata.license);
+    assign_json_string(@"version", &metadata.version);
 
-    id user = [info objectForKey:MLModelMetadataKeyUserDefined];
-    if ([user isKindOfClass:[NSDictionary class]]) {
-        NSDictionary* user_dict = static_cast<NSDictionary*>(user);
+    id user_defined = [metadata_dict objectForKey:@"userDefinedMetadata"];
+    if ([user_defined isKindOfClass:[NSDictionary class]]) {
+        NSDictionary* user_dict = static_cast<NSDictionary*>(user_defined);
         for (id key in user_dict) {
             id value = [user_dict objectForKey:key];
             if ([key isKindOfClass:[NSString class]] && [value isKindOfClass:[NSString class]]) {
-                metadata.user_defined.emplace_back([static_cast<NSString*>(key) UTF8String],
-                                                   [static_cast<NSString*>(value) UTF8String]);
+                const std::string key_string = [static_cast<NSString*>(key) UTF8String];
+                const std::string value_string = [static_cast<NSString*>(value) UTF8String];
+                const auto already_present = std::find_if(
+                    metadata.user_defined.begin(),
+                    metadata.user_defined.end(),
+                    [&](const auto& entry) { return entry.first == key_string; });
+                if (already_present == metadata.user_defined.end()) {
+                    metadata.user_defined.emplace_back(key_string, value_string);
+                }
             }
         }
     }

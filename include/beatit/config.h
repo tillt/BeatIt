@@ -24,7 +24,7 @@ struct BeatitConfig {
         Torch,
     };
     Backend backend = Backend::CoreML;
-    std::string model_path = "models/beatit.mlmodelc";
+    std::string model_path = "models/BeatThis_small0.mlpackage";
     std::string input_name = "input";
     std::string beat_output_name = "beat";
     std::string downbeat_output_name = "downbeat";

@@ -97,7 +97,7 @@ public:
         config.sparse_probe_mode = true;
         config.torch_batch_size = 1;
         config.prepend_silence_seconds = 1.0;
-        config.model_path = "coreml_out/BeatThis_small0.mlpackage";
+        config.model_path = "models/BeatThis_small0.mlpackage";
         config.input_name = "mel_spectrogram";
         config.beat_output_name = "beat_logits";
         config.downbeat_output_name = "downbeat_logits";

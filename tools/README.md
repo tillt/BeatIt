@@ -19,3 +19,12 @@ Run the sparse windowed path for a file and print local beat-to-peak offset wind
 cmake --build build --target beatit_tool_alignment_inspector -j8
 BEATIT_TEST_CPU_ONLY=1 ./build/beatit_tool_alignment_inspector training/vamp.wav 32
 ```
+
+## `beatit_tool_cache_benchmark`
+
+Run the same file twice in one process and compare first-vs-second CoreML analysis time.
+
+```bash
+cmake --build build --target beatit_tool_cache_benchmark -j8
+BEATIT_TEST_CPU_ONLY=1 ./build/beatit_tool_cache_benchmark training/manucho.wav
+```

@@ -105,6 +105,8 @@ jobs:
           mkdir -p dist/BeatIt
           cp -R build/BeatIt.framework dist/BeatIt/
           cp build/beatit dist/BeatIt/
+          mkdir -p dist/BeatIt/models
+          cp -R models/BeatThis_small0.mlpackage dist/BeatIt/models/BeatThis_small0.mlpackage
           ditto -c -k --sequesterRsrc --keepParent dist/BeatIt dist/beatit-macos.zip
 
       - name: Notarize
