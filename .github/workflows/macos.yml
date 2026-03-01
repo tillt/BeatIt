@@ -120,18 +120,19 @@ jobs:
           codesign --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" build/BeatIt.framework
           codesign --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" build/beatit
 
-      - name: Package for notarization
+      - name: Build installer package
+        env:
+          MACOS_INSTALLER_IDENTITY: ${{ secrets.MAC_INSTALLER_ID }}
         run: |
-          mkdir -p dist/BeatIt
-          cp -R build/BeatIt.framework dist/BeatIt/
-          cp build/beatit dist/BeatIt/
-          if [ -d build/plugins ]; then
-            mkdir -p dist/BeatIt/plugins
-            cp -R build/plugins/. dist/BeatIt/plugins/
+          if [ -z "$MACOS_INSTALLER_IDENTITY" ]; then
+            echo "Missing MAC_INSTALLER_ID secret."
+            exit 1
           fi
-          mkdir -p dist/BeatIt/models
-          cp -R models/BeatThis_small0.mlpackage dist/BeatIt/models/BeatThis_small0.mlpackage
-          ditto -c -k --sequesterRsrc --keepParent dist/BeatIt dist/beatit-macos.zip
+          PKG_NAME="beatit-macos-${GITHUB_REF_NAME#v}.pkg"
+          VERSION="${GITHUB_REF_NAME#v}" \
+          PKG_NAME="$PKG_NAME" \
+          INSTALLER_SIGN_IDENTITY="$MACOS_INSTALLER_IDENTITY" \
+          scripts/package_macos_pkg.sh
 
       - name: Notarize
         env:
@@ -143,17 +144,21 @@ jobs:
             echo "Missing Apple notarization secrets."
             exit 1
           fi
-          xcrun notarytool submit dist/beatit-macos.zip \
+          PKG_PATH="dist/beatit-macos-${GITHUB_REF_NAME#v}.pkg"
+          xcrun notarytool submit "$PKG_PATH" \
             --apple-id "$APPLE_ID" \
             --team-id "$APPLE_TEAM_ID" \
             --password "$APPLE_APP_PASSWORD" \
             --wait
 
+      - name: Staple installer
+        run: xcrun stapler staple "dist/beatit-macos-${GITHUB_REF_NAME#v}.pkg"
+
       - name: Draft release
         uses: softprops/action-gh-release@v2
         with:
           draft: true
-          files: dist/beatit-macos.zip
+          files: dist/beatit-macos-${{ github.ref_name }}.pkg
 
   homebrew:
     runs-on: macos-14
