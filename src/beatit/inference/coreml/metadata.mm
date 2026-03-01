@@ -94,6 +94,36 @@ NSDictionary* load_package_metadata_via_coremlcompiler(NSURL* source_model_url) 
     return parse_coreml_metadata_json(output_data);
 }
 
+NSURL* find_repo_metadata_json(NSURL* source_model_url) {
+    if (!source_model_url ||
+        ![[source_model_url pathExtension].lowercaseString isEqualToString:@"mlpackage"]) {
+        return nil;
+    }
+
+    NSString* stem = [[source_model_url lastPathComponent] stringByDeletingPathExtension];
+    if (!stem.length) {
+        return nil;
+    }
+
+    NSString* package_dir = [source_model_url.path stringByDeletingLastPathComponent];
+    NSString* repo_root = [package_dir stringByDeletingLastPathComponent];
+    NSArray<NSString*>* candidates = @[
+        [[repo_root stringByAppendingPathComponent:@"coreml_out_latest"]
+            stringByAppendingPathComponent:[stem stringByAppendingPathExtension:@"mlmodelc"]],
+        [[repo_root stringByAppendingPathComponent:@"coreml_out"]
+            stringByAppendingPathComponent:[stem stringByAppendingPathExtension:@"mlmodelc"]],
+    ];
+
+    for (NSString* directory in candidates) {
+        NSString* metadata_path = [directory stringByAppendingPathComponent:@"metadata.json"];
+        if ([[NSFileManager defaultManager] fileExistsAtPath:metadata_path]) {
+            return [NSURL fileURLWithPath:metadata_path];
+        }
+    }
+
+    return nil;
+}
+
 } // namespace
 
 namespace beatit {
@@ -167,6 +197,11 @@ CoreMLMetadata load_coreml_metadata(const BeatitConfig& config) {
                 stringByAppendingPathExtension:@"mlmodelc"];
             NSURL* sibling_url = [NSURL fileURLWithPath:sibling_path];
             [candidates addObject:[sibling_url URLByAppendingPathComponent:@"metadata.json"]];
+
+            NSURL* repo_metadata = find_repo_metadata_json(source_model_url);
+            if (repo_metadata) {
+                [candidates addObject:repo_metadata];
+            }
         }
 
         for (NSURL* candidate in candidates) {
