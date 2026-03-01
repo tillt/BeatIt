@@ -19,18 +19,34 @@
 
 namespace {
 
-bool test_compile_cache_reuses_compiled_model() {
+enum class CoreMLCompileCacheTestResult {
+    Passed,
+    Failed,
+    Skipped,
+};
+
+bool is_unsupported_model_error(NSError* error) {
+    if (!error || !error.localizedDescription) {
+        return false;
+    }
+
+    const std::string message = error.localizedDescription.UTF8String;
+    return message.find("Unable to parse ML Program") != std::string::npos ||
+           message.find("Unknown opset") != std::string::npos;
+}
+
+CoreMLCompileCacheTestResult test_compile_cache_reuses_compiled_model() {
     const std::string model_path = beatit::tests::resolve_beatthis_coreml_model_path();
     if (model_path.empty()) {
         std::cerr << "CoreML compile cache test failed: could not locate BeatThis model package.\n";
-        return false;
+        return CoreMLCompileCacheTestResult::Failed;
     }
 
     const std::filesystem::path path(model_path);
     if (path.extension() != ".mlpackage") {
         std::cerr << "CoreML compile cache test failed: expected mlpackage, got "
                   << path.extension().string() << ".\n";
-        return false;
+        return CoreMLCompileCacheTestResult::Failed;
     }
 
     @autoreleasepool {
@@ -38,23 +54,32 @@ bool test_compile_cache_reuses_compiled_model() {
         NSError* error = nil;
         NSURL* first_compiled = beatit::detail::compile_model_if_needed(source_url, &error);
         if (!first_compiled || error) {
+            if (is_unsupported_model_error(error)) {
+                std::cerr << "CoreML compile cache test skipped: model format unsupported on "
+                             "this runner";
+                if (error) {
+                    std::cerr << " (" << error.localizedDescription.UTF8String << ")";
+                }
+                std::cerr << ".\n";
+                return CoreMLCompileCacheTestResult::Skipped;
+            }
             std::cerr << "CoreML compile cache test failed: first compile failed";
             if (error) {
                 std::cerr << " (" << error.localizedDescription.UTF8String << ")";
             }
             std::cerr << ".\n";
-            return false;
+            return CoreMLCompileCacheTestResult::Failed;
         }
 
         const std::string first_path = first_compiled.path.UTF8String ? first_compiled.path.UTF8String : "";
         if (first_path.empty() || std::filesystem::path(first_path).extension() != ".mlmodelc") {
             std::cerr << "CoreML compile cache test failed: first compile did not produce mlmodelc.\n";
-            return false;
+            return CoreMLCompileCacheTestResult::Failed;
         }
         if (!std::filesystem::exists(first_path)) {
             std::cerr << "CoreML compile cache test failed: compiled cache path does not exist: "
                       << first_path << ".\n";
-            return false;
+            return CoreMLCompileCacheTestResult::Failed;
         }
 
         error = nil;
@@ -65,25 +90,29 @@ bool test_compile_cache_reuses_compiled_model() {
                 std::cerr << " (" << error.localizedDescription.UTF8String << ")";
             }
             std::cerr << ".\n";
-            return false;
+            return CoreMLCompileCacheTestResult::Failed;
         }
 
         const std::string second_path =
             second_compiled.path.UTF8String ? second_compiled.path.UTF8String : "";
         if (first_path != second_path) {
             std::cerr << "CoreML compile cache test failed: system did not reuse compiled path.\n";
-            return false;
+            return CoreMLCompileCacheTestResult::Failed;
         }
     }
 
-    return true;
+    return CoreMLCompileCacheTestResult::Passed;
 }
 
 } // namespace
 
 int main() {
-    if (!test_compile_cache_reuses_compiled_model()) {
+    switch (test_compile_cache_reuses_compiled_model()) {
+    case CoreMLCompileCacheTestResult::Passed:
+        return 0;
+    case CoreMLCompileCacheTestResult::Skipped:
+        return 77;
+    case CoreMLCompileCacheTestResult::Failed:
         return 1;
     }
-    return 0;
 }

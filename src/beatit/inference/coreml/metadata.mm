@@ -115,12 +115,8 @@ CoreMLMetadata load_coreml_metadata(const BeatitConfig& config) {
     }
     MLModelConfiguration* model_config = [[MLModelConfiguration alloc] init];
     MLModel* model = [MLModel modelWithContentsOfURL:model_url configuration:model_config error:&error];
-    if (!model || error) {
-        return metadata;
-    }
-
-    NSDictionary* info = model.modelDescription.metadata;
-    if (info) {
+    if (model && !error) {
+        NSDictionary* info = model.modelDescription.metadata;
         auto assign_string = [&](NSString* key, std::string* target) {
             id value = [info objectForKey:key];
             if ([value isKindOfClass:[NSString class]]) {
@@ -128,19 +124,23 @@ CoreMLMetadata load_coreml_metadata(const BeatitConfig& config) {
             }
         };
 
-        assign_string(MLModelMetadataKeyAuthor, &metadata.author);
-        assign_string(MLModelMetadataKeyShortDescription, &metadata.short_description);
-        assign_string(MLModelMetadataKeyLicense, &metadata.license);
-        assign_string(MLModelMetadataKeyVersion, &metadata.version);
+        if (info) {
+            assign_string(MLModelMetadataKeyAuthor, &metadata.author);
+            assign_string(MLModelMetadataKeyShortDescription, &metadata.short_description);
+            assign_string(MLModelMetadataKeyLicense, &metadata.license);
+            assign_string(MLModelMetadataKeyVersion, &metadata.version);
 
-        id user = [info objectForKey:MLModelMetadataKeyUserDefined];
-        if ([user isKindOfClass:[NSDictionary class]]) {
-            NSDictionary* user_dict = static_cast<NSDictionary*>(user);
-            for (id key in user_dict) {
-                id value = [user_dict objectForKey:key];
-                if ([key isKindOfClass:[NSString class]] && [value isKindOfClass:[NSString class]]) {
-                    metadata.user_defined.emplace_back([static_cast<NSString*>(key) UTF8String],
-                                                       [static_cast<NSString*>(value) UTF8String]);
+            id user = [info objectForKey:MLModelMetadataKeyUserDefined];
+            if ([user isKindOfClass:[NSDictionary class]]) {
+                NSDictionary* user_dict = static_cast<NSDictionary*>(user);
+                for (id key in user_dict) {
+                    id value = [user_dict objectForKey:key];
+                    if ([key isKindOfClass:[NSString class]] &&
+                        [value isKindOfClass:[NSString class]]) {
+                        metadata.user_defined.emplace_back(
+                            [static_cast<NSString*>(key) UTF8String],
+                            [static_cast<NSString*>(value) UTF8String]);
+                    }
                 }
             }
         }

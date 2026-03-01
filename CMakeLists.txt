@@ -498,6 +498,9 @@ if(APPLE)
 endif()
 
 add_test(NAME beatit_coreml_compile_cache_tests COMMAND beatit_coreml_compile_cache_tests)
+set_tests_properties(beatit_coreml_compile_cache_tests PROPERTIES
+    SKIP_RETURN_CODE 77
+)
 
 add_executable(beatit_coreml_metadata_tests
     tests/coreml_metadata_test.mm
