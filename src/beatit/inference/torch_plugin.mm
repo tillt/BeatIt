@@ -137,7 +137,7 @@ TorchPluginFunctions* load_torch_plugin() {
         functions.analyze = analyze;
         functions.create_backend = create_backend;
         functions.destroy_backend = destroy_backend;
-        BEATIT_LOG_INFO("Torch plugin: loaded '" << candidate << "'.");
+        BEATIT_LOG_DEBUG("Torch plugin: loaded '" << candidate << "'.");
         return &functions;
     }
 

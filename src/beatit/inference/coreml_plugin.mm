@@ -138,7 +138,7 @@ CoreMLPluginFunctions* load_coreml_plugin() {
         functions.analyze = analyze;
         functions.create_backend = create_backend;
         functions.destroy_backend = destroy_backend;
-        BEATIT_LOG_INFO("CoreML plugin: loaded '" << candidate << "'.");
+        BEATIT_LOG_DEBUG("CoreML plugin: loaded '" << candidate << "'.");
         return &functions;
     }
 
