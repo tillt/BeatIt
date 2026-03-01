@@ -136,10 +136,6 @@ NSString* resolve_model_path(const BeatitConfig& config) {
             @"/usr/local/share/beatit/beatit.mlmodelc",
             @"/opt/homebrew/share/beatit/models/BeatThis_small0.mlpackage",
             @"/usr/local/share/beatit/models/BeatThis_small0.mlpackage",
-            @"/opt/homebrew/share/beatit/BeatThis_final0.mlmodelc",
-            @"/opt/homebrew/share/beatit/BeatThis_final0.mlpackage",
-            @"/usr/local/share/beatit/BeatThis_final0.mlmodelc",
-            @"/usr/local/share/beatit/BeatThis_final0.mlpackage",
         ];
         for (NSString* candidate in brew_candidates) {
             if ([[NSFileManager defaultManager] fileExistsAtPath:candidate]) {
@@ -155,12 +151,6 @@ NSString* resolve_model_path(const BeatitConfig& config) {
                                                 inDirectory:@"models"];
     }
     if (!model_path) {
-        model_path = [[NSBundle mainBundle] pathForResource:@"BeatThis_final0" ofType:@"mlmodelc"];
-    }
-    if (!model_path) {
-        model_path = [[NSBundle mainBundle] pathForResource:@"BeatThis_final0" ofType:@"mlpackage"];
-    }
-    if (!model_path) {
         model_path = [[NSBundle mainBundle] pathForResource:@"beatit" ofType:@"mlmodelc"];
     }
 
@@ -170,12 +160,6 @@ NSString* resolve_model_path(const BeatitConfig& config) {
             model_path = [framework_bundle pathForResource:@"BeatThis_small0"
                                                     ofType:@"mlpackage"
                                                inDirectory:@"models"];
-            if (!model_path) {
-                model_path = [framework_bundle pathForResource:@"BeatThis_final0" ofType:@"mlmodelc"];
-            }
-            if (!model_path) {
-                model_path = [framework_bundle pathForResource:@"BeatThis_final0" ofType:@"mlpackage"];
-            }
             if (!model_path) {
                 model_path = [framework_bundle pathForResource:@"beatit" ofType:@"mlmodelc"];
             }

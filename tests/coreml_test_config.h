@@ -61,13 +61,8 @@ inline std::string resolve_beatthis_coreml_model_path() {
         "models/BeatThis_small0.mlpackage",
         "coreml_out_latest/BeatThis_small0.mlpackage",
         "coreml_out_latest/BeatThis_small0.mlmodelc",
-        "models/BeatThis_final0.mlpackage",
         "coreml_out/BeatThis_small0.mlpackage",
-        "coreml_out/BeatThis_small0.mlmodelc",
-        "coreml_out_latest/BeatThis_final0.mlpackage",
-        "coreml_out_latest/BeatThis_final0.mlmodelc",
-        "coreml_out/BeatThis_final0.mlpackage",
-        "coreml_out/BeatThis_final0.mlmodelc"
+        "coreml_out/BeatThis_small0.mlmodelc"
     };
     for (const auto& path : candidates) {
         const std::filesystem::path candidate = test_root / path;

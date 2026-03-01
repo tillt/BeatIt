@@ -374,6 +374,8 @@ if(APPLE)
 
     add_custom_command(TARGET beatit_framework POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E rm -rf
+            "$<TARGET_FILE_DIR:beatit_framework>/Resources/BeatThis_final0.mlpackage"
+        COMMAND ${CMAKE_COMMAND} -E rm -rf
             "$<TARGET_FILE_DIR:beatit_framework>/Resources/BeatThis_small0.mlpackage"
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${CMAKE_CURRENT_SOURCE_DIR}/models/BeatThis_small0.mlpackage"
