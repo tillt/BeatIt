@@ -13,6 +13,7 @@
 
 #include "model_utils.h"
 
+#include <algorithm>
 #include <string>
 
 // Fallback for older SDKs that do not expose metadata key constants.
@@ -31,6 +32,69 @@ static NSString* const MLModelMetadataKeyVersion = @"version";
 #ifndef MLModelMetadataKeyUserDefined
 static NSString* const MLModelMetadataKeyUserDefined = @"userDefined";
 #endif
+
+namespace {
+
+NSDictionary* parse_coreml_metadata_json(NSData* metadata_data) {
+    if (!metadata_data) {
+        return nil;
+    }
+
+    NSError* json_error = nil;
+    id json_root = [NSJSONSerialization JSONObjectWithData:metadata_data options:0 error:&json_error];
+    if (json_error || ![json_root isKindOfClass:[NSArray class]]) {
+        return nil;
+    }
+
+    NSArray* entries = static_cast<NSArray*>(json_root);
+    if (entries.count == 0) {
+        return nil;
+    }
+
+    id first_entry = entries.firstObject;
+    if (![first_entry isKindOfClass:[NSDictionary class]]) {
+        return nil;
+    }
+
+    return static_cast<NSDictionary*>(first_entry);
+}
+
+NSDictionary* load_package_metadata_via_coremlcompiler(NSURL* source_model_url) {
+    if (!source_model_url ||
+        ![[source_model_url pathExtension].lowercaseString isEqualToString:@"mlpackage"]) {
+        return nil;
+    }
+
+    NSString* xcrun_path = @"/usr/bin/xcrun";
+    if (![[NSFileManager defaultManager] isExecutableFileAtPath:xcrun_path]) {
+        return nil;
+    }
+
+    NSTask* task = [[NSTask alloc] init];
+    task.launchPath = xcrun_path;
+    task.arguments = @[ @"coremlcompiler", @"metadata", source_model_url.path ];
+
+    NSPipe* stdout_pipe = [NSPipe pipe];
+    NSPipe* stderr_pipe = [NSPipe pipe];
+    task.standardOutput = stdout_pipe;
+    task.standardError = stderr_pipe;
+
+    @try {
+        [task launch];
+        [task waitUntilExit];
+    } @catch (NSException*) {
+        return nil;
+    }
+
+    if (task.terminationStatus != 0) {
+        return nil;
+    }
+
+    NSData* output_data = [[stdout_pipe fileHandleForReading] readDataToEndOfFile];
+    return parse_coreml_metadata_json(output_data);
+}
+
+} // namespace
 
 namespace beatit {
 
@@ -116,22 +180,15 @@ CoreMLMetadata load_coreml_metadata(const BeatitConfig& config) {
                 continue;
             }
 
-            NSError* json_error = nil;
-            id json_root =
-                [NSJSONSerialization JSONObjectWithData:metadata_data options:0 error:&json_error];
-            if (json_error || ![json_root isKindOfClass:[NSArray class]]) {
-                continue;
+            NSDictionary* metadata_dict = parse_coreml_metadata_json(metadata_data);
+            if (metadata_dict) {
+                return metadata_dict;
             }
+        }
 
-            NSArray* entries = static_cast<NSArray*>(json_root);
-            if (entries.count == 0) {
-                continue;
-            }
-
-            id first_entry = entries.firstObject;
-            if ([first_entry isKindOfClass:[NSDictionary class]]) {
-                return static_cast<NSDictionary*>(first_entry);
-            }
+        NSDictionary* package_metadata = load_package_metadata_via_coremlcompiler(source_model_url);
+        if (package_metadata) {
+            return package_metadata;
         }
 
         return static_cast<NSDictionary*>(nil);

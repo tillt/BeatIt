@@ -1,4 +1,4 @@
-	¦
+	®
 C
 mel_spectrogram!Log Mel Spectrogram (Time x 128).*
 Ü€ €R
@@ -7,13 +7,13 @@ C
 Ü €R
 downbeat_logits
 *
-Ü €¢£
-#Beat This! (small0) - Beat TrackingCPJKU (Converted for iOS)"MIT¢3
+Ü €¢«
+#Beat This! (small0) - Beat Trackingsmall0CPJKU (Converted for iOS)"MIT¢3
 #com.github.apple.coremltools.sourcetorch==2.2.0¢+
 $com.github.apple.coremltools.version9.0¢:
-+com.github.apple.coremltools.source_dialectTorchScript¢:
 ,com.github.apple.coremltools.conversion_date
-2026-01-31²³ÊÅÈ
+2026-01-31¢:
++com.github.apple.coremltools.source_dialectTorchScript²³ÊÅÈ
 main»È
 -
 mel_spectrogram
@@ -1843,14 +1843,14 @@ $model_frontend_stem_bn1d_running_var*:
 	
 
  „
-	transpose
-x
-
-mel_spectrogram
+	transpose
 perm
 
 
-var_42%
+var_42
+x
+
+mel_spectrogram%
 input_1
 
 
@@ -1861,26 +1861,26 @@ $model_frontend_stem_bn1d_running_var*:
 "
 transpose_47µ
 
-batch_norm
-x
-	
-input_11
+batch_norm1
 mean)
 '
-%model_frontend_stem_bn1d_running_mean4
-variance(
-&
-$model_frontend_stem_bn1d_running_var,
-gamma#
-!
-model_frontend_stem_bn1d_weight)
-beta!
-
-model_frontend_stem_bn1d_bias
+%model_frontend_stem_bn1d_running_mean
+x
+	
+input_1
 epsilon
 
 
-var_10!
+var_10)
+beta!
+
+model_frontend_stem_bn1d_bias,
+gamma#
+!
+model_frontend_stem_bn1d_weight4
+variance(
+&
+$model_frontend_stem_bn1d_running_var!
 x_3
 
 
@@ -1906,14 +1906,14 @@ $model_frontend_stem_bn1d_running_var,
 
 
 €Üx
-reshape
-x
-
-x_3
+reshape
 shape
 
 
-var_64+
+var_64
+x
+
+x_3+
 input_3 
 
 
@@ -2025,31 +2025,31 @@ $model_frontend_stem_bn1d_running_var,
 
  *%
 @model_path/weights/weight.bin€ûÁ¹
-conv
+conv
+groups
+
+input_5_groups_0
 x
 	
-input_3
-weight
-
-	const_493
-bias
-
-	const_494 
+input_3 
 strides
 
-input_5_strides_0"
-pad_type
-
-input_5_pad_type_0
+input_5_strides_0
+bias
+
+	const_494
 pad
 
 input_5_pad_0$
 	dilations
 
-input_5_dilations_0
-groups
-
-input_5_groups_0*
+input_5_dilations_0"
+pad_type
+
+input_5_pad_type_0
+weight
+
+	const_493*
 input_7
 
 
@@ -2125,13 +2125,13 @@ x_5_mode_0&
 
 
 Ü  z
-	transpose
-x
-
-x_5
+	transpose
 perm
 	
-var_114&
+var_114
+x
+
+x_5&
 x_7
 
 
@@ -2142,13 +2142,13 @@ x_5_mode_0&
 
 "
 transpose_46r
-reshape
-x
-
-x_7
+reshape
 shape
 	
-var_116$
+var_116
+x
+
+x_7$
 input_9
 
 Ü
@@ -2178,14 +2178,14 @@ x_5_mode_0&
 reduce_l2_norm
 x
 	
-input_9
-axes
-	
-var_125
+input_9
 	keep_dims
 
 
-var_11$
+var_11
+axes
+	
+var_125$
 var_126
 
 Ü
@@ -2328,13 +2328,13 @@ x_5_mode_0&
 x
 
 
-input_11A
-weight7
-5
-3model_frontend_blocks_0_partial_attnF_to_qkv_weight
+input_11
 bias
 
-linear_0_bias_0 
+linear_0_bias_0A
+weight7
+5
+3model_frontend_blocks_0_partial_attnF_to_qkv_weight 
 x_9
 
 Ü
@@ -2362,13 +2362,13 @@ x_5_mode_0&
 
 
 Ü  x
-reshape
-x
-
-x_9
+reshape
 shape
 	
-var_141-
+var_141
+x
+
+x_9-
 x_11%
 #
 Ü
@@ -2423,13 +2423,13 @@ x_5_mode_0&
 
 
  …
-	transpose
-x
-
-x_11
+	transpose
 perm
 	
-var_1430
+var_143
+x
+
+x_110
 var_144%
 #
 
@@ -2623,13 +2623,13 @@ x_5_mode_0&
 
 
 Ü ~
-reshape
-x
-
-	squeeze_0
+reshape
 shape
 	
-var_182-
+var_182
+x
+
+	squeeze_0-
 x_13%
 #
 Ü
@@ -2844,13 +2844,13 @@ x_5_mode_0&
 
 	
 Ü  x
-reshape
-x
-
-x_15
+reshape
 shape
 	
-var_213*
+var_213
+x
+
+x_15*
 var_214
 
 Ü
@@ -2926,15 +2926,15 @@ x_5_mode_0&
 concat
 values
 
-t_transformed_1
-axis
-
-
-var_18$
+t_transformed_1$
 
 interleave
 
-out_1_interleave_0(
+out_1_interleave_0
+axis
+
+
+var_18(
 out_1
 
 Ü
@@ -2980,13 +2980,13 @@ interleave
 
 
 Ü ~
-reshape
-x
-
-	squeeze_1
+reshape
 shape
 	
-var_256-
+var_256
+x
+
+	squeeze_1-
 x_17%
 #
 Ü
@@ -3201,13 +3201,13 @@ interleave
 
 	
 Ü  x
-reshape
-x
-
-x_19
+reshape
 shape
 	
-var_287*
+var_287
+x
+
+x_19*
 var_288
 
 Ü
@@ -3268,15 +3268,15 @@ interleave
 concat
 values
 
-t_transformed_3
-axis
-
-
-var_18$
+t_transformed_3$
 
 interleave
 
-out_3_interleave_0(
+out_3_interleave_0
+axis
+
+
+var_18(
 out_3
 
 Ü
@@ -3287,16 +3287,16 @@ interleave
 
 	"
 out_3£
-scaled_dot_product_attention
-query	
-
-out_1
-key	
-
-out_3
+scaled_dot_product_attention
 value
 
-	squeeze_2(
+	squeeze_2
+key	
+
+out_3
+query	
+
+out_1(
 out_5
 
 Ü
@@ -3311,13 +3311,13 @@ interleave
 x
 
 
-input_11C
-weight9
-7
-5model_frontend_blocks_0_partial_attnF_to_gates_weight?
+input_11?
 bias7
 5
-3model_frontend_blocks_0_partial_attnF_to_gates_bias!
+3model_frontend_blocks_0_partial_attnF_to_gates_biasC
+weight9
+7
+5model_frontend_blocks_0_partial_attnF_to_gates_weight!
 x_21
 
 Ü
@@ -3360,13 +3360,13 @@ interleave
 
 	
 Ü v
-	transpose
-x
-
-x_21
+	transpose
 perm
 	
-var_316!
+var_316
+x
+
+x_21!
 x_23
 
 Ü
@@ -3376,13 +3376,13 @@ interleave
 
 "
 transpose_44x
-reshape
-x
-
-x_23
+reshape
 shape
 	
-var_318*
+var_318
+x
+
+x_23*
 var_319
 
 Ü
@@ -3461,13 +3461,13 @@ interleave
 
 
 Ü  |
-	transpose
-x
-
-x_25
+	transpose
 perm
 	
-var_340'
+var_340
+x
+
+x_25'
 x_27
 
 Ü
@@ -3478,13 +3478,13 @@ interleave
 
 "
 transpose_43u
-reshape
-x
-
-x_27
+reshape
 shape
 	
-var_342%
+var_342
+x
+
+x_27%
 input_13
 
 Ü
@@ -3513,13 +3513,13 @@ interleave
 x
 
 
-input_13C
-weight9
-7
-5model_frontend_blocks_0_partial_attnF_to_out_0_weight
+input_13
 bias
 
-linear_2_bias_0%
+linear_2_bias_0C
+weight9
+7
+5model_frontend_blocks_0_partial_attnF_to_out_0_weight%
 input_15
 
 Ü
@@ -3569,14 +3569,14 @@ interleave
 x
 
 
-input_17
-axes
-	
-var_354
+input_17
 	keep_dims
 
 
-var_11$
+var_11
+axes
+	
+var_354$
 var_355
 
 Ü
@@ -3706,13 +3706,13 @@ interleave
 x
 
 
-input_19>
-weight4
-2
-0model_frontend_blocks_0_partial_ffF_net_1_weight:
+input_19:
 bias2
 0
-.model_frontend_blocks_0_partial_ffF_net_1_bias&
+.model_frontend_blocks_0_partial_ffF_net_1_bias>
+weight4
+2
+0model_frontend_blocks_0_partial_ffF_net_1_weight&
 input_21
 
 Ü
@@ -3756,13 +3756,13 @@ interleave
 x
 
 
-input_23>
-weight4
-2
-0model_frontend_blocks_0_partial_ffF_net_4_weight:
+input_23:
 bias2
 0
-.model_frontend_blocks_0_partial_ffF_net_4_bias%
+.model_frontend_blocks_0_partial_ffF_net_4_bias>
+weight4
+2
+0model_frontend_blocks_0_partial_ffF_net_4_weight%
 input_27
 
 Ü
@@ -3808,13 +3808,13 @@ interleave
 
 	
 Ü  s
-reshape
-x
-
-x_29
+reshape
 shape
 	
-var_389'
+var_389
+x
+
+x_29'
 x_31
 
 
@@ -3860,13 +3860,13 @@ interleave
 
 
  Ü |
-	transpose
-x
-
-x_31
+	transpose
 perm
 	
-var_391'
+var_391
+x
+
+x_31'
 x_33
 
 
@@ -3877,13 +3877,13 @@ interleave
 
 "
 transpose_42u
-reshape
-x
-
-x_33
+reshape
 shape
 	
-var_393%
+var_393
+x
+
+x_33%
 input_29
 
  
@@ -3915,14 +3915,14 @@ interleave
 x
 
 
-input_29
-axes
-	
-var_400
+input_29
 	keep_dims
 
 
-var_11$
+var_11
+axes
+	
+var_400$
 var_401
 
  
@@ -4066,13 +4066,13 @@ interleave
 x
 
 
-input_31A
-weight7
-5
-3model_frontend_blocks_0_partial_attnT_to_qkv_weight
+input_31
 bias
 
-linear_5_bias_0!
+linear_5_bias_0A
+weight7
+5
+3model_frontend_blocks_0_partial_attnT_to_qkv_weight!
 x_35
 
  
@@ -4100,13 +4100,13 @@ interleave
 
 
  Ü y
-reshape
-x
-
-x_35
+reshape
 shape
 	
-var_416-
+var_416
+x
+
+x_35-
 x_37%
 #
  
@@ -4161,13 +4161,13 @@ interleave
 
 
  …
-	transpose
-x
-
-x_37
+	transpose
 perm
 	
-var_4180
+var_418
+x
+
+x_370
 var_419%
 #
 
@@ -4361,13 +4361,13 @@ interleave
 
 
  Ü~
-reshape
-x
-
-	squeeze_7
+reshape
 shape
 	
-var_457-
+var_457
+x
+
+	squeeze_7-
 x_39%
 #
  
@@ -4588,13 +4588,13 @@ squeeze_10
 
 	
  Ü x
-reshape
-x
-
-x_41
+reshape
 shape
 	
-var_488*
+var_488
+x
+
+x_41*
 var_489
 
  
@@ -4670,15 +4670,15 @@ squeeze_10
 concat
 values
 
-t_transformed_5
-axis
-
-
-var_18$
+t_transformed_5$
 
 interleave
 
-out_7_interleave_0(
+out_7_interleave_0
+axis
+
+
+var_18(
 out_7
 
  
@@ -4724,13 +4724,13 @@ interleave
 
 
  Ü~
-reshape
-x
-
-	squeeze_8
+reshape
 shape
 	
-var_531-
+var_531
+x
+
+	squeeze_8-
 x_43%
 #
  
@@ -4951,13 +4951,13 @@ squeeze_12
 
 	
  Ü x
-reshape
-x
-
-x_45
+reshape
 shape
 	
-var_562*
+var_562
+x
+
+x_45*
 var_563
 
  
@@ -5018,15 +5018,15 @@ squeeze_12
 concat
 values
 
-t_transformed_7
-axis
-
-
-var_18$
+t_transformed_7$
 
 interleave
 
-out_9_interleave_0(
+out_9_interleave_0
+axis
+
+
+var_18(
 out_9
 
  
@@ -5037,16 +5037,16 @@ interleave
 
 	"
 out_9¥
-scaled_dot_product_attention
-query	
-
-out_7
-key	
-
-out_9
+scaled_dot_product_attention
 value
 
-	squeeze_9)
+	squeeze_9
+key	
+
+out_9
+query	
+
+out_7)
 out_11
 
  
@@ -5062,13 +5062,13 @@ interleave
 x
 
 
-input_31C
-weight9
-7
-5model_frontend_blocks_0_partial_attnT_to_gates_weight?
+input_31?
 bias7
 5
-3model_frontend_blocks_0_partial_attnT_to_gates_bias!
+3model_frontend_blocks_0_partial_attnT_to_gates_biasC
+weight9
+7
+5model_frontend_blocks_0_partial_attnT_to_gates_weight!
 x_47
 
  
@@ -5111,13 +5111,13 @@ interleave
 
 	
  Üv
-	transpose
-x
-
-x_47
+	transpose
 perm
 	
-var_591!
+var_591
+x
+
+x_47!
 x_49
 
  
@@ -5127,13 +5127,13 @@ interleave
 
 "
 transpose_40x
-reshape
-x
-
-x_49
+reshape
 shape
 	
-var_593*
+var_593
+x
+
+x_49*
 var_594
 
  
@@ -5213,13 +5213,13 @@ interleave
 
 
  Ü |
-	transpose
-x
-
-x_51
+	transpose
 perm
 	
-var_615'
+var_615
+x
+
+x_51'
 x_53
 
  
@@ -5230,13 +5230,13 @@ interleave
 
 "
 transpose_39u
-reshape
-x
-
-x_53
+reshape
 shape
 	
-var_617%
+var_617
+x
+
+x_53%
 input_33
 
  
@@ -5265,13 +5265,13 @@ interleave
 x
 
 
-input_33C
-weight9
-7
-5model_frontend_blocks_0_partial_attnT_to_out_0_weight
+input_33
 bias
 
-linear_7_bias_0%
+linear_7_bias_0C
+weight9
+7
+5model_frontend_blocks_0_partial_attnT_to_out_0_weight%
 input_35
 
  
@@ -5322,14 +5322,14 @@ interleave
 x
 
 
-input_37
-axes
-	
-var_629
+input_37
 	keep_dims
 
 
-var_11$
+var_11
+axes
+	
+var_629$
 var_630
 
  
@@ -5459,13 +5459,13 @@ interleave
 x
 
 
-input_39>
-weight4
-2
-0model_frontend_blocks_0_partial_ffT_net_1_weight:
+input_39:
 bias2
 0
-.model_frontend_blocks_0_partial_ffT_net_1_bias&
+.model_frontend_blocks_0_partial_ffT_net_1_bias>
+weight4
+2
+0model_frontend_blocks_0_partial_ffT_net_1_weight&
 input_41
 
  
@@ -5509,13 +5509,13 @@ interleave
 x
 
 
-input_43>
-weight4
-2
-0model_frontend_blocks_0_partial_ffT_net_4_weight:
+input_43:
 bias2
 0
-.model_frontend_blocks_0_partial_ffT_net_4_bias%
+.model_frontend_blocks_0_partial_ffT_net_4_bias>
+weight4
+2
+0model_frontend_blocks_0_partial_ffT_net_4_weight%
 input_47
 
  
@@ -5561,13 +5561,13 @@ interleave
 
 	
  Ü s
-reshape
-x
-
-x_55
+reshape
 shape
 	
-var_653'
+var_653
+x
+
+x_55'
 x_57
 
 
@@ -5697,13 +5697,13 @@ interleave
 
 @*%
 @model_path/weights/weight.bin€Ý€
-	transpose
-x
-
-x_57
+	transpose
 perm
 	
-var_655+
+var_655
+x
+
+x_57+
 input_49
 
 
@@ -5714,32 +5714,32 @@ interleave
 
 "
 transpose_38Á
-conv
+conv
+groups
+
+input_51_groups_0
 x
 
 
-input_49
-weight
-
-	const_495
-bias
-
-	const_496!
+input_49!
 strides
 
-input_51_strides_0#
-pad_type
-
-input_51_pad_type_0
+input_51_strides_0
+bias
+
+	const_496
 pad
 
 input_51_pad_0%
 	dilations
 
-input_51_dilations_0
-groups
-
-input_51_groups_0+
+input_51_dilations_0#
+pad_type
+
+input_51_pad_type_0
+weight
+
+	const_495+
 input_53
 
 
@@ -5815,13 +5815,13 @@ interleave
 
 
 Ü@|
-	transpose
-x
-
-x_59
+	transpose
 perm
 	
-var_694'
+var_694
+x
+
+x_59'
 x_61
 
 
@@ -5832,13 +5832,13 @@ interleave
 
 "
 transpose_37u
-reshape
-x
-
-x_61
+reshape
 shape
 	
-var_696%
+var_696
+x
+
+x_61%
 input_55
 
 Ü
@@ -5870,14 +5870,14 @@ interleave
 x
 
 
-input_55
-axes
-	
-var_703
+input_55
 	keep_dims
 
 
-var_11$
+var_11
+axes
+	
+var_703$
 var_704
 
 Ü
@@ -6019,13 +6019,13 @@ interleave
 x
 
 
-input_57A
-weight7
-5
-3model_frontend_blocks_1_partial_attnF_to_qkv_weight
+input_57
 bias
 
-linear_10_bias_0"
+linear_10_bias_0A
+weight7
+5
+3model_frontend_blocks_1_partial_attnF_to_qkv_weight"
 x_63
 
 Ü
@@ -6052,13 +6052,13 @@ interleave
 
 
 Ü y
-reshape
-x
-
-x_63
+reshape
 shape
 	
-var_719-
+var_719
+x
+
+x_63-
 x_65%
 #
 Ü
@@ -6113,13 +6113,13 @@ interleave
 
 
  …
-	transpose
-x
-
-x_65
+	transpose
 perm
 	
-var_7210
+var_721
+x
+
+x_650
 var_722%
 #
 
@@ -6320,14 +6320,14 @@ squeeze_14
 
 
 Ü
-reshape
+reshape
+shape
+	
+var_760
 x
 
 
-squeeze_14
-shape
-	
-var_760-
+squeeze_14-
 x_67%
 #
 Ü
@@ -6548,13 +6548,13 @@ squeeze_17
 
 	
 Ü x
-reshape
-x
-
-x_69
+reshape
 shape
 	
-var_791*
+var_791
+x
+
+x_69*
 var_792
 
 Ü
@@ -6630,15 +6630,15 @@ squeeze_17
 concat
 values
 
-t_transformed_9
-axis
-
-
-var_18%
+t_transformed_9%
 
 interleave
 
-out_13_interleave_0)
+out_13_interleave_0
+axis
+
+
+var_18)
 out_13
 
 Ü
@@ -6686,14 +6686,14 @@ squeeze_15
 
 
 Ü
-reshape
+reshape
+shape
+	
+var_834
 x
 
 
-squeeze_15
-shape
-	
-var_834-
+squeeze_15-
 x_71%
 #
 Ü
@@ -6914,13 +6914,13 @@ squeeze_19
 
 	
 Ü x
-reshape
-x
-
-x_73
+reshape
 shape
 	
-var_865*
+var_865
+x
+
+x_73*
 var_866
 
 Ü
@@ -6981,15 +6981,15 @@ squeeze_19
 concat
 values
 
-t_transformed_11
-axis
-
-
-var_18%
+t_transformed_11%
 
 interleave
 
-out_15_interleave_0)
+out_15_interleave_0
+axis
+
+
+var_18)
 out_15
 
 Ü
@@ -7001,19 +7001,19 @@ interleave
 
 "
 out_15¨
-scaled_dot_product_attention
-query
-
-
-out_13
-key
-
-
-out_15
+scaled_dot_product_attention
 value
 
 
-squeeze_16)
+squeeze_16
+key
+
+
+out_15
+query
+
+
+out_13)
 out_17
 
 Ü
@@ -7029,13 +7029,13 @@ squeeze_16)
 x
 
 
-input_57C
-weight9
-7
-5model_frontend_blocks_1_partial_attnF_to_gates_weight?
+input_57?
 bias7
 5
-3model_frontend_blocks_1_partial_attnF_to_gates_bias!
+3model_frontend_blocks_1_partial_attnF_to_gates_biasC
+weight9
+7
+5model_frontend_blocks_1_partial_attnF_to_gates_weight!
 x_75
 
 Ü
@@ -7077,13 +7077,13 @@ squeeze_16)
 
 	
 Üv
-	transpose
-x
-
-x_75
+	transpose
 perm
 	
-var_894!
+var_894
+x
+
+x_75!
 x_77
 
 Ü
@@ -7093,13 +7093,13 @@ squeeze_16)
 
 "
 transpose_35x
-reshape
-x
-
-x_77
+reshape
 shape
 	
-var_896*
+var_896
+x
+
+x_77*
 var_897
 
 Ü
@@ -7179,13 +7179,13 @@ squeeze_16)
 
 
 Ü@|
-	transpose
-x
-
-x_79
+	transpose
 perm
 	
-var_918'
+var_918
+x
+
+x_79'
 x_81
 
 Ü
@@ -7196,13 +7196,13 @@ squeeze_16)
 
 "
 transpose_34u
-reshape
-x
-
-x_81
+reshape
 shape
 	
-var_920%
+var_920
+x
+
+x_81%
 input_59
 
 Ü
@@ -7231,13 +7231,13 @@ squeeze_16)
 x
 
 
-input_59C
-weight9
-7
-5model_frontend_blocks_1_partial_attnF_to_out_0_weight
+input_59
 bias
 
-linear_12_bias_0%
+linear_12_bias_0C
+weight9
+7
+5model_frontend_blocks_1_partial_attnF_to_out_0_weight%
 input_61
 
 Ü
@@ -7287,14 +7287,14 @@ squeeze_16)
 x
 
 
-input_63
-axes
-	
-var_932
+input_63
 	keep_dims
 
 
-var_11$
+var_11
+axes
+	
+var_932$
 var_933
 
 Ü
@@ -7426,13 +7426,13 @@ squeeze_16)
 x
 
 
-input_65>
-weight4
-2
-0model_frontend_blocks_1_partial_ffF_net_1_weight:
+input_65:
 bias2
 0
-.model_frontend_blocks_1_partial_ffF_net_1_bias&
+.model_frontend_blocks_1_partial_ffF_net_1_bias>
+weight4
+2
+0model_frontend_blocks_1_partial_ffF_net_1_weight&
 input_67
 
 Ü
@@ -7475,13 +7475,13 @@ squeeze_16)
 x
 
 
-input_69>
-weight4
-2
-0model_frontend_blocks_1_partial_ffF_net_4_weight:
+input_69:
 bias2
 0
-.model_frontend_blocks_1_partial_ffF_net_4_bias%
+.model_frontend_blocks_1_partial_ffF_net_4_bias>
+weight4
+2
+0model_frontend_blocks_1_partial_ffF_net_4_weight%
 input_73
 
 Ü
@@ -7526,13 +7526,13 @@ squeeze_16)
 
 	
 Ü@s
-reshape
-x
-
-x_83
+reshape
 shape
 	
-var_967'
+var_967
+x
+
+x_83'
 x_85
 
 
@@ -7578,13 +7578,13 @@ squeeze_16)
 
 
 Ü@|
-	transpose
-x
-
-x_85
+	transpose
 perm
 	
-var_969'
+var_969
+x
+
+x_85'
 x_87
 
 
@@ -7595,13 +7595,13 @@ squeeze_16)
 
 "
 transpose_33u
-reshape
-x
-
-x_87
+reshape
 shape
 	
-var_971%
+var_971
+x
+
+x_87%
 input_75
 
 
@@ -7633,14 +7633,14 @@ squeeze_16)
 x
 
 
-input_75
-axes
-	
-var_978
+input_75
 	keep_dims
 
 
-var_11$
+var_11
+axes
+	
+var_978$
 var_979
 
 
@@ -7772,13 +7772,13 @@ squeeze_16)
 x
 
 
-input_77A
-weight7
-5
-3model_frontend_blocks_1_partial_attnT_to_qkv_weight
+input_77
 bias
 
-linear_10_bias_0"
+linear_10_bias_0A
+weight7
+5
+3model_frontend_blocks_1_partial_attnT_to_qkv_weight"
 x_89
 
 
@@ -7805,13 +7805,13 @@ squeeze_16)
 
 
 Ü y
-reshape
-x
-
-x_89
+reshape
 shape
 	
-var_994-
+var_994
+x
+
+x_89-
 x_91%
 #
 
@@ -7866,13 +7866,13 @@ squeeze_16)
 
 
  …
-	transpose
-x
-
-x_91
+	transpose
 perm
 	
-var_9960
+var_996
+x
+
+x_910
 var_997%
 #
 
@@ -8056,15 +8056,15 @@ squeeze_21
 
 
 Ü€
-reshape
-x
-
-
-squeeze_21
+reshape
 shape
 
 
-var_1035-
+var_1035
+x
+
+
+squeeze_21-
 x_93%
 #
 
@@ -8287,14 +8287,14 @@ squeeze_24
 
 	
 Ü {
-reshape
-x
-
-x_95
+reshape
 shape
 
 
-var_1066+
+var_1066
+x
+
+x_95+
 var_1067
 
 
@@ -8356,15 +8356,15 @@ squeeze_24
 concat
 values
 
-t_transformed_13
-axis
-
-
-var_18%
+t_transformed_13%
 
 interleave
 
-out_19_interleave_0)
+out_19_interleave_0
+axis
+
+
+var_18)
 out_19
 
 
@@ -8410,15 +8410,15 @@ squeeze_22
 
 
 Ü€
-reshape
-x
-
-
-squeeze_22
+reshape
 shape
 
 
-var_1109-
+var_1109
+x
+
+
+squeeze_22-
 x_97%
 #
 
@@ -8641,14 +8641,14 @@ squeeze_26
 
 	
 Ü {
-reshape
-x
-
-x_99
+reshape
 shape
 
 
-var_1140+
+var_1140
+x
+
+x_99+
 var_1141
 
 
@@ -8710,15 +8710,15 @@ squeeze_26
 concat
 values
 
-t_transformed_15
-axis
-
-
-var_18%
+t_transformed_15%
 
 interleave
 
-out_21_interleave_0)
+out_21_interleave_0
+axis
+
+
+var_18)
 out_21
 
 
@@ -8730,19 +8730,19 @@ interleave
 
 "
 out_21¨
-scaled_dot_product_attention
-query
-
-
-out_19
-key
-
-
-out_21
+scaled_dot_product_attention
 value
 
 
-squeeze_23)
+squeeze_23
+key
+
+
+out_21
+query
+
+
+out_19)
 out_23
 
 
@@ -8758,13 +8758,13 @@ squeeze_23)
 x
 
 
-input_77C
-weight9
-7
-5model_frontend_blocks_1_partial_attnT_to_gates_weight?
+input_77?
 bias7
 5
-3model_frontend_blocks_1_partial_attnT_to_gates_bias"
+3model_frontend_blocks_1_partial_attnT_to_gates_biasC
+weight9
+7
+5model_frontend_blocks_1_partial_attnT_to_gates_weight"
 x_101
 
 
@@ -8804,14 +8804,14 @@ squeeze_23)
 
 	
 Üy
-	transpose
-x	
-
-x_101
+	transpose
 perm
 
 
-var_1169"
+var_1169
+x	
+
+x_101"
 x_103
 
 
@@ -8821,14 +8821,14 @@ squeeze_23)
 
 "
 transpose_31|
-reshape
-x	
-
-x_103
+reshape
 shape
 
 
-var_1171+
+var_1171
+x	
+
+x_103+
 var_1172
 
 
@@ -8905,14 +8905,14 @@ squeeze_23)
 
 
 Ü@
-	transpose
-x	
-
-x_105
+	transpose
 perm
 
 
-var_1193(
+var_1193
+x	
+
+x_105(
 x_107
 
 
@@ -8923,14 +8923,14 @@ squeeze_23)
 
 "
 transpose_30w
-reshape
-x	
-
-x_107
+reshape
 shape
 
 
-var_1195%
+var_1195
+x	
+
+x_107%
 input_79
 
 
@@ -8959,13 +8959,13 @@ squeeze_23)
 x
 
 
-input_79C
-weight9
-7
-5model_frontend_blocks_1_partial_attnT_to_out_0_weight
+input_79
 bias
 
-linear_17_bias_0%
+linear_17_bias_0C
+weight9
+7
+5model_frontend_blocks_1_partial_attnT_to_out_0_weight%
 input_81
 
 
@@ -9014,15 +9014,15 @@ squeeze_23)
 x
 
 
-input_83
-axes
-
-
-var_1207
+input_83
 	keep_dims
 
 
-var_11%
+var_11
+axes
+
+
+var_1207%
 var_1208
 
 
@@ -9154,13 +9154,13 @@ squeeze_23)
 x
 
 
-input_85>
-weight4
-2
-0model_frontend_blocks_1_partial_ffT_net_1_weight:
+input_85:
 bias2
 0
-.model_frontend_blocks_1_partial_ffT_net_1_bias&
+.model_frontend_blocks_1_partial_ffT_net_1_bias>
+weight4
+2
+0model_frontend_blocks_1_partial_ffT_net_1_weight&
 input_87
 
 
@@ -9203,13 +9203,13 @@ squeeze_23)
 x
 
 
-input_89>
-weight4
-2
-0model_frontend_blocks_1_partial_ffT_net_4_weight:
+input_89:
 bias2
 0
-.model_frontend_blocks_1_partial_ffT_net_4_bias%
+.model_frontend_blocks_1_partial_ffT_net_4_bias>
+weight4
+2
+0model_frontend_blocks_1_partial_ffT_net_4_weight%
 input_93
 
 
@@ -9252,14 +9252,14 @@ squeeze_23)
 
 	
 Ü@w
-reshape
-x	
-
-x_109
+reshape
 shape
 
 
-var_1231(
+var_1231
+x	
+
+x_109(
 x_111
 
 
@@ -9385,14 +9385,14 @@ squeeze_23)
 
 €*%
 @model_path/weights/weight.binÀ°é‚
-	transpose
-x	
-
-x_111
+	transpose
 perm
 
 
-var_1233+
+var_1233
+x	
+
+x_111+
 input_95
 
 
@@ -9403,32 +9403,32 @@ squeeze_23)
 
 "
 transpose_29Â
-conv
+conv
+groups
+
+input_97_groups_0
 x
 
 
-input_95
-weight
-
-	const_497
-bias
-
-	const_498!
+input_95!
 strides
 
-input_97_strides_0#
-pad_type
-
-input_97_pad_type_0
+input_97_strides_0
+bias
+
+	const_498
 pad
 
 input_97_pad_0%
 	dilations
 
-input_97_dilations_0
-groups
-
-input_97_groups_0,
+input_97_dilations_0#
+pad_type
+
+input_97_pad_type_0
+weight
+
+	const_497,
 input_99 
 
 
@@ -9500,14 +9500,14 @@ squeeze_23)
 
 	
 Ü€€
-	transpose
-x	
-
-x_113
+	transpose
 perm
 
 
-var_1272)
+var_1272
+x	
+
+x_113)
 x_115 
 
 
@@ -9518,14 +9518,14 @@ squeeze_23)
 
 "
 transpose_28z
-reshape
-x	
-
-x_115
+reshape
 shape
 
 
-var_1274'
+var_1274
+x	
+
+x_115'
 	input_101
 
 Ü
@@ -9554,15 +9554,15 @@ squeeze_23)
 reduce_l2_norm
 x
 
-	input_101
-axes
-
-
-var_1281
+	input_101
 	keep_dims
 
 
-var_11%
+var_11
+axes
+
+
+var_1281%
 var_1282
 
 Ü
@@ -9704,13 +9704,13 @@ squeeze_23)
 linear
 x
 
-	input_103A
-weight7
-5
-3model_frontend_blocks_2_partial_attnF_to_qkv_weight
+	input_103
 bias
 
-linear_20_bias_0#
+linear_20_bias_0A
+weight7
+5
+3model_frontend_blocks_2_partial_attnF_to_qkv_weight#
 x_117
 
 Ü
@@ -9736,14 +9736,14 @@ squeeze_23)
 
 
 Ü }
-reshape
-x	
-
-x_117
+reshape
 shape
 
 
-var_1297.
+var_1297
+x	
+
+x_117.
 x_119%
 #
 Ü
@@ -9796,14 +9796,14 @@ squeeze_23)
 
 
  ˆ
-	transpose
-x	
-
-x_119
+	transpose
 perm
 
 
-var_12991
+var_1299
+x	
+
+x_1191
 var_1300%
 #
 
@@ -10008,15 +10008,15 @@ squeeze_28
 
 
 Ü‚
-reshape
-x
-
-
-squeeze_28
+reshape
 shape
 
 
-var_1338.
+var_1338
+x
+
+
+squeeze_28.
 x_121%
 #
 Ü
@@ -10237,14 +10237,14 @@ squeeze_31
 
 	
 Ü |
-reshape
-x	
-
-x_123
+reshape
 shape
 
 
-var_1369+
+var_1369
+x	
+
+x_123+
 var_1370
 
 Ü
@@ -10321,15 +10321,15 @@ squeeze_31
 concat
 values
 
-t_transformed_17
-axis
-
-
-var_18%
+t_transformed_17%
 
 interleave
 
-out_25_interleave_0)
+out_25_interleave_0
+axis
+
+
+var_18)
 out_25
 
 Ü
@@ -10376,15 +10376,15 @@ squeeze_29
 
 
 Ü‚
-reshape
-x
-
-
-squeeze_29
+reshape
 shape
 
 
-var_1412.
+var_1412
+x
+
+
+squeeze_29.
 x_125%
 #
 Ü
@@ -10605,14 +10605,14 @@ squeeze_33
 
 	
 Ü |
-reshape
-x	
-
-x_127
+reshape
 shape
 
 
-var_1443+
+var_1443
+x	
+
+x_127+
 var_1444
 
 Ü
@@ -10675,15 +10675,15 @@ squeeze_33
 concat
 values
 
-t_transformed_19
-axis
-
-
-var_18%
+t_transformed_19%
 
 interleave
 
-out_27_interleave_0)
+out_27_interleave_0
+axis
+
+
+var_18)
 out_27
 
 Ü
@@ -10695,19 +10695,19 @@ interleave
 
 "
 out_27¨
-scaled_dot_product_attention
-query
-
-
-out_25
-key
-
-
-out_27
+scaled_dot_product_attention
 value
 
 
-squeeze_30)
+squeeze_30
+key
+
+
+out_27
+query
+
+
+out_25)
 out_29
 
 Ü
@@ -10722,13 +10722,13 @@ squeeze_30)
 linear
 x
 
-	input_103C
-weight9
-7
-5model_frontend_blocks_2_partial_attnF_to_gates_weight?
+	input_103?
 bias7
 5
-3model_frontend_blocks_2_partial_attnF_to_gates_bias"
+3model_frontend_blocks_2_partial_attnF_to_gates_biasC
+weight9
+7
+5model_frontend_blocks_2_partial_attnF_to_gates_weight"
 x_129
 
 Ü
@@ -10768,14 +10768,14 @@ squeeze_30)
 
 	
 Üy
-	transpose
-x	
-
-x_129
+	transpose
 perm
 
 
-var_1472"
+var_1472
+x	
+
+x_129"
 x_131
 
 Ü
@@ -10785,14 +10785,14 @@ squeeze_30)
 
 "
 transpose_26|
-reshape
-x	
-
-x_131
+reshape
 shape
 
 
-var_1474+
+var_1474
+x	
+
+x_131+
 var_1475
 
 Ü
@@ -10868,14 +10868,14 @@ squeeze_30)
 
 	
 Ü€
-	transpose
-x	
-
-x_133
+	transpose
 perm
 
 
-var_1496(
+var_1496
+x	
+
+x_133(
 x_135
 
 Ü
@@ -10886,14 +10886,14 @@ squeeze_30)
 
 "
 transpose_25z
-reshape
-x	
-
-x_135
+reshape
 shape
 
 
-var_1498'
+var_1498
+x	
+
+x_135'
 	input_105
 
 Ü
@@ -10918,13 +10918,13 @@ squeeze_30)
 linear
 x
 
-	input_105C
-weight9
-7
-5model_frontend_blocks_2_partial_attnF_to_out_0_weight
+	input_105
 bias
 
-linear_22_bias_0'
+linear_22_bias_0C
+weight9
+7
+5model_frontend_blocks_2_partial_attnF_to_out_0_weight'
 	input_107
 
 Ü
@@ -10969,15 +10969,15 @@ squeeze_30)
 reduce_l2_norm
 x
 
-	input_109
-axes
-
-
-var_1510
+	input_109
 	keep_dims
 
 
-var_11%
+var_11
+axes
+
+
+var_1510%
 var_1511
 
 Ü
@@ -11107,13 +11107,13 @@ squeeze_30)
 linear
 x
 
-	input_111>
-weight4
-2
-0model_frontend_blocks_2_partial_ffF_net_1_weight:
+	input_111:
 bias2
 0
-.model_frontend_blocks_2_partial_ffF_net_1_bias'
+.model_frontend_blocks_2_partial_ffF_net_1_bias>
+weight4
+2
+0model_frontend_blocks_2_partial_ffF_net_1_weight'
 	input_113
 
 Ü
@@ -11153,13 +11153,13 @@ squeeze_30)
 linear
 x
 
-	input_115>
-weight4
-2
-0model_frontend_blocks_2_partial_ffF_net_4_weight:
+	input_115:
 bias2
 0
-.model_frontend_blocks_2_partial_ffF_net_4_bias'
+.model_frontend_blocks_2_partial_ffF_net_4_bias>
+weight4
+2
+0model_frontend_blocks_2_partial_ffF_net_4_weight'
 	input_119
 
 Ü
@@ -11201,14 +11201,14 @@ squeeze_30)
 
 
 Ü€x
-reshape
-x	
-
-x_137
+reshape
 shape
 
 
-var_1545)
+var_1545
+x	
+
+x_137)
 x_139 
 
 
@@ -11250,14 +11250,14 @@ squeeze_30)
 
 	
 Ü€€
-	transpose
-x	
-
-x_139
+	transpose
 perm
 
 
-var_1547)
+var_1547
+x	
+
+x_139)
 x_141 
 
 
@@ -11268,14 +11268,14 @@ squeeze_30)
 
 "
 transpose_24z
-reshape
-x	
-
-x_141
+reshape
 shape
 
 
-var_1549'
+var_1549
+x	
+
+x_141'
 	input_121
 
 
@@ -11304,15 +11304,15 @@ squeeze_30)
 reduce_l2_norm
 x
 
-	input_121
-axes
-
-
-var_1556
+	input_121
 	keep_dims
 
 
-var_11%
+var_11
+axes
+
+
+var_1556%
 var_1557
 
 
@@ -11442,13 +11442,13 @@ squeeze_30)
 linear
 x
 
-	input_123A
-weight7
-5
-3model_frontend_blocks_2_partial_attnT_to_qkv_weight
+	input_123
 bias
 
-linear_20_bias_0#
+linear_20_bias_0A
+weight7
+5
+3model_frontend_blocks_2_partial_attnT_to_qkv_weight#
 x_143
 
 
@@ -11474,14 +11474,14 @@ squeeze_30)
 
 
 Ü }
-reshape
-x	
-
-x_143
+reshape
 shape
 
 
-var_1572.
+var_1572
+x	
+
+x_143.
 x_145%
 #
 
@@ -11534,14 +11534,14 @@ squeeze_30)
 
 
  ˆ
-	transpose
-x	
-
-x_145
+	transpose
 perm
 
 
-var_15741
+var_1574
+x	
+
+x_1451
 var_1575%
 #
 
@@ -11731,15 +11731,15 @@ squeeze_35
 
 
 Ü‚
-reshape
-x
-
-
-squeeze_35
+reshape
 shape
 
 
-var_1613.
+var_1613
+x
+
+
+squeeze_35.
 x_147%
 #
 
@@ -11960,14 +11960,14 @@ squeeze_38
 
 	
 Ü |
-reshape
-x	
-
-x_149
+reshape
 shape
 
 
-var_1644+
+var_1644
+x	
+
+x_149+
 var_1645
 
 
@@ -12029,15 +12029,15 @@ squeeze_38
 concat
 values
 
-t_transformed_21
-axis
-
-
-var_18%
+t_transformed_21%
 
 interleave
 
-out_31_interleave_0)
+out_31_interleave_0
+axis
+
+
+var_18)
 out_31
 
 
@@ -12083,15 +12083,15 @@ squeeze_36
 
 
 Ü‚
-reshape
-x
-
-
-squeeze_36
+reshape
 shape
 
 
-var_1687.
+var_1687
+x
+
+
+squeeze_36.
 x_151%
 #
 
@@ -12312,14 +12312,14 @@ squeeze_40
 
 	
 Ü |
-reshape
-x	
-
-x_153
+reshape
 shape
 
 
-var_1718+
+var_1718
+x	
+
+x_153+
 var_1719
 
 
@@ -12381,15 +12381,15 @@ squeeze_40
 concat
 values
 
-t_transformed_23
-axis
-
-
-var_18%
+t_transformed_23%
 
 interleave
 
-out_33_interleave_0)
+out_33_interleave_0
+axis
+
+
+var_18)
 out_33
 
 
@@ -12401,19 +12401,19 @@ interleave
 
 "
 out_33¨
-scaled_dot_product_attention
-query
-
-
-out_31
-key
-
-
-out_33
+scaled_dot_product_attention
 value
 
 
-squeeze_37)
+squeeze_37
+key
+
+
+out_33
+query
+
+
+out_31)
 out_35
 
 
@@ -12428,13 +12428,13 @@ squeeze_37)
 linear
 x
 
-	input_123C
-weight9
-7
-5model_frontend_blocks_2_partial_attnT_to_gates_weight?
+	input_123?
 bias7
 5
-3model_frontend_blocks_2_partial_attnT_to_gates_bias"
+3model_frontend_blocks_2_partial_attnT_to_gates_biasC
+weight9
+7
+5model_frontend_blocks_2_partial_attnT_to_gates_weight"
 x_155
 
 
@@ -12474,14 +12474,14 @@ squeeze_37)
 
 	
 Üy
-	transpose
-x	
-
-x_155
+	transpose
 perm
 
 
-var_1747"
+var_1747
+x	
+
+x_155"
 x_157
 
 
@@ -12491,14 +12491,14 @@ squeeze_37)
 
 "
 transpose_22|
-reshape
-x	
-
-x_157
+reshape
 shape
 
 
-var_1749+
+var_1749
+x	
+
+x_157+
 var_1750
 
 
@@ -12574,14 +12574,14 @@ squeeze_37)
 
 	
 Ü€
-	transpose
-x	
-
-x_159
+	transpose
 perm
 
 
-var_1771(
+var_1771
+x	
+
+x_159(
 x_161
 
 
@@ -12592,14 +12592,14 @@ squeeze_37)
 
 "
 transpose_21z
-reshape
-x	
-
-x_161
+reshape
 shape
 
 
-var_1773'
+var_1773
+x	
+
+x_161'
 	input_125
 
 
@@ -12612,13 +12612,13 @@ squeeze_37)
 linear
 x
 
-	input_125C
-weight9
-7
-5model_frontend_blocks_2_partial_attnT_to_out_0_weight
+	input_125
 bias
 
-linear_22_bias_0'
+linear_22_bias_0C
+weight9
+7
+5model_frontend_blocks_2_partial_attnT_to_out_0_weight'
 	input_127
 
 
@@ -12663,15 +12663,15 @@ squeeze_37)
 reduce_l2_norm
 x
 
-	input_129
-axes
-
-
-var_1785
+	input_129
 	keep_dims
 
 
-var_11%
+var_11
+axes
+
+
+var_1785%
 var_1786
 
 
@@ -12801,13 +12801,13 @@ squeeze_37)
 linear
 x
 
-	input_131>
-weight4
-2
-0model_frontend_blocks_2_partial_ffT_net_1_weight:
+	input_131:
 bias2
 0
-.model_frontend_blocks_2_partial_ffT_net_1_bias'
+.model_frontend_blocks_2_partial_ffT_net_1_bias>
+weight4
+2
+0model_frontend_blocks_2_partial_ffT_net_1_weight'
 	input_133
 
 
@@ -12847,13 +12847,13 @@ squeeze_37)
 linear
 x
 
-	input_135>
-weight4
-2
-0model_frontend_blocks_2_partial_ffT_net_4_weight:
+	input_135:
 bias2
 0
-.model_frontend_blocks_2_partial_ffT_net_4_bias'
+.model_frontend_blocks_2_partial_ffT_net_4_bias>
+weight4
+2
+0model_frontend_blocks_2_partial_ffT_net_4_weight'
 	input_139
 
 
@@ -12895,14 +12895,14 @@ squeeze_37)
 
 
 Ü€x
-reshape
-x	
-
-x_163
+reshape
 shape
 
 
-var_1809)
+var_1809
+x	
+
+x_163)
 x_165 
 
 
@@ -13028,14 +13028,14 @@ squeeze_37)
 
 €*%
 @model_path/weights/weight.binÀ×™„
-	transpose
-x	
-
-x_165
+	transpose
 perm
 
 
-var_1811-
+var_1811
+x	
+
+x_165-
 	input_141 
 
 
@@ -13046,31 +13046,31 @@ squeeze_37)
 
 "
 transpose_20Ê
-conv
+conv 
+groups
+
+input_143_groups_0
 x
 
-	input_141
-weight
-
-	const_499
-bias
-
-	const_500"
+	input_141"
 strides
 
-input_143_strides_0$
-pad_type
-
-input_143_pad_type_0
+input_143_strides_0
+bias
+
+	const_500
 pad
 
 input_143_pad_0&
 	dilations
 
-input_143_dilations_0 
-groups
-
-input_143_groups_0-
+input_143_dilations_0$
+pad_type
+
+input_143_pad_type_0
+weight
+
+	const_499-
 	input_145 
 
 
@@ -13140,14 +13140,14 @@ squeeze_37)
 
 	
 Ü€€
-	transpose
-x	
-
-x_167
+	transpose
 perm
 
 
-var_1843)
+var_1843
+x	
+
+x_167)
 x_169 
 
 
@@ -13158,14 +13158,14 @@ squeeze_37)
 
 "
 transpose_19z
-reshape
-x	
-
-x_169
+reshape
 shape
 
 
-var_1845'
+var_1845
+x	
+
+x_169'
 	input_147
 
 
@@ -13178,13 +13178,13 @@ squeeze_37)
 linear
 x
 
-	input_147*
-weight 
-
-model_frontend_linear_weight&
+	input_147&
 bias
 
-model_frontend_linear_bias'
+model_frontend_linear_bias*
+weight 
+
+model_frontend_linear_weight'
 	input_149
 
 
@@ -13213,15 +13213,15 @@ squeeze_37)
 reduce_l2_norm
 x
 
-	input_149
-axes
-
-
-var_1892
+	input_149
 	keep_dims
 
 
-var_11%
+var_11
+axes
+
+
+var_1892%
 var_1893
 
 
@@ -13351,13 +13351,13 @@ squeeze_37)
 linear
 x
 
-	input_151?
-weight5
-3
-1model_transformer_blocks_layers_0_0_to_qkv_weight
+	input_151
 bias
 
-linear_20_bias_0#
+linear_20_bias_0?
+weight5
+3
+1model_transformer_blocks_layers_0_0_to_qkv_weight#
 x_171
 
 
@@ -13383,14 +13383,14 @@ squeeze_37)
 
 
 Ü }
-reshape
-x	
-
-x_171
+reshape
 shape
 
 
-var_1908.
+var_1908
+x	
+
+x_171.
 x_173%
 #
 
@@ -13443,14 +13443,14 @@ squeeze_37)
 
 
  ˆ
-	transpose
-x	
-
-x_173
+	transpose
 perm
 
 
-var_19101
+var_1910
+x	
+
+x_1731
 var_1911%
 #
 
@@ -13640,15 +13640,15 @@ squeeze_42
 
 
 Ü‚
-reshape
-x
-
-
-squeeze_42
+reshape
 shape
 
 
-var_1949.
+var_1949
+x
+
+
+squeeze_42.
 x_175%
 #
 
@@ -13869,14 +13869,14 @@ squeeze_45
 
 	
 Ü |
-reshape
-x	
-
-x_177
+reshape
 shape
 
 
-var_1980+
+var_1980
+x	
+
+x_177+
 var_1981
 
 
@@ -13938,15 +13938,15 @@ squeeze_45
 concat
 values
 
-t_transformed_25
-axis
-
-
-var_18%
+t_transformed_25%
 
 interleave
 
-out_37_interleave_0)
+out_37_interleave_0
+axis
+
+
+var_18)
 out_37
 
 
@@ -13992,15 +13992,15 @@ squeeze_43
 
 
 Ü‚
-reshape
-x
-
-
-squeeze_43
+reshape
 shape
 
 
-var_2023.
+var_2023
+x
+
+
+squeeze_43.
 x_179%
 #
 
@@ -14221,14 +14221,14 @@ squeeze_47
 
 	
 Ü |
-reshape
-x	
-
-x_181
+reshape
 shape
 
 
-var_2054+
+var_2054
+x	
+
+x_181+
 var_2055
 
 
@@ -14290,15 +14290,15 @@ squeeze_47
 concat
 values
 
-t_transformed_27
-axis
-
-
-var_18%
+t_transformed_27%
 
 interleave
 
-out_39_interleave_0)
+out_39_interleave_0
+axis
+
+
+var_18)
 out_39
 
 
@@ -14310,19 +14310,19 @@ interleave
 
 "
 out_39¨
-scaled_dot_product_attention
-query
-
-
-out_37
-key
-
-
-out_39
+scaled_dot_product_attention
 value
 
 
-squeeze_44)
+squeeze_44
+key
+
+
+out_39
+query
+
+
+out_37)
 out_41
 
 
@@ -14337,13 +14337,13 @@ squeeze_44)
 linear
 x
 
-	input_151A
-weight7
-5
-3model_transformer_blocks_layers_0_0_to_gates_weight=
+	input_151=
 bias5
 3
-1model_transformer_blocks_layers_0_0_to_gates_bias"
+1model_transformer_blocks_layers_0_0_to_gates_biasA
+weight7
+5
+3model_transformer_blocks_layers_0_0_to_gates_weight"
 x_183
 
 
@@ -14383,14 +14383,14 @@ squeeze_44)
 
 	
 Üy
-	transpose
-x	
-
-x_183
+	transpose
 perm
 
 
-var_2083"
+var_2083
+x	
+
+x_183"
 x_185
 
 
@@ -14400,14 +14400,14 @@ squeeze_44)
 
 "
 transpose_17|
-reshape
-x	
-
-x_185
+reshape
 shape
 
 
-var_2085+
+var_2085
+x	
+
+x_185+
 var_2086
 
 
@@ -14483,14 +14483,14 @@ squeeze_44)
 
 	
 Ü€
-	transpose
-x	
-
-x_187
+	transpose
 perm
 
 
-var_2107(
+var_2107
+x	
+
+x_187(
 x_189
 
 
@@ -14501,14 +14501,14 @@ squeeze_44)
 
 "
 transpose_16z
-reshape
-x	
-
-x_189
+reshape
 shape
 
 
-var_2109'
+var_2109
+x	
+
+x_189'
 	input_153
 
 
@@ -14521,13 +14521,13 @@ squeeze_44)
 linear
 x
 
-	input_153A
-weight7
-5
-3model_transformer_blocks_layers_0_0_to_out_0_weight
+	input_153
 bias
 
-linear_22_bias_0'
+linear_22_bias_0A
+weight7
+5
+3model_transformer_blocks_layers_0_0_to_out_0_weight'
 	input_155
 
 
@@ -14572,15 +14572,15 @@ squeeze_44)
 reduce_l2_norm
 x
 
-	input_157
-axes
-
-
-var_2121
+	input_157
 	keep_dims
 
 
-var_11%
+var_11
+axes
+
+
+var_2121%
 var_2122
 
 
@@ -14710,13 +14710,13 @@ squeeze_44)
 linear
 x
 
-	input_159>
-weight4
-2
-0model_transformer_blocks_layers_0_1_net_1_weight:
+	input_159:
 bias2
 0
-.model_transformer_blocks_layers_0_1_net_1_bias'
+.model_transformer_blocks_layers_0_1_net_1_bias>
+weight4
+2
+0model_transformer_blocks_layers_0_1_net_1_weight'
 	input_161
 
 
@@ -14756,13 +14756,13 @@ squeeze_44)
 linear
 x
 
-	input_163>
-weight4
-2
-0model_transformer_blocks_layers_0_1_net_4_weight:
+	input_163:
 bias2
 0
-.model_transformer_blocks_layers_0_1_net_4_bias'
+.model_transformer_blocks_layers_0_1_net_4_bias>
+weight4
+2
+0model_transformer_blocks_layers_0_1_net_4_weight'
 	input_167
 
 
@@ -14807,15 +14807,15 @@ squeeze_44)
 reduce_l2_norm
 x
 
-	input_169
-axes
-
-
-var_2144
+	input_169
 	keep_dims
 
 
-var_11%
+var_11
+axes
+
+
+var_2144%
 var_2145
 
 
@@ -14945,13 +14945,13 @@ squeeze_44)
 linear
 x
 
-	input_171?
-weight5
-3
-1model_transformer_blocks_layers_1_0_to_qkv_weight
+	input_171
 bias
 
-linear_20_bias_0#
+linear_20_bias_0?
+weight5
+3
+1model_transformer_blocks_layers_1_0_to_qkv_weight#
 x_191
 
 
@@ -14977,14 +14977,14 @@ squeeze_44)
 
 
 Ü }
-reshape
-x	
-
-x_191
+reshape
 shape
 
 
-var_2160.
+var_2160
+x	
+
+x_191.
 x_193%
 #
 
@@ -15037,14 +15037,14 @@ squeeze_44)
 
 
  ˆ
-	transpose
-x	
-
-x_193
+	transpose
 perm
 
 
-var_21621
+var_2162
+x	
+
+x_1931
 var_2163%
 #
 
@@ -15234,15 +15234,15 @@ squeeze_49
 
 
 Ü‚
-reshape
-x
-
-
-squeeze_49
+reshape
 shape
 
 
-var_2201.
+var_2201
+x
+
+
+squeeze_49.
 x_195%
 #
 
@@ -15463,14 +15463,14 @@ squeeze_52
 
 	
 Ü |
-reshape
-x	
-
-x_197
+reshape
 shape
 
 
-var_2232+
+var_2232
+x	
+
+x_197+
 var_2233
 
 
@@ -15532,15 +15532,15 @@ squeeze_52
 concat
 values
 
-t_transformed_29
-axis
-
-
-var_18%
+t_transformed_29%
 
 interleave
 
-out_43_interleave_0)
+out_43_interleave_0
+axis
+
+
+var_18)
 out_43
 
 
@@ -15586,15 +15586,15 @@ squeeze_50
 
 
 Ü‚
-reshape
-x
-
-
-squeeze_50
+reshape
 shape
 
 
-var_2275.
+var_2275
+x
+
+
+squeeze_50.
 x_199%
 #
 
@@ -15815,14 +15815,14 @@ squeeze_54
 
 	
 Ü |
-reshape
-x	
-
-x_201
+reshape
 shape
 
 
-var_2306+
+var_2306
+x	
+
+x_201+
 var_2307
 
 
@@ -15884,15 +15884,15 @@ squeeze_54
 concat
 values
 
-t_transformed_31
-axis
-
-
-var_18%
+t_transformed_31%
 
 interleave
 
-out_45_interleave_0)
+out_45_interleave_0
+axis
+
+
+var_18)
 out_45
 
 
@@ -15904,19 +15904,19 @@ interleave
 
 "
 out_45¨
-scaled_dot_product_attention
-query
-
-
-out_43
-key
-
-
-out_45
+scaled_dot_product_attention
 value
 
 
-squeeze_51)
+squeeze_51
+key
+
+
+out_45
+query
+
+
+out_43)
 out_47
 
 
@@ -15931,13 +15931,13 @@ squeeze_51)
 linear
 x
 
-	input_171A
-weight7
-5
-3model_transformer_blocks_layers_1_0_to_gates_weight=
+	input_171=
 bias5
 3
-1model_transformer_blocks_layers_1_0_to_gates_bias"
+1model_transformer_blocks_layers_1_0_to_gates_biasA
+weight7
+5
+3model_transformer_blocks_layers_1_0_to_gates_weight"
 x_203
 
 
@@ -15977,14 +15977,14 @@ squeeze_51)
 
 	
 Üy
-	transpose
-x	
-
-x_203
+	transpose
 perm
 
 
-var_2335"
+var_2335
+x	
+
+x_203"
 x_205
 
 
@@ -15994,14 +15994,14 @@ squeeze_51)
 
 "
 transpose_14|
-reshape
-x	
-
-x_205
+reshape
 shape
 
 
-var_2337+
+var_2337
+x	
+
+x_205+
 var_2338
 
 
@@ -16077,14 +16077,14 @@ squeeze_51)
 
 	
 Ü€
-	transpose
-x	
-
-x_207
+	transpose
 perm
 
 
-var_2359(
+var_2359
+x	
+
+x_207(
 x_209
 
 
@@ -16095,14 +16095,14 @@ squeeze_51)
 
 "
 transpose_13z
-reshape
-x	
-
-x_209
+reshape
 shape
 
 
-var_2361'
+var_2361
+x	
+
+x_209'
 	input_173
 
 
@@ -16115,13 +16115,13 @@ squeeze_51)
 linear
 x
 
-	input_173A
-weight7
-5
-3model_transformer_blocks_layers_1_0_to_out_0_weight
+	input_173
 bias
 
-linear_22_bias_0'
+linear_22_bias_0A
+weight7
+5
+3model_transformer_blocks_layers_1_0_to_out_0_weight'
 	input_175
 
 
@@ -16166,15 +16166,15 @@ squeeze_51)
 reduce_l2_norm
 x
 
-	input_177
-axes
-
-
-var_2373
+	input_177
 	keep_dims
 
 
-var_11%
+var_11
+axes
+
+
+var_2373%
 var_2374
 
 
@@ -16304,13 +16304,13 @@ squeeze_51)
 linear
 x
 
-	input_179>
-weight4
-2
-0model_transformer_blocks_layers_1_1_net_1_weight:
+	input_179:
 bias2
 0
-.model_transformer_blocks_layers_1_1_net_1_bias'
+.model_transformer_blocks_layers_1_1_net_1_bias>
+weight4
+2
+0model_transformer_blocks_layers_1_1_net_1_weight'
 	input_181
 
 
@@ -16350,13 +16350,13 @@ squeeze_51)
 linear
 x
 
-	input_183>
-weight4
-2
-0model_transformer_blocks_layers_1_1_net_4_weight:
+	input_183:
 bias2
 0
-.model_transformer_blocks_layers_1_1_net_4_bias'
+.model_transformer_blocks_layers_1_1_net_4_bias>
+weight4
+2
+0model_transformer_blocks_layers_1_1_net_4_weight'
 	input_187
 
 
@@ -16401,15 +16401,15 @@ squeeze_51)
 reduce_l2_norm
 x
 
-	input_189
-axes
-
-
-var_2396
+	input_189
 	keep_dims
 
 
-var_11%
+var_11
+axes
+
+
+var_2396%
 var_2397
 
 
@@ -16539,13 +16539,13 @@ squeeze_51)
 linear
 x
 
-	input_191?
-weight5
-3
-1model_transformer_blocks_layers_2_0_to_qkv_weight
+	input_191
 bias
 
-linear_20_bias_0#
+linear_20_bias_0?
+weight5
+3
+1model_transformer_blocks_layers_2_0_to_qkv_weight#
 x_211
 
 
@@ -16571,14 +16571,14 @@ squeeze_51)
 
 
 Ü }
-reshape
-x	
-
-x_211
+reshape
 shape
 
 
-var_2412.
+var_2412
+x	
+
+x_211.
 x_213%
 #
 
@@ -16631,14 +16631,14 @@ squeeze_51)
 
 
  ˆ
-	transpose
-x	
-
-x_213
+	transpose
 perm
 
 
-var_24141
+var_2414
+x	
+
+x_2131
 var_2415%
 #
 
@@ -16828,15 +16828,15 @@ squeeze_56
 
 
 Ü‚
-reshape
-x
-
-
-squeeze_56
+reshape
 shape
 
 
-var_2453.
+var_2453
+x
+
+
+squeeze_56.
 x_215%
 #
 
@@ -17057,14 +17057,14 @@ squeeze_59
 
 	
 Ü |
-reshape
-x	
-
-x_217
+reshape
 shape
 
 
-var_2484+
+var_2484
+x	
+
+x_217+
 var_2485
 
 
@@ -17126,15 +17126,15 @@ squeeze_59
 concat
 values
 
-t_transformed_33
-axis
-
-
-var_18%
+t_transformed_33%
 
 interleave
 
-out_49_interleave_0)
+out_49_interleave_0
+axis
+
+
+var_18)
 out_49
 
 
@@ -17180,15 +17180,15 @@ squeeze_57
 
 
 Ü‚
-reshape
-x
-
-
-squeeze_57
+reshape
 shape
 
 
-var_2527.
+var_2527
+x
+
+
+squeeze_57.
 x_219%
 #
 
@@ -17409,14 +17409,14 @@ squeeze_61
 
 	
 Ü |
-reshape
-x	
-
-x_221
+reshape
 shape
 
 
-var_2558+
+var_2558
+x	
+
+x_221+
 var_2559
 
 
@@ -17478,15 +17478,15 @@ squeeze_61
 concat
 values
 
-t_transformed_35
-axis
-
-
-var_18%
+t_transformed_35%
 
 interleave
 
-out_51_interleave_0)
+out_51_interleave_0
+axis
+
+
+var_18)
 out_51
 
 
@@ -17498,19 +17498,19 @@ interleave
 
 "
 out_51¨
-scaled_dot_product_attention
-query
-
-
-out_49
-key
-
-
-out_51
+scaled_dot_product_attention
 value
 
 
-squeeze_58)
+squeeze_58
+key
+
+
+out_51
+query
+
+
+out_49)
 out_53
 
 
@@ -17525,13 +17525,13 @@ squeeze_58)
 linear
 x
 
-	input_191A
-weight7
-5
-3model_transformer_blocks_layers_2_0_to_gates_weight=
+	input_191=
 bias5
 3
-1model_transformer_blocks_layers_2_0_to_gates_bias"
+1model_transformer_blocks_layers_2_0_to_gates_biasA
+weight7
+5
+3model_transformer_blocks_layers_2_0_to_gates_weight"
 x_223
 
 
@@ -17571,14 +17571,14 @@ squeeze_58)
 
 	
 Üy
-	transpose
-x	
-
-x_223
+	transpose
 perm
 
 
-var_2587"
+var_2587
+x	
+
+x_223"
 x_225
 
 
@@ -17588,14 +17588,14 @@ squeeze_58)
 
 "
 transpose_11|
-reshape
-x	
-
-x_225
+reshape
 shape
 
 
-var_2589+
+var_2589
+x	
+
+x_225+
 var_2590
 
 
@@ -17671,14 +17671,14 @@ squeeze_58)
 
 	
 Ü€
-	transpose
-x	
-
-x_227
+	transpose
 perm
 
 
-var_2611(
+var_2611
+x	
+
+x_227(
 x_229
 
 
@@ -17689,14 +17689,14 @@ squeeze_58)
 
 "
 transpose_10z
-reshape
-x	
-
-x_229
+reshape
 shape
 
 
-var_2613'
+var_2613
+x	
+
+x_229'
 	input_193
 
 
@@ -17709,13 +17709,13 @@ squeeze_58)
 linear
 x
 
-	input_193A
-weight7
-5
-3model_transformer_blocks_layers_2_0_to_out_0_weight
+	input_193
 bias
 
-linear_22_bias_0'
+linear_22_bias_0A
+weight7
+5
+3model_transformer_blocks_layers_2_0_to_out_0_weight'
 	input_195
 
 
@@ -17760,15 +17760,15 @@ squeeze_58)
 reduce_l2_norm
 x
 
-	input_197
-axes
-
-
-var_2625
+	input_197
 	keep_dims
 
 
-var_11%
+var_11
+axes
+
+
+var_2625%
 var_2626
 
 
@@ -17898,13 +17898,13 @@ squeeze_58)
 linear
 x
 
-	input_199>
-weight4
-2
-0model_transformer_blocks_layers_2_1_net_1_weight:
+	input_199:
 bias2
 0
-.model_transformer_blocks_layers_2_1_net_1_bias'
+.model_transformer_blocks_layers_2_1_net_1_bias>
+weight4
+2
+0model_transformer_blocks_layers_2_1_net_1_weight'
 	input_201
 
 
@@ -17944,13 +17944,13 @@ squeeze_58)
 linear
 x
 
-	input_203>
-weight4
-2
-0model_transformer_blocks_layers_2_1_net_4_weight:
+	input_203:
 bias2
 0
-.model_transformer_blocks_layers_2_1_net_4_bias'
+.model_transformer_blocks_layers_2_1_net_4_bias>
+weight4
+2
+0model_transformer_blocks_layers_2_1_net_4_weight'
 	input_207
 
 
@@ -17995,15 +17995,15 @@ squeeze_58)
 reduce_l2_norm
 x
 
-	input_209
-axes
-
-
-var_2648
+	input_209
 	keep_dims
 
 
-var_11%
+var_11
+axes
+
+
+var_2648%
 var_2649
 
 
@@ -18133,13 +18133,13 @@ squeeze_58)
 linear
 x
 
-	input_211?
-weight5
-3
-1model_transformer_blocks_layers_3_0_to_qkv_weight
+	input_211
 bias
 
-linear_20_bias_0#
+linear_20_bias_0?
+weight5
+3
+1model_transformer_blocks_layers_3_0_to_qkv_weight#
 x_231
 
 
@@ -18165,14 +18165,14 @@ squeeze_58)
 
 
 Ü }
-reshape
-x	
-
-x_231
+reshape
 shape
 
 
-var_2664.
+var_2664
+x	
+
+x_231.
 x_233%
 #
 
@@ -18225,14 +18225,14 @@ squeeze_58)
 
 
  ‡
-	transpose
-x	
-
-x_233
+	transpose
 perm
 
 
-var_26661
+var_2666
+x	
+
+x_2331
 var_2667%
 #
 
@@ -18422,15 +18422,15 @@ squeeze_63
 
 
 Ü‚
-reshape
-x
-
-
-squeeze_63
+reshape
 shape
 
 
-var_2705.
+var_2705
+x
+
+
+squeeze_63.
 x_235%
 #
 
@@ -18651,14 +18651,14 @@ squeeze_66
 
 	
 Ü |
-reshape
-x	
-
-x_237
+reshape
 shape
 
 
-var_2736+
+var_2736
+x	
+
+x_237+
 var_2737
 
 
@@ -18720,15 +18720,15 @@ squeeze_66
 concat
 values
 
-t_transformed_37
-axis
-
-
-var_18%
+t_transformed_37%
 
 interleave
 
-out_55_interleave_0)
+out_55_interleave_0
+axis
+
+
+var_18)
 out_55
 
 
@@ -18774,15 +18774,15 @@ squeeze_64
 
 
 Ü‚
-reshape
-x
-
-
-squeeze_64
+reshape
 shape
 
 
-var_2779.
+var_2779
+x
+
+
+squeeze_64.
 x_239%
 #
 
@@ -19003,14 +19003,14 @@ squeeze_68
 
 	
 Ü |
-reshape
-x	
-
-x_241
+reshape
 shape
 
 
-var_2810+
+var_2810
+x	
+
+x_241+
 var_2811
 
 
@@ -19072,15 +19072,15 @@ squeeze_68
 concat
 values
 
-t_transformed_39
-axis
-
-
-var_18%
+t_transformed_39%
 
 interleave
 
-out_57_interleave_0)
+out_57_interleave_0
+axis
+
+
+var_18)
 out_57
 
 
@@ -19092,19 +19092,19 @@ interleave
 
 "
 out_57¨
-scaled_dot_product_attention
-query
-
-
-out_55
-key
-
-
-out_57
+scaled_dot_product_attention
 value
 
 
-squeeze_65)
+squeeze_65
+key
+
+
+out_57
+query
+
+
+out_55)
 out_59
 
 
@@ -19119,13 +19119,13 @@ squeeze_65)
 linear
 x
 
-	input_211A
-weight7
-5
-3model_transformer_blocks_layers_3_0_to_gates_weight=
+	input_211=
 bias5
 3
-1model_transformer_blocks_layers_3_0_to_gates_bias"
+1model_transformer_blocks_layers_3_0_to_gates_biasA
+weight7
+5
+3model_transformer_blocks_layers_3_0_to_gates_weight"
 x_243
 
 
@@ -19165,14 +19165,14 @@ squeeze_65)
 
 	
 Üx
-	transpose
-x	
-
-x_243
+	transpose
 perm
 
 
-var_2839"
+var_2839
+x	
+
+x_243"
 x_245
 
 
@@ -19182,14 +19182,14 @@ squeeze_65)
 
 "
 transpose_8|
-reshape
-x	
-
-x_245
+reshape
 shape
 
 
-var_2841+
+var_2841
+x	
+
+x_245+
 var_2842
 
 
@@ -19265,14 +19265,14 @@ squeeze_65)
 
 	
 Ü€~
-	transpose
-x	
-
-x_247
+	transpose
 perm
 
 
-var_2863(
+var_2863
+x	
+
+x_247(
 x_249
 
 
@@ -19283,14 +19283,14 @@ squeeze_65)
 
 "
 transpose_7z
-reshape
-x	
-
-x_249
+reshape
 shape
 
 
-var_2865'
+var_2865
+x	
+
+x_249'
 	input_213
 
 
@@ -19303,13 +19303,13 @@ squeeze_65)
 linear
 x
 
-	input_213A
-weight7
-5
-3model_transformer_blocks_layers_3_0_to_out_0_weight
+	input_213
 bias
 
-linear_22_bias_0'
+linear_22_bias_0A
+weight7
+5
+3model_transformer_blocks_layers_3_0_to_out_0_weight'
 	input_215
 
 
@@ -19354,15 +19354,15 @@ squeeze_65)
 reduce_l2_norm
 x
 
-	input_217
-axes
-
-
-var_2877
+	input_217
 	keep_dims
 
 
-var_11%
+var_11
+axes
+
+
+var_2877%
 var_2878
 
 
@@ -19492,13 +19492,13 @@ squeeze_65)
 linear
 x
 
-	input_219>
-weight4
-2
-0model_transformer_blocks_layers_3_1_net_1_weight:
+	input_219:
 bias2
 0
-.model_transformer_blocks_layers_3_1_net_1_bias'
+.model_transformer_blocks_layers_3_1_net_1_bias>
+weight4
+2
+0model_transformer_blocks_layers_3_1_net_1_weight'
 	input_221
 
 
@@ -19538,13 +19538,13 @@ squeeze_65)
 linear
 x
 
-	input_223>
-weight4
-2
-0model_transformer_blocks_layers_3_1_net_4_weight:
+	input_223:
 bias2
 0
-.model_transformer_blocks_layers_3_1_net_4_bias'
+.model_transformer_blocks_layers_3_1_net_4_bias>
+weight4
+2
+0model_transformer_blocks_layers_3_1_net_4_weight'
 	input_227
 
 
@@ -19589,15 +19589,15 @@ squeeze_65)
 reduce_l2_norm
 x
 
-	input_229
-axes
-
-
-var_2900
+	input_229
 	keep_dims
 
 
-var_11%
+var_11
+axes
+
+
+var_2900%
 var_2901
 
 
@@ -19727,13 +19727,13 @@ squeeze_65)
 linear
 x
 
-	input_231?
-weight5
-3
-1model_transformer_blocks_layers_4_0_to_qkv_weight
+	input_231
 bias
 
-linear_20_bias_0#
+linear_20_bias_0?
+weight5
+3
+1model_transformer_blocks_layers_4_0_to_qkv_weight#
 x_251
 
 
@@ -19759,14 +19759,14 @@ squeeze_65)
 
 
 Ü }
-reshape
-x	
-
-x_251
+reshape
 shape
 
 
-var_2916.
+var_2916
+x	
+
+x_251.
 x_253%
 #
 
@@ -19819,14 +19819,14 @@ squeeze_65)
 
 
  ‡
-	transpose
-x	
-
-x_253
+	transpose
 perm
 
 
-var_29181
+var_2918
+x	
+
+x_2531
 var_2919%
 #
 
@@ -20016,15 +20016,15 @@ squeeze_70
 
 
 Ü‚
-reshape
-x
-
-
-squeeze_70
+reshape
 shape
 
 
-var_2957.
+var_2957
+x
+
+
+squeeze_70.
 x_255%
 #
 
@@ -20245,14 +20245,14 @@ squeeze_73
 
 	
 Ü |
-reshape
-x	
-
-x_257
+reshape
 shape
 
 
-var_2988+
+var_2988
+x	
+
+x_257+
 var_2989
 
 
@@ -20314,15 +20314,15 @@ squeeze_73
 concat
 values
 
-t_transformed_41
-axis
-
-
-var_18%
+t_transformed_41%
 
 interleave
 
-out_61_interleave_0)
+out_61_interleave_0
+axis
+
+
+var_18)
 out_61
 
 
@@ -20368,15 +20368,15 @@ squeeze_71
 
 
 Ü‚
-reshape
-x
-
-
-squeeze_71
+reshape
 shape
 
 
-var_3031.
+var_3031
+x
+
+
+squeeze_71.
 x_259%
 #
 
@@ -20597,14 +20597,14 @@ squeeze_75
 
 	
 Ü |
-reshape
-x	
-
-x_261
+reshape
 shape
 
 
-var_3062+
+var_3062
+x	
+
+x_261+
 var_3063
 
 
@@ -20666,15 +20666,15 @@ squeeze_75
 concat
 values
 
-t_transformed_43
-axis
-
-
-var_18%
+t_transformed_43%
 
 interleave
 
-out_63_interleave_0)
+out_63_interleave_0
+axis
+
+
+var_18)
 out_63
 
 
@@ -20686,19 +20686,19 @@ interleave
 
 "
 out_63¨
-scaled_dot_product_attention
-query
-
-
-out_61
-key
-
-
-out_63
+scaled_dot_product_attention
 value
 
 
-squeeze_72)
+squeeze_72
+key
+
+
+out_63
+query
+
+
+out_61)
 out_65
 
 
@@ -20713,13 +20713,13 @@ squeeze_72)
 linear
 x
 
-	input_231A
-weight7
-5
-3model_transformer_blocks_layers_4_0_to_gates_weight=
+	input_231=
 bias5
 3
-1model_transformer_blocks_layers_4_0_to_gates_bias"
+1model_transformer_blocks_layers_4_0_to_gates_biasA
+weight7
+5
+3model_transformer_blocks_layers_4_0_to_gates_weight"
 x_263
 
 
@@ -20759,14 +20759,14 @@ squeeze_72)
 
 	
 Üx
-	transpose
-x	
-
-x_263
+	transpose
 perm
 
 
-var_3091"
+var_3091
+x	
+
+x_263"
 x_265
 
 
@@ -20776,14 +20776,14 @@ squeeze_72)
 
 "
 transpose_5|
-reshape
-x	
-
-x_265
+reshape
 shape
 
 
-var_3093+
+var_3093
+x	
+
+x_265+
 var_3094
 
 
@@ -20859,14 +20859,14 @@ squeeze_72)
 
 	
 Ü€~
-	transpose
-x	
-
-x_267
+	transpose
 perm
 
 
-var_3115(
+var_3115
+x	
+
+x_267(
 x_269
 
 
@@ -20877,14 +20877,14 @@ squeeze_72)
 
 "
 transpose_4z
-reshape
-x	
-
-x_269
+reshape
 shape
 
 
-var_3117'
+var_3117
+x	
+
+x_269'
 	input_233
 
 
@@ -20897,13 +20897,13 @@ squeeze_72)
 linear
 x
 
-	input_233A
-weight7
-5
-3model_transformer_blocks_layers_4_0_to_out_0_weight
+	input_233
 bias
 
-linear_22_bias_0'
+linear_22_bias_0A
+weight7
+5
+3model_transformer_blocks_layers_4_0_to_out_0_weight'
 	input_235
 
 
@@ -20948,15 +20948,15 @@ squeeze_72)
 reduce_l2_norm
 x
 
-	input_237
-axes
-
-
-var_3129
+	input_237
 	keep_dims
 
 
-var_11%
+var_11
+axes
+
+
+var_3129%
 var_3130
 
 
@@ -21086,13 +21086,13 @@ squeeze_72)
 linear
 x
 
-	input_239>
-weight4
-2
-0model_transformer_blocks_layers_4_1_net_1_weight:
+	input_239:
 bias2
 0
-.model_transformer_blocks_layers_4_1_net_1_bias'
+.model_transformer_blocks_layers_4_1_net_1_bias>
+weight4
+2
+0model_transformer_blocks_layers_4_1_net_1_weight'
 	input_241
 
 
@@ -21132,13 +21132,13 @@ squeeze_72)
 linear
 x
 
-	input_243>
-weight4
-2
-0model_transformer_blocks_layers_4_1_net_4_weight:
+	input_243:
 bias2
 0
-.model_transformer_blocks_layers_4_1_net_4_bias'
+.model_transformer_blocks_layers_4_1_net_4_bias>
+weight4
+2
+0model_transformer_blocks_layers_4_1_net_4_weight'
 	input_247
 
 
@@ -21183,15 +21183,15 @@ squeeze_72)
 reduce_l2_norm
 x
 
-	input_249
-axes
-
-
-var_3152
+	input_249
 	keep_dims
 
 
-var_11%
+var_11
+axes
+
+
+var_3152%
 var_3153
 
 
@@ -21321,13 +21321,13 @@ squeeze_72)
 linear
 x
 
-	input_251?
-weight5
-3
-1model_transformer_blocks_layers_5_0_to_qkv_weight
+	input_251
 bias
 
-linear_20_bias_0#
+linear_20_bias_0?
+weight5
+3
+1model_transformer_blocks_layers_5_0_to_qkv_weight#
 x_271
 
 
@@ -21353,14 +21353,14 @@ squeeze_72)
 
 
 Ü }
-reshape
-x	
-
-x_271
+reshape
 shape
 
 
-var_3168.
+var_3168
+x	
+
+x_271.
 x_273%
 #
 
@@ -21413,14 +21413,14 @@ squeeze_72)
 
 
  ‡
-	transpose
-x	
-
-x_273
+	transpose
 perm
 
 
-var_31701
+var_3170
+x	
+
+x_2731
 var_3171%
 #
 
@@ -21610,15 +21610,15 @@ squeeze_77
 
 
 Ü‚
-reshape
-x
-
-
-squeeze_77
+reshape
 shape
 
 
-var_3209.
+var_3209
+x
+
+
+squeeze_77.
 x_275%
 #
 
@@ -21839,14 +21839,14 @@ squeeze_80
 
 	
 Ü |
-reshape
-x	
-
-x_277
+reshape
 shape
 
 
-var_3240+
+var_3240
+x	
+
+x_277+
 var_3241
 
 
@@ -21908,15 +21908,15 @@ squeeze_80
 concat
 values
 
-t_transformed_45
-axis
-
-
-var_18%
+t_transformed_45%
 
 interleave
 
-out_67_interleave_0)
+out_67_interleave_0
+axis
+
+
+var_18)
 out_67
 
 
@@ -21962,15 +21962,15 @@ squeeze_78
 
 
 Ü‚
-reshape
-x
-
-
-squeeze_78
+reshape
 shape
 
 
-var_3283.
+var_3283
+x
+
+
+squeeze_78.
 x_279%
 #
 
@@ -22191,14 +22191,14 @@ squeeze_82
 
 	
 Ü |
-reshape
-x	
-
-x_281
+reshape
 shape
 
 
-var_3314+
+var_3314
+x	
+
+x_281+
 var_3315
 
 
@@ -22260,15 +22260,15 @@ squeeze_82
 concat
 values
 
-t_transformed
-axis
-
-
-var_18%
+t_transformed%
 
 interleave
 
-out_69_interleave_0)
+out_69_interleave_0
+axis
+
+
+var_18)
 out_69
 
 
@@ -22280,19 +22280,19 @@ interleave
 
 "
 out_69¢
-scaled_dot_product_attention
-query
-
-
-out_67
-key
-
-
-out_69
+scaled_dot_product_attention
 value
 
 
-squeeze_79&
+squeeze_79
+key
+
+
+out_69
+query
+
+
+out_67&
 out
 
 
@@ -22306,13 +22306,13 @@ squeeze_79&
 linear
 x
 
-	input_251A
-weight7
-5
-3model_transformer_blocks_layers_5_0_to_gates_weight=
+	input_251=
 bias5
 3
-1model_transformer_blocks_layers_5_0_to_gates_bias"
+1model_transformer_blocks_layers_5_0_to_gates_biasA
+weight7
+5
+3model_transformer_blocks_layers_5_0_to_gates_weight"
 x_283
 
 
@@ -22352,14 +22352,14 @@ squeeze_79&
 
 	
 Üx
-	transpose
-x	
-
-x_283
+	transpose
 perm
 
 
-var_3343"
+var_3343
+x	
+
+x_283"
 x_285
 
 
@@ -22369,14 +22369,14 @@ squeeze_79&
 
 "
 transpose_2|
-reshape
-x	
-
-x_285
+reshape
 shape
 
 
-var_3345+
+var_3345
+x	
+
+x_285+
 var_3346
 
 
@@ -22451,14 +22451,14 @@ squeeze_79&
 
 	
 Ü€~
-	transpose
-x	
-
-x_287
+	transpose
 perm
 
 
-var_3367(
+var_3367
+x	
+
+x_287(
 x_289
 
 
@@ -22469,14 +22469,14 @@ squeeze_79&
 
 "
 transpose_1z
-reshape
-x	
-
-x_289
+reshape
 shape
 
 
-var_3369'
+var_3369
+x	
+
+x_289'
 	input_253
 
 
@@ -22489,13 +22489,13 @@ squeeze_79&
 linear
 x
 
-	input_253A
-weight7
-5
-3model_transformer_blocks_layers_5_0_to_out_0_weight
+	input_253
 bias
 
-linear_22_bias_0'
+linear_22_bias_0A
+weight7
+5
+3model_transformer_blocks_layers_5_0_to_out_0_weight'
 	input_255
 
 
@@ -22540,15 +22540,15 @@ squeeze_79&
 reduce_l2_norm
 x
 
-	input_257
-axes
-
-
-var_3381
+	input_257
 	keep_dims
 
 
-var_11%
+var_11
+axes
+
+
+var_3381%
 var_3382
 
 
@@ -22678,13 +22678,13 @@ squeeze_79&
 linear
 x
 
-	input_259>
-weight4
-2
-0model_transformer_blocks_layers_5_1_net_1_weight:
+	input_259:
 bias2
 0
-.model_transformer_blocks_layers_5_1_net_1_bias'
+.model_transformer_blocks_layers_5_1_net_1_bias>
+weight4
+2
+0model_transformer_blocks_layers_5_1_net_1_weight'
 	input_261
 
 
@@ -22724,13 +22724,13 @@ squeeze_79&
 linear
 x
 
-	input_263>
-weight4
-2
-0model_transformer_blocks_layers_5_1_net_4_weight:
+	input_263:
 bias2
 0
-.model_transformer_blocks_layers_5_1_net_4_bias'
+.model_transformer_blocks_layers_5_1_net_4_bias>
+weight4
+2
+0model_transformer_blocks_layers_5_1_net_4_weight'
 	input_267
 
 
@@ -22775,15 +22775,15 @@ squeeze_79&
 reduce_l2_norm
 x
 
-	input_269
-axes
-
-
-var_3400
+	input_269
 	keep_dims
 
 
-var_11%
+var_11
+axes
+
+
+var_3400%
 var_3401
 
 
@@ -22911,13 +22911,13 @@ squeeze_79&
 linear
 x	
 
-input7
-weight-
-+
-)model_task_heads_beat_downbeat_lin_weight3
+input3
 bias+
 )
-'model_task_heads_beat_downbeat_lin_bias
+'model_task_heads_beat_downbeat_lin_bias7
+weight-
++
+)model_task_heads_beat_downbeat_lin_weight
 x
 
 
@@ -22968,15 +22968,15 @@ squeeze_79&
 
 
  w
-	transpose
-
-x
-
-x
+	transpose
 perm
 
 
-var_3412%
+var_3412
+
+x
+
+x%
 var_3413
 
 

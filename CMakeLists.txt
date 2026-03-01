@@ -504,6 +504,34 @@ endif()
 
 add_test(NAME beatit_coreml_compile_cache_tests COMMAND beatit_coreml_compile_cache_tests)
 
+add_executable(beatit_coreml_metadata_tests
+    tests/coreml_metadata_test.mm
+)
+
+target_link_libraries(beatit_coreml_metadata_tests
+    PRIVATE
+        beatit_lib
+        "-framework CoreML"
+        "-framework Foundation"
+)
+
+target_include_directories(beatit_coreml_metadata_tests
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/beatit
+)
+
+target_compile_definitions(beatit_coreml_metadata_tests
+    PRIVATE
+        BEATIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+)
+
+if(APPLE)
+    target_compile_options(beatit_coreml_metadata_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
+endif()
+
+add_test(NAME beatit_coreml_metadata_tests COMMAND beatit_coreml_metadata_tests)
+
 add_executable(beatit_sparse_interior_select_tests
     tests/sparse_interior_select_test.cpp
 )
