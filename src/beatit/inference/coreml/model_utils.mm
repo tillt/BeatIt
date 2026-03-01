@@ -24,6 +24,38 @@
 namespace beatit {
 namespace detail {
 
+namespace {
+
+NSString* compiled_model_cache_token(NSURL* model_url) {
+    if (!model_url) {
+        return nil;
+    }
+
+    NSError* error = nil;
+    NSDictionary* attributes =
+        [[NSFileManager defaultManager] attributesOfItemAtPath:model_url.path error:&error];
+    NSDate* modification_date = attributes[NSFileModificationDate];
+    NSNumber* file_size = attributes[NSFileSize];
+
+    NSString* path = model_url.path ? model_url.path : @"";
+    NSMutableString* token = [NSMutableString stringWithString:path];
+    [token appendString:@"|"];
+    if (modification_date) {
+        [token appendFormat:@"%.6f", modification_date.timeIntervalSince1970];
+    } else {
+        [token appendString:@"nomtime"];
+    }
+    [token appendString:@"|"];
+    if (file_size) {
+        [token appendFormat:@"%llu", file_size.unsignedLongLongValue];
+    } else {
+        [token appendString:@"nosize"];
+    }
+    return token;
+}
+
+} // namespace
+
 MLModel* load_cached_model(NSURL* model_url,
                            MLModelConfiguration* model_config,
                            NSError** error) {
@@ -60,8 +92,33 @@ NSURL* compile_model_if_needed(NSURL* model_url, NSError** error) {
     if ([extension isEqualToString:@"mlmodelc"]) {
         return model_url;
     }
+
+    static NSMutableDictionary<NSString*, NSURL*>* cache = nil;
+    static dispatch_once_t once_token;
+    dispatch_once(&once_token, ^{
+        cache = [NSMutableDictionary new];
+    });
+
+    NSString* cache_token = compiled_model_cache_token(model_url);
+    @synchronized(cache) {
+        NSURL* cached_url = cache_token ? [cache objectForKey:cache_token] : nil;
+        if (cached_url &&
+            [[NSFileManager defaultManager] fileExistsAtPath:cached_url.path]) {
+            return cached_url;
+        }
+    }
+
     NSURL* compiled_url = [MLModel compileModelAtURL:model_url error:error];
-    return compiled_url ? compiled_url : model_url;
+    if (!compiled_url) {
+        return model_url;
+    }
+
+    @synchronized(cache) {
+        if (cache_token) {
+            [cache setObject:compiled_url forKey:cache_token];
+        }
+    }
+    return compiled_url;
 }
 
 NSString* resolve_model_path(const BeatitConfig& config) {

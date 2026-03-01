@@ -351,21 +351,18 @@ if(APPLE)
         COMMENT "Copying CoreML model into BeatIt.framework resources"
     )
 
-    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/coreml_out_latest/BeatThis_small0.mlpackage")
-        add_custom_command(TARGET beatit_framework POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_directory
-                "${CMAKE_CURRENT_SOURCE_DIR}/coreml_out_latest/BeatThis_small0.mlpackage"
-                "$<TARGET_FILE_DIR:beatit_framework>/Resources/BeatThis_small0.mlpackage"
-            COMMENT "Copying BeatThis small CoreML package into BeatIt.framework resources"
-        )
-    elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/coreml_out_latest/BeatThis_small0.mlmodelc")
-        add_custom_command(TARGET beatit_framework POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_directory
-                "${CMAKE_CURRENT_SOURCE_DIR}/coreml_out_latest/BeatThis_small0.mlmodelc"
-                "$<TARGET_FILE_DIR:beatit_framework>/Resources/BeatThis_small0.mlmodelc"
-            COMMENT "Copying BeatThis small CoreML model into BeatIt.framework resources"
-        )
+    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/coreml_out_latest/BeatThis_small0.mlpackage")
+        message(FATAL_ERROR
+            "Missing required bundled BeatThis CoreML package: "
+            "${CMAKE_CURRENT_SOURCE_DIR}/coreml_out_latest/BeatThis_small0.mlpackage")
     endif()
+
+    add_custom_command(TARGET beatit_framework POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/coreml_out_latest/BeatThis_small0.mlpackage"
+            "$<TARGET_FILE_DIR:beatit_framework>/Resources/BeatThis_small0.mlpackage"
+        COMMENT "Copying BeatThis small CoreML package into BeatIt.framework resources"
+    )
 
     if(BEATIT_USE_TORCH AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/models/beatthis.pt")
         add_custom_command(TARGET beatit_framework POST_BUILD
@@ -459,6 +456,34 @@ if(APPLE)
 endif()
 
 add_test(NAME beatit_sparse_usability_scan_tests COMMAND beatit_sparse_usability_scan_tests)
+
+add_executable(beatit_coreml_compile_cache_tests
+    tests/coreml_compile_cache_test.mm
+)
+
+target_link_libraries(beatit_coreml_compile_cache_tests
+    PRIVATE
+        beatit_lib
+        "-framework CoreML"
+        "-framework Foundation"
+)
+
+target_include_directories(beatit_coreml_compile_cache_tests
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/beatit
+)
+
+target_compile_definitions(beatit_coreml_compile_cache_tests
+    PRIVATE
+        BEATIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+)
+
+if(APPLE)
+    target_compile_options(beatit_coreml_compile_cache_tests PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
+endif()
+
+add_test(NAME beatit_coreml_compile_cache_tests COMMAND beatit_coreml_compile_cache_tests)
 
 add_executable(beatit_sparse_interior_select_tests
     tests/sparse_interior_select_test.cpp
