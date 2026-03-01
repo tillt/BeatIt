@@ -84,6 +84,8 @@ endif()
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
 option(BEATIT_USE_TORCH "Enable Torch backend" ON)
 set(BEATIT_TORCH_ROOT "" CACHE PATH "Path to LibTorch root")
 
@@ -1390,6 +1392,17 @@ if(APPLE)
 
     add_test(NAME beatit_torch_linkage_tests COMMAND beatit_torch_linkage_tests)
     set_tests_properties(beatit_torch_linkage_tests PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    )
+
+    add_test(
+        NAME beatit_torchscript_model_device_tests
+        COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/torchscript_model_device_test.py
+                ${CMAKE_CURRENT_SOURCE_DIR}/models/beatthis.pt
+    )
+    set_tests_properties(beatit_torchscript_model_device_tests PROPERTIES
+        SKIP_RETURN_CODE 77
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
 endif()

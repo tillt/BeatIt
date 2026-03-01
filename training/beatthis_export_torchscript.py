@@ -11,6 +11,8 @@ import inspect
 from pathlib import Path
 
 import torch
+import rotary_embedding_torch.rotary_embedding_torch as rotary_mod
+from einops import rearrange
 
 from beat_this.model.beat_tracker import BeatThis
 from beat_this.utils import replace_state_dict_key
@@ -32,6 +34,40 @@ def load_model(checkpoint_path: Path, device: torch.device) -> BeatThis:
     return model
 
 
+def patch_rotary_embedding_for_tracing() -> None:
+    """Patch rotary tracing so the exported graph does not freeze CPU devices."""
+
+    def default(value, fallback):
+        return fallback if value is None else value
+
+    def rotate_queries_or_keys(self, t, seq_dim=None, offset=0, scale=None):
+        seq_dim = default(seq_dim, self.default_seq_dim)
+        dtype = t.dtype
+        seq_len = t.shape[seq_dim]
+
+        # Build the sequence from a view of the input tensor so tracing keeps the
+        # device tied to the runtime input instead of freezing the trace-time CPU.
+        moved = t.movedim(seq_dim, -1)
+        seed = moved.reshape(-1, seq_len)[0]
+        seq = (
+            torch.cumsum(torch.ones_like(seed, dtype=dtype), 0) - 1 + offset
+        ) / self.interpolate_factor
+
+        freqs = self.forward(seq, seq_len=seq_len, offset=offset)
+
+        if seq_dim == -3:
+            freqs = rearrange(freqs, "n d -> n 1 d")
+
+        return rotary_mod.apply_rotary_emb(
+            freqs,
+            t,
+            scale=default(scale, 1.0),
+            seq_dim=seq_dim,
+        )
+
+    rotary_mod.RotaryEmbedding.rotate_queries_or_keys = rotate_queries_or_keys
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Export BeatThis to TorchScript.")
     parser.add_argument("--checkpoint", required=True, help="BeatThis checkpoint path.")
@@ -42,6 +78,7 @@ def main() -> int:
     args = parser.parse_args()
 
     device = torch.device(args.device)
+    patch_rotary_embedding_for_tracing()
     model = load_model(Path(args.checkpoint), device)
 
     class BeatThisWrapper(torch.nn.Module):
