@@ -359,13 +359,6 @@ if(APPLE)
         )
     endforeach()
 
-    add_custom_command(TARGET beatit_framework POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${CMAKE_CURRENT_SOURCE_DIR}/models/beatit.mlmodelc"
-            "$<TARGET_FILE_DIR:beatit_framework>/Resources/beatit.mlmodelc"
-        COMMENT "Copying CoreML model into BeatIt.framework resources"
-    )
-
     if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/models/BeatThis_small0.mlpackage")
         message(FATAL_ERROR
             "Missing required bundled BeatThis CoreML package: "
@@ -373,6 +366,8 @@ if(APPLE)
     endif()
 
     add_custom_command(TARGET beatit_framework POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E rm -rf
+            "$<TARGET_FILE_DIR:beatit_framework>/Resources/beatit.mlmodelc"
         COMMAND ${CMAKE_COMMAND} -E rm -rf
             "$<TARGET_FILE_DIR:beatit_framework>/Resources/BeatThis_final0.mlpackage"
         COMMAND ${CMAKE_COMMAND} -E rm -rf
@@ -638,7 +633,7 @@ target_link_libraries(beatit_dbn_purelove_tests
 )
 
 target_compile_definitions(beatit_dbn_purelove_tests PRIVATE
-    BEATIT_TEST_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/models/beatit.mlpackage"
+    BEATIT_TEST_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/models/BeatThis_small0.mlpackage"
     BEATIT_TEST_AUDIO_PATH="${CMAKE_CURRENT_SOURCE_DIR}/training/purelove.wav"
 )
 
@@ -665,7 +660,7 @@ target_link_libraries(beatit_sparse_tempo_grid_consistency_tests
 )
 
 target_compile_definitions(beatit_sparse_tempo_grid_consistency_tests PRIVATE
-    BEATIT_TEST_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/models/beatit.mlpackage"
+    BEATIT_TEST_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/models/BeatThis_small0.mlpackage"
     BEATIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
     BEATIT_TEST_GENERATED_DIR="${BEATIT_GENERATED_DIR}"
 )
@@ -711,7 +706,7 @@ target_link_libraries(beatit_manucho_window_alignment_sparse_tests
 )
 
 target_compile_definitions(beatit_manucho_window_alignment_sparse_tests PRIVATE
-    BEATIT_TEST_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/models/beatit.mlpackage"
+    BEATIT_TEST_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/models/BeatThis_small0.mlpackage"
     BEATIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
     BEATIT_TEST_SPARSE_PROBE_MODE=1
 )
@@ -739,7 +734,7 @@ target_link_libraries(beatit_enigma_window_alignment_sparse_tests
 )
 
 target_compile_definitions(beatit_enigma_window_alignment_sparse_tests PRIVATE
-    BEATIT_TEST_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/models/beatit.mlpackage"
+    BEATIT_TEST_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/models/BeatThis_small0.mlpackage"
     BEATIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
     BEATIT_TEST_SPARSE_PROBE_MODE=1
 )
@@ -767,7 +762,7 @@ target_link_libraries(beatit_vamp_window_alignment_sparse_tests
 )
 
 target_compile_definitions(beatit_vamp_window_alignment_sparse_tests PRIVATE
-    BEATIT_TEST_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/models/beatit.mlpackage"
+    BEATIT_TEST_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/models/BeatThis_small0.mlpackage"
     BEATIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
     BEATIT_TEST_SPARSE_PROBE_MODE=1
 )
@@ -795,7 +790,7 @@ target_link_libraries(beatit_eureka_window_alignment_sparse_tests
 )
 
 target_compile_definitions(beatit_eureka_window_alignment_sparse_tests PRIVATE
-    BEATIT_TEST_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/models/beatit.mlpackage"
+    BEATIT_TEST_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/models/BeatThis_small0.mlpackage"
     BEATIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
     BEATIT_TEST_SPARSE_PROBE_MODE=1
 )
@@ -823,7 +818,7 @@ target_link_libraries(beatit_bazaar_window_alignment_sparse_tests
 )
 
 target_compile_definitions(beatit_bazaar_window_alignment_sparse_tests PRIVATE
-    BEATIT_TEST_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/models/beatit.mlpackage"
+    BEATIT_TEST_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/models/BeatThis_small0.mlpackage"
     BEATIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
     BEATIT_TEST_SPARSE_PROBE_MODE=1
 )
@@ -851,7 +846,7 @@ target_link_libraries(beatit_intelligence_window_alignment_sparse_tests
 )
 
 target_compile_definitions(beatit_intelligence_window_alignment_sparse_tests PRIVATE
-    BEATIT_TEST_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/models/beatit.mlpackage"
+    BEATIT_TEST_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/models/BeatThis_small0.mlpackage"
     BEATIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
     BEATIT_TEST_SPARSE_PROBE_MODE=1
 )
@@ -879,7 +874,7 @@ target_link_libraries(beatit_best_window_alignment_sparse_tests
 )
 
 target_compile_definitions(beatit_best_window_alignment_sparse_tests PRIVATE
-    BEATIT_TEST_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/models/beatit.mlpackage"
+    BEATIT_TEST_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/models/BeatThis_small0.mlpackage"
     BEATIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
     BEATIT_TEST_SPARSE_PROBE_MODE=1
 )
@@ -959,7 +954,7 @@ target_link_libraries(beatit_neural_window_alignment_sparse_tests
 )
 
 target_compile_definitions(beatit_neural_window_alignment_sparse_tests PRIVATE
-    BEATIT_TEST_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/models/beatit.mlpackage"
+    BEATIT_TEST_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/models/BeatThis_small0.mlpackage"
     BEATIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
     BEATIT_TEST_SPARSE_PROBE_MODE=1
 )
