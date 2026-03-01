@@ -34,19 +34,19 @@ python3 -m pip install -r requirements.txt
 ## Train
 
 ```bash
-python3 train.py --data /path/to/ballroom --epochs 20 --batch-size 8 --out training/outputs
+python3 scripts/train.py --data /path/to/ballroom --epochs 20 --batch-size 8 --out training/outputs
 ```
 
 ## Export to CoreML
 
 ```bash
-python3 export_coreml.py --checkpoint training/outputs/beat_model.pt --out ../models/beatit.mlmodel
+python3 scripts/export_coreml.py --checkpoint training/outputs/beat_model.pt --out models/beatit.mlmodel
 ```
 
 Then compile the model:
 
 ```bash
-xcrun coremlc compile ../models/beatit.mlmodel ../models
+xcrun coremlc compile models/beatit.mlmodel models
 ```
 
 This produces `models/beatit.mlmodelc`, which the CLI expects by default.

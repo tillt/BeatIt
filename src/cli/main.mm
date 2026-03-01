@@ -728,7 +728,7 @@ int main(int argc, char** argv) {
 
         if (config.beatthis_script.empty()) {
             const std::filesystem::path fallback =
-                std::filesystem::current_path() / "training" / "beatthis_infer.py";
+                std::filesystem::current_path() / "scripts" / "beatthis_infer.py";
             if (std::filesystem::exists(fallback)) {
                 config.beatthis_script = fallback.string();
             }

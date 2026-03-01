@@ -34,7 +34,7 @@ echo "  output:     $OUT"
 echo "  device:     $DEVICE"
 echo "  python:     $PYTHON_BIN"
 
-"$PYTHON_BIN" "$ROOT/training/beatthis_export_torchscript.py" \
+"$PYTHON_BIN" "$ROOT/scripts/beatthis_export_torchscript.py" \
   --checkpoint "$CHECKPOINT" \
   --out "$OUT" \
   --device "$DEVICE"
