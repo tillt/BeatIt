@@ -251,6 +251,11 @@ add_executable(beatit
     src/cli/main.mm
 )
 
+target_include_directories(beatit
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
 target_link_libraries(beatit
     PRIVATE
         beatit_lib

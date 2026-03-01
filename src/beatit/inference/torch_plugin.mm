@@ -184,5 +184,9 @@ std::string torch_plugin_error_message() {
     return torch_plugin_last_error();
 }
 
+bool torch_plugin_available() {
+    return load_torch_plugin() != nullptr;
+}
+
 } // namespace detail
 } // namespace beatit

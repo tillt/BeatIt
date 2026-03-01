@@ -12,6 +12,7 @@
 #include "beatit/analysis.h"
 #include "beatit/config.h"
 #include "beatit/coreml_preset.h"
+#include "beatit/inference/torch_plugin.h"
 #include "beatit/logging.hpp"
 #include "beatit/refiner.h"
 #include "beatit/version.h"
@@ -733,6 +734,11 @@ int main(int argc, char** argv) {
         config.torch_fps = options.torch_fps;
         if (config.torch_model_path.empty()) {
             std::cerr << "Torch backend requires --torch-model.\n";
+            return 1;
+        }
+
+        if (!beatit::detail::torch_plugin_available()) {
+            std::cerr << beatit::detail::torch_plugin_error_message() << "\n";
             return 1;
         }
     }

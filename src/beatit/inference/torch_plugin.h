@@ -36,5 +36,10 @@ std::unique_ptr<InferenceBackend> make_torch_inference_backend_plugin();
  */
 std::string torch_plugin_error_message();
 
+/**
+ * Probe whether the Torch plugin can be loaded without emitting log output.
+ */
+bool torch_plugin_available();
+
 } // namespace detail
 } // namespace beatit
