@@ -735,7 +735,7 @@ int main(int argc, char** argv) {
         }
         if (config.beatthis_checkpoint.empty()) {
             const std::filesystem::path fallback =
-                std::filesystem::current_path() / "third_party" / "beat_this" / "beat_this-final0.ckpt";
+                std::filesystem::current_path() / "models" / "beat_this-small0.ckpt";
             if (std::filesystem::exists(fallback)) {
                 config.beatthis_checkpoint = fallback.string();
             }
