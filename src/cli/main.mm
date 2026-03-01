@@ -272,7 +272,7 @@ void print_torch_model_info(const beatit::BeatitConfig& config) {
     std::cout << "  Path: " << config.torch_model_path << "\n";
     std::cout << "  Description: " << default_torch_model_label(config) << "\n";
     if (!config.torch_device.empty()) {
-        std::cout << "  Device: " << config.torch_device << "\n";
+        std::cout << "  Configured device: " << config.torch_device << "\n";
     }
 }
 

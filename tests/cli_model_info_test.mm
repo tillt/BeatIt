@@ -94,6 +94,12 @@ bool validate_torch_model_info() {
         return false;
     }
 
+    if (output.find("Configured device: mps") == std::string::npos) {
+        std::cerr << "CLI model-info test failed: Torch configured device missing from '"
+                  << output << "'.\n";
+        return false;
+    }
+
     return true;
 }
 
