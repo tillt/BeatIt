@@ -9,6 +9,7 @@
 #include "beatit/analysis/torch_backend.h"
 
 #include "beatit/audio/mel_torch.h"
+#include "beatit/inference/torch_plugin_api.h"
 #include "beatit/logging.hpp"
 
 #include <algorithm>
@@ -21,9 +22,9 @@
 
 namespace beatit {
 
-CoreMLResult analyze_with_torch_activations(const std::vector<float>& samples,
-                                            double sample_rate,
-                                            const BeatitConfig& config) {
+CoreMLResult analyze_with_torch_activations_impl(const std::vector<float>& samples,
+                                                 double sample_rate,
+                                                 const BeatitConfig& config) {
     CoreMLResult result;
     if (config.torch_model_path.empty()) {
         BEATIT_LOG_ERROR("Torch backend: missing model path.");
@@ -281,6 +282,17 @@ CoreMLResult analyze_with_torch_activations(const std::vector<float>& samples,
     }
 
     return result;
+}
+
+extern "C" bool beatit_torch_plugin_analyze_activations(const std::vector<float>& samples,
+                                                        double sample_rate,
+                                                        const BeatitConfig& config,
+                                                        CoreMLResult* out_result) {
+    if (!out_result) {
+        return false;
+    }
+    *out_result = analyze_with_torch_activations_impl(samples, sample_rate, config);
+    return !out_result->beat_activation.empty();
 }
 
 } // namespace beatit

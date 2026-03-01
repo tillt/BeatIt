@@ -97,6 +97,11 @@ if(BEATIT_USE_TORCH AND BEATIT_TORCH_ROOT STREQUAL "")
         "/usr/local/opt/pytorch"
         "/opt/homebrew/opt/libtorch"
         "/usr/local/opt/libtorch")
+    foreach(_prefix IN LISTS _beatit_torch_candidates)
+        file(GLOB _beatit_python_torch_candidates
+            "${_prefix}/libexec/lib/python*/site-packages/torch")
+        list(APPEND _beatit_torch_candidates ${_beatit_python_torch_candidates})
+    endforeach()
     foreach(_cand IN LISTS _beatit_torch_candidates)
         if(EXISTS "${_cand}/share/cmake/Torch" OR
            EXISTS "${_cand}/torch/share/cmake/Torch" OR
@@ -112,6 +117,7 @@ set(BEATIT_LIB_SOURCES
     src/beatit/analysis/bpm_beats.cpp
     src/beatit/analysis/bpm_activation.cpp
     src/beatit/analysis/backend.cpp
+    src/beatit/analysis/torch_loader.mm
     src/beatit/audio/dsp.cpp
     src/beatit/audio/features.cpp
     src/beatit/audio/wav.cpp
@@ -120,6 +126,7 @@ set(BEATIT_LIB_SOURCES
     src/beatit/inference/coreml/inference.mm
     src/beatit/inference/coreml/model_utils.mm
     src/beatit/inference/coreml/metadata.mm
+    src/beatit/inference/torch_plugin.mm
     src/beatit/post/pipeline.cpp
     src/beatit/post/helpers.cpp
     src/beatit/post/dbn_run.cpp
@@ -146,6 +153,7 @@ set(BEATIT_LIB_SOURCES
     src/beatit/inference/window_merge.cpp
     src/beatit/stream/finalize.cpp
     src/beatit/inference/backend_coreml.cpp
+    src/beatit/inference/backend_torch_loader.mm
     src/beatit/sparse/probe.cpp
     src/beatit/sparse/probe_pick.cpp
     src/beatit/sparse/probe_pick_helpers.cpp
@@ -161,18 +169,6 @@ set(BEATIT_LIB_SOURCES
     src/beatit/sparse/waveform.cpp
     src/beatit/stream/core.cpp
 )
-if(BEATIT_USE_TORCH)
-    list(APPEND BEATIT_LIB_SOURCES
-        src/beatit/analysis/torch.cpp
-        src/beatit/inference/backend_torch.cpp
-        src/beatit/audio/mel_torch.cpp
-    )
-else()
-    list(APPEND BEATIT_LIB_SOURCES
-        src/beatit/analysis/torch_stub.cpp
-        src/beatit/inference/backend_torch_stub.cpp
-    )
-endif()
 
 add_library(beatit_objects OBJECT ${BEATIT_LIB_SOURCES})
 set_target_properties(beatit_objects PROPERTIES
@@ -251,9 +247,6 @@ function(beatit_link_torch target)
     )
 endfunction()
 
-beatit_link_torch(beatit_objects)
-beatit_link_torch(beatit_lib)
-
 add_executable(beatit
     src/cli/main.mm
 )
@@ -262,6 +255,34 @@ target_link_libraries(beatit
     PRIVATE
         beatit_lib
 )
+
+if(BEATIT_USE_TORCH)
+    add_library(beatit_backend_torch_plugin SHARED
+        src/beatit/analysis/torch.cpp
+        src/beatit/inference/backend_torch.cpp
+        src/beatit/audio/mel_torch.cpp
+    )
+
+    target_include_directories(beatit_backend_torch_plugin
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/src
+            ${CMAKE_CURRENT_BINARY_DIR}/generated
+    )
+
+    beatit_link_torch(beatit_backend_torch_plugin)
+
+    target_link_libraries(beatit_backend_torch_plugin
+        PRIVATE
+            beatit_lib
+    )
+
+    set_target_properties(beatit_backend_torch_plugin PROPERTIES
+        OUTPUT_NAME "beatit_backend_torch"
+    )
+
+    add_dependencies(beatit beatit_backend_torch_plugin)
+endif()
 
 if(APPLE)
     target_compile_options(beatit_objects PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
@@ -343,8 +364,6 @@ if(APPLE)
             ${CMAKE_CURRENT_BINARY_DIR}/generated
     )
 
-    beatit_link_torch(beatit_framework)
-
     set_target_properties(beatit_framework PROPERTIES
         FRAMEWORK TRUE
         FRAMEWORK_VERSION A
@@ -377,6 +396,18 @@ if(APPLE)
             "$<TARGET_FILE_DIR:beatit_framework>/Resources/models/BeatThis_small0.mlpackage"
         COMMENT "Copying BeatThis small CoreML package into BeatIt.framework resources"
     )
+
+    if(BEATIT_USE_TORCH)
+        add_dependencies(beatit_framework beatit_backend_torch_plugin)
+        add_custom_command(TARGET beatit_framework POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+                "$<TARGET_FILE_DIR:beatit_framework>/Resources/plugins"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_FILE:beatit_backend_torch_plugin>"
+                "$<TARGET_FILE_DIR:beatit_framework>/Resources/plugins/$<TARGET_FILE_NAME:beatit_backend_torch_plugin>"
+            COMMENT "Copying Torch backend plugin into BeatIt.framework resources"
+        )
+    endif()
 
     if(BEATIT_USE_TORCH AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/models/beatthis.pt")
         add_custom_command(TARGET beatit_framework POST_BUILD
@@ -1147,7 +1178,7 @@ if(BEATIT_USE_TORCH)
             beatit_lib
     )
 
-    beatit_link_torch(beatit_beatthis_canonical_tests)
+    add_dependencies(beatit_beatthis_canonical_tests beatit_backend_torch_plugin)
 
     target_compile_definitions(beatit_beatthis_canonical_tests PRIVATE
         BEATIT_TEST_TORCH_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/models/beatthis.pt"
@@ -1174,7 +1205,7 @@ if(BEATIT_USE_TORCH)
             beatit_lib
     )
 
-    beatit_link_torch(beatit_beatthis_mps_tests)
+    add_dependencies(beatit_beatthis_mps_tests beatit_backend_torch_plugin)
 
     target_compile_definitions(beatit_beatthis_mps_tests PRIVATE
         BEATIT_TEST_TORCH_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/models/beatthis.pt"
@@ -1193,4 +1224,37 @@ if(BEATIT_USE_TORCH)
     )
 endif()
 
+if(APPLE)
+    add_executable(beatit_torch_linkage_tests
+        tests/torch_linkage_test.cpp
+    )
+
+    target_compile_definitions(beatit_torch_linkage_tests PRIVATE
+        BEATIT_TEST_MAIN_BINARY="$<TARGET_FILE:beatit>"
+    )
+
+    if(BEATIT_USE_TORCH)
+        target_compile_definitions(beatit_torch_linkage_tests PRIVATE
+            BEATIT_TEST_TORCH_PLUGIN="$<TARGET_FILE:beatit_backend_torch_plugin>"
+        )
+        add_dependencies(beatit_torch_linkage_tests beatit beatit_backend_torch_plugin)
+    else()
+        add_dependencies(beatit_torch_linkage_tests beatit)
+    endif()
+
+    target_link_libraries(beatit_torch_linkage_tests PRIVATE
+        beatit_lib
+    )
+
+    add_test(NAME beatit_torch_linkage_tests COMMAND beatit_torch_linkage_tests)
+    set_tests_properties(beatit_torch_linkage_tests PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    )
+endif()
+
 install(TARGETS beatit beatit_lib)
+if(BEATIT_USE_TORCH)
+    install(TARGETS beatit_backend_torch_plugin
+        LIBRARY DESTINATION lib/beatit
+    )
+endif()
