@@ -32,6 +32,13 @@ jobs:
       - name: Build
         run: cmake --build build
 
+      - name: Verify plugins are staged
+        run: |
+          test -f build/plugins/libbeatit_backend_coreml.dylib
+          test -f build/plugins/libbeatit_backend_torch.dylib
+          test -f build/BeatIt.framework/Versions/A/Resources/plugins/libbeatit_backend_coreml.dylib
+          test -f build/BeatIt.framework/Versions/A/Resources/plugins/libbeatit_backend_torch.dylib
+
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
@@ -89,6 +96,13 @@ jobs:
 
       - name: Build
         run: cmake --build build
+
+      - name: Verify plugins are staged
+        run: |
+          test -f build/plugins/libbeatit_backend_coreml.dylib
+          test -f build/plugins/libbeatit_backend_torch.dylib
+          test -f build/BeatIt.framework/Versions/A/Resources/plugins/libbeatit_backend_coreml.dylib
+          test -f build/BeatIt.framework/Versions/A/Resources/plugins/libbeatit_backend_torch.dylib
 
       - name: Codesign artifacts
         env:
