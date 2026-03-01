@@ -478,6 +478,8 @@ if(APPLE)
             "$<TARGET_FILE_DIR:beatit_framework>/Resources/BeatThis_final0.mlpackage"
         COMMAND ${CMAKE_COMMAND} -E rm -rf
             "$<TARGET_FILE_DIR:beatit_framework>/Resources/BeatThis_small0.mlpackage"
+        COMMAND ${CMAKE_COMMAND} -E rm -f
+            "$<TARGET_FILE_DIR:beatit_framework>/Resources/beatthis_mps.pt"
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${CMAKE_CURRENT_SOURCE_DIR}/models/BeatThis_small0.mlpackage"
             "$<TARGET_FILE_DIR:beatit_framework>/Resources/models/BeatThis_small0.mlpackage"
