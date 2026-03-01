@@ -287,7 +287,16 @@ add_executable(beatit_tool_alignment_inspector
     tools/alignment_inspector.mm
 )
 
+add_executable(beatit_tool_cache_benchmark
+    tools/cache_benchmark.mm
+)
+
 target_include_directories(beatit_tool_alignment_inspector PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_include_directories(beatit_tool_cache_benchmark PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
@@ -296,11 +305,17 @@ target_link_libraries(beatit_tool_alignment_inspector PRIVATE
     beatit_lib
 )
 
+target_link_libraries(beatit_tool_cache_benchmark PRIVATE
+    beatit_lib
+)
+
 if(APPLE)
     target_compile_options(beatit_tool_probe_runner PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
     target_compile_options(beatit_tool_alignment_inspector PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
+    target_compile_options(beatit_tool_cache_benchmark PRIVATE -Wall -Wextra -Wpedantic -fobjc-arc)
     target_link_libraries(beatit_tool_probe_runner PRIVATE "-framework AVFoundation" "-framework CoreML" "-framework Foundation")
     target_link_libraries(beatit_tool_alignment_inspector PRIVATE "-framework AVFoundation" "-framework CoreML" "-framework Foundation")
+    target_link_libraries(beatit_tool_cache_benchmark PRIVATE "-framework AVFoundation" "-framework CoreML" "-framework Foundation")
 endif()
 
 if(APPLE)
