@@ -95,8 +95,12 @@ NSDictionary* load_package_metadata_via_coremlcompiler(NSURL* source_model_url) 
 }
 
 NSURL* find_repo_metadata_json(NSURL* source_model_url) {
-    if (!source_model_url ||
-        ![[source_model_url pathExtension].lowercaseString isEqualToString:@"mlpackage"]) {
+    if (!source_model_url) {
+        return nil;
+    }
+
+    NSString* extension = [source_model_url pathExtension].lowercaseString;
+    if (![extension isEqualToString:@"mlpackage"] && ![extension isEqualToString:@"mlmodelc"]) {
         return nil;
     }
 
@@ -105,9 +109,11 @@ NSURL* find_repo_metadata_json(NSURL* source_model_url) {
         return nil;
     }
 
-    NSString* package_dir = [source_model_url.path stringByDeletingLastPathComponent];
-    NSString* repo_root = [package_dir stringByDeletingLastPathComponent];
+    NSString* model_dir = [source_model_url.path stringByDeletingLastPathComponent];
+    NSString* repo_root = [model_dir stringByDeletingLastPathComponent];
     NSArray<NSString*>* candidates = @[
+        [[repo_root stringByAppendingPathComponent:@"models"]
+            stringByAppendingPathComponent:[stem stringByAppendingString:@".metadata.json"]],
         [[repo_root stringByAppendingPathComponent:@"coreml_out_latest"]
             stringByAppendingPathComponent:[stem stringByAppendingPathExtension:@"mlmodelc"]],
         [[repo_root stringByAppendingPathComponent:@"coreml_out"]
@@ -115,7 +121,10 @@ NSURL* find_repo_metadata_json(NSURL* source_model_url) {
     ];
 
     for (NSString* directory in candidates) {
-        NSString* metadata_path = [directory stringByAppendingPathComponent:@"metadata.json"];
+        NSString* metadata_path = directory;
+        if ([[directory pathExtension].lowercaseString isEqualToString:@"mlmodelc"]) {
+            metadata_path = [directory stringByAppendingPathComponent:@"metadata.json"];
+        }
         if ([[NSFileManager defaultManager] fileExistsAtPath:metadata_path]) {
             return [NSURL fileURLWithPath:metadata_path];
         }
@@ -187,6 +196,13 @@ CoreMLMetadata load_coreml_metadata(const BeatitConfig& config) {
 
     auto load_metadata_dict = ^NSDictionary* {
         NSMutableArray<NSURL*>* candidates = [NSMutableArray array];
+        if ([[source_model_url pathExtension].lowercaseString isEqualToString:@"mlpackage"]) {
+            NSURL* repo_metadata = find_repo_metadata_json(source_model_url);
+            if (repo_metadata) {
+                [candidates addObject:repo_metadata];
+            }
+        }
+
         if ([[compiled_url pathExtension].lowercaseString isEqualToString:@"mlmodelc"]) {
             [candidates addObject:[compiled_url URLByAppendingPathComponent:@"metadata.json"]];
         }
@@ -197,11 +213,6 @@ CoreMLMetadata load_coreml_metadata(const BeatitConfig& config) {
                 stringByAppendingPathExtension:@"mlmodelc"];
             NSURL* sibling_url = [NSURL fileURLWithPath:sibling_path];
             [candidates addObject:[sibling_url URLByAppendingPathComponent:@"metadata.json"]];
-
-            NSURL* repo_metadata = find_repo_metadata_json(source_model_url);
-            if (repo_metadata) {
-                [candidates addObject:repo_metadata];
-            }
         }
 
         for (NSURL* candidate in candidates) {
