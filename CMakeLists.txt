@@ -282,6 +282,14 @@ if(BEATIT_USE_TORCH)
     )
 
     add_dependencies(beatit beatit_backend_torch_plugin)
+    add_custom_command(TARGET beatit POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "$<TARGET_FILE_DIR:beatit>/plugins"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:beatit_backend_torch_plugin>"
+            "$<TARGET_FILE_DIR:beatit>/plugins/$<TARGET_FILE_NAME:beatit_backend_torch_plugin>"
+        COMMENT "Copying Torch backend plugin next to beatit CLI"
+    )
 endif()
 
 if(APPLE)

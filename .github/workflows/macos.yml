@@ -41,6 +41,7 @@ jobs:
           name: beatit-macos-build
           path: |
             build/beatit
+            build/plugins
             build/BeatIt.framework
 
   notarize:
@@ -97,6 +98,11 @@ jobs:
             echo "Missing MAC_CODESIGN_ID secret."
             exit 1
           fi
+          if [ -d build/plugins ]; then
+            find build/plugins -name '*.dylib' -print0 | while IFS= read -r -d '' dylib; do
+              codesign --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" "$dylib"
+            done
+          fi
           codesign --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" build/BeatIt.framework
           codesign --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" build/beatit
 
@@ -105,6 +111,10 @@ jobs:
           mkdir -p dist/BeatIt
           cp -R build/BeatIt.framework dist/BeatIt/
           cp build/beatit dist/BeatIt/
+          if [ -d build/plugins ]; then
+            mkdir -p dist/BeatIt/plugins
+            cp -R build/plugins/. dist/BeatIt/plugins/
+          fi
           mkdir -p dist/BeatIt/models
           cp -R models/BeatThis_small0.mlpackage dist/BeatIt/models/BeatThis_small0.mlpackage
           ditto -c -k --sequesterRsrc --keepParent dist/BeatIt dist/beatit-macos.zip

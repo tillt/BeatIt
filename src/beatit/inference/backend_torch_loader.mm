@@ -19,6 +19,9 @@ namespace {
 
 class UnsupportedTorchInferenceBackend final : public InferenceBackend {
 public:
+    UnsupportedTorchInferenceBackend()
+        : error_message_(torch_plugin_error_message()) {}
+
     std::size_t max_batch_size(const BeatitConfig& config) const override {
         return std::max<std::size_t>(1, config.torch_batch_size);
     }
@@ -32,9 +35,16 @@ public:
                       std::vector<float>*,
                       std::vector<float>*,
                       InferenceTiming*) override {
-        BEATIT_LOG_ERROR("Torch backend plugin is not available.");
+        if (!reported_) {
+            BEATIT_LOG_ERROR(error_message_);
+            reported_ = true;
+        }
         return false;
     }
+
+private:
+    std::string error_message_;
+    mutable bool reported_ = false;
 };
 
 } // namespace

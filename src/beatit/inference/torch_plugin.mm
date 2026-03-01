@@ -19,6 +19,7 @@
 #include <cstring>
 #include <filesystem>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -38,6 +39,11 @@ struct TorchPluginFunctions {
     TorchPluginCreateBackendFn create_backend = nullptr;
     TorchPluginDestroyBackendFn destroy_backend = nullptr;
 };
+
+std::string& torch_plugin_last_error() {
+    static std::string error;
+    return error;
+}
 
 std::string executable_dir() {
     uint32_t size = 0;
@@ -101,7 +107,9 @@ TorchPluginFunctions* load_torch_plugin() {
     }
     initialized = true;
 
+    std::vector<std::string> searched_paths;
     for (const std::string& candidate : torch_plugin_candidates()) {
+        searched_paths.push_back(candidate);
         if (!std::filesystem::exists(candidate)) {
             continue;
         }
@@ -133,6 +141,13 @@ TorchPluginFunctions* load_torch_plugin() {
         return &functions;
     }
 
+    std::ostringstream message;
+    message << "Torch backend plugin is not available. Searched:";
+    for (const std::string& path : searched_paths) {
+        message << "\n  - " << path;
+    }
+    torch_plugin_last_error() = message.str();
+
     return nullptr;
 }
 
@@ -148,7 +163,7 @@ bool torch_plugin_analyze_activations(const std::vector<float>& samples,
 
     TorchPluginFunctions* plugin = load_torch_plugin();
     if (!plugin || !plugin->analyze) {
-        BEATIT_LOG_ERROR("Torch backend plugin is not available.");
+        BEATIT_LOG_ERROR(torch_plugin_last_error());
         return false;
     }
 
@@ -158,9 +173,15 @@ bool torch_plugin_analyze_activations(const std::vector<float>& samples,
 std::unique_ptr<InferenceBackend> make_torch_inference_backend_plugin() {
     TorchPluginFunctions* plugin = load_torch_plugin();
     if (!plugin || !plugin->create_backend) {
+        BEATIT_LOG_ERROR(torch_plugin_last_error());
         return nullptr;
     }
     return std::unique_ptr<InferenceBackend>(plugin->create_backend());
+}
+
+std::string torch_plugin_error_message() {
+    load_torch_plugin();
+    return torch_plugin_last_error();
 }
 
 } // namespace detail
