@@ -32,6 +32,13 @@ jobs:
       - name: Build
         run: cmake --build build
 
+      - name: Verify plugins are staged
+        run: |
+          test -f build/plugins/libbeatit_backend_coreml.dylib
+          test -f build/plugins/libbeatit_backend_torch.dylib
+          test -f build/BeatIt.framework/Versions/A/Resources/plugins/libbeatit_backend_coreml.dylib
+          test -f build/BeatIt.framework/Versions/A/Resources/plugins/libbeatit_backend_torch.dylib
+
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
@@ -41,6 +48,7 @@ jobs:
           name: beatit-macos-build
           path: |
             build/beatit
+            build/plugins
             build/BeatIt.framework
 
   notarize:
@@ -89,6 +97,13 @@ jobs:
       - name: Build
         run: cmake --build build
 
+      - name: Verify plugins are staged
+        run: |
+          test -f build/plugins/libbeatit_backend_coreml.dylib
+          test -f build/plugins/libbeatit_backend_torch.dylib
+          test -f build/BeatIt.framework/Versions/A/Resources/plugins/libbeatit_backend_coreml.dylib
+          test -f build/BeatIt.framework/Versions/A/Resources/plugins/libbeatit_backend_torch.dylib
+
       - name: Codesign artifacts
         env:
           MACOS_SIGN_IDENTITY: ${{ secrets.MAC_CODESIGN_ID }}
@@ -96,6 +111,11 @@ jobs:
           if [ -z "$MACOS_SIGN_IDENTITY" ]; then
             echo "Missing MAC_CODESIGN_ID secret."
             exit 1
+          fi
+          if [ -d build/plugins ]; then
+            find build/plugins -name '*.dylib' -print0 | while IFS= read -r -d '' dylib; do
+              codesign --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" "$dylib"
+            done
           fi
           codesign --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" build/BeatIt.framework
           codesign --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" build/beatit
@@ -105,6 +125,10 @@ jobs:
           mkdir -p dist/BeatIt
           cp -R build/BeatIt.framework dist/BeatIt/
           cp build/beatit dist/BeatIt/
+          if [ -d build/plugins ]; then
+            mkdir -p dist/BeatIt/plugins
+            cp -R build/plugins/. dist/BeatIt/plugins/
+          fi
           mkdir -p dist/BeatIt/models
           cp -R models/BeatThis_small0.mlpackage dist/BeatIt/models/BeatThis_small0.mlpackage
           ditto -c -k --sequesterRsrc --keepParent dist/BeatIt dist/beatit-macos.zip

@@ -9,13 +9,13 @@ This project can consume a CoreML model exported from the MIT-licensed
 
 1. Clone the BeatTrack repo separately and follow its training instructions
    using Ballroom.
-2. Export the trained model to CoreML using `training/beattrack_export.py`.
+2. Export the trained model to CoreML using `scripts/beattrack_export.py`.
 3. Compile the model and place it in `models/beatit.mlmodelc`.
 
 Example export:
 
 ```bash
-python3 training/beattrack_export.py --checkpoint third_party/BeatTrack/checkpoints/best.ckpt --out models/beatit.mlpackage
+python3 scripts/beattrack_export.py --checkpoint third_party/BeatTrack/checkpoints/best.ckpt --out models/beatit.mlpackage
 xcrun coremlc compile models/beatit.mlpackage models
 ```
 

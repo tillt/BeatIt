@@ -12,19 +12,35 @@
 #include "model_utils.h"
 
 #include <algorithm>
+#include <dlfcn.h>
+#include <filesystem>
 #include <string>
 #include <vector>
-
-@interface BeatitBundleAnchor : NSObject
-@end
-
-@implementation BeatitBundleAnchor
-@end
 
 namespace beatit {
 namespace detail {
 
 namespace {
+
+NSString* current_module_bundle_path() {
+    Dl_info info;
+    if (dladdr(reinterpret_cast<const void*>(&resolve_model_path), &info) == 0 ||
+        !info.dli_fname) {
+        return nil;
+    }
+
+    std::filesystem::path image_path(info.dli_fname);
+    for (std::filesystem::path cursor = image_path.parent_path();
+         !cursor.empty();
+         cursor = cursor.parent_path()) {
+        const std::string extension = cursor.extension().string();
+        if (extension == ".framework" || extension == ".app") {
+            return [NSString stringWithUTF8String:cursor.string().c_str()];
+        }
+    }
+
+    return nil;
+}
 
 NSString* compiled_model_cache_token(NSURL* model_url) {
     if (!model_url) {
@@ -149,11 +165,14 @@ NSString* resolve_model_path(const BeatitConfig& config) {
                                                 inDirectory:@"models"];
     }
     if (!model_path) {
-        NSBundle* framework_bundle = [NSBundle bundleForClass:[BeatitBundleAnchor class]];
-        if (framework_bundle && framework_bundle != [NSBundle mainBundle]) {
-            model_path = [framework_bundle pathForResource:@"BeatThis_small0"
-                                                    ofType:@"mlpackage"
-                                               inDirectory:@"models"];
+        NSString* module_bundle_path = current_module_bundle_path();
+        if (module_bundle_path) {
+            NSBundle* module_bundle = [NSBundle bundleWithPath:module_bundle_path];
+            if (module_bundle && module_bundle != [NSBundle mainBundle]) {
+                model_path = [module_bundle pathForResource:@"BeatThis_small0"
+                                                     ofType:@"mlpackage"
+                                                inDirectory:@"models"];
+            }
         }
     }
 

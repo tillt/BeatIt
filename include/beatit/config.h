@@ -132,7 +132,7 @@ struct BeatitConfig {
     bool beatthis_use_dbn = false;
     float beatthis_fps = 100.0f;
     std::string torch_model_path;
-    std::string torch_device = "cpu";
+    std::string torch_device = "mps";
     float torch_fps = 100.0f;
     std::size_t torch_batch_size = 1;
     bool coreml_output_logits = false;

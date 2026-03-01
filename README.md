@@ -58,7 +58,7 @@ Important options:
 
 - `-i, --input <path>`
 - `--backend <coreml|torch|beatthis>`
-  `beatthis` means the external Python BeatThis runner (`training/beatthis_infer.py` + checkpoint), not the in-process CoreML/Torch backends.
+  `beatthis` means the external Python BeatThis runner (`scripts/beatthis_infer.py` + checkpoint), not the in-process CoreML/Torch backends.
 - `--preset <beattrack|beatthis>`
 - `--model <path>`
 - `--min-bpm <bpm>` / `--max-bpm <bpm>` (validated in `[70,180]`)

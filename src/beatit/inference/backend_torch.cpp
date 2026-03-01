@@ -9,6 +9,7 @@
 #include "beatit/inference/backend_torch.h"
 
 #include "beatit/audio/mel_torch.h"
+#include "beatit/inference/torch_plugin_api.h"
 #include "beatit/logging.hpp"
 
 #include <algorithm>
@@ -411,8 +412,12 @@ private:
 
 } // namespace
 
-std::unique_ptr<InferenceBackend> make_torch_inference_backend() {
-    return std::make_unique<TorchInferenceBackend>();
+extern "C" InferenceBackend* beatit_torch_plugin_create_inference_backend() {
+    return new TorchInferenceBackend();
+}
+
+extern "C" void beatit_torch_plugin_destroy_inference_backend(InferenceBackend* backend) {
+    delete backend;
 }
 
 } // namespace detail

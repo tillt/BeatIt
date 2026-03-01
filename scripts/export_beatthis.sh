@@ -7,7 +7,7 @@ BEATTHIS_DIR="${BEATTHIS_DIR:-$ROOT/third_party/beat_this}"
 ROTARY_DIR="${ROTARY_DIR:-$HOME/Development/3rdparty/rotary-embedding-torch}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 
-CHECKPOINT="${CHECKPOINT:-$ROOT/models/beat_this-final0.ckpt}"
+CHECKPOINT="${CHECKPOINT:-$ROOT/models/beat_this-small0.ckpt}"
 OUT="${OUT:-$ROOT/models/beatthis.pt}"
 DEVICE="${DEVICE:-cpu}"
 
@@ -34,7 +34,7 @@ echo "  output:     $OUT"
 echo "  device:     $DEVICE"
 echo "  python:     $PYTHON_BIN"
 
-"$PYTHON_BIN" "$ROOT/training/beatthis_export_torchscript.py" \
+"$PYTHON_BIN" "$ROOT/scripts/beatthis_export_torchscript.py" \
   --checkpoint "$CHECKPOINT" \
   --out "$OUT" \
   --device "$DEVICE"

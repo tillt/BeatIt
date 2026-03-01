@@ -9,6 +9,7 @@
 #include "beatit/analysis.h"
 #include "beatit/analysis/torch_backend.h"
 #include "beatit/config.h"
+#include "beatit/inference/coreml_plugin.h"
 #include "beatit/logging.hpp"
 #include "beatit/stream.h"
 
@@ -117,7 +118,14 @@ AnalysisResult analyze(const std::vector<float>& samples,
         return result;
     }
 
-    CoreMLResult base = analyze_with_coreml(samples, sample_rate, base_config, 0.0f);
+    CoreMLResult base;
+    if (!detail::coreml_plugin_analyze_activations(samples,
+                                                   sample_rate,
+                                                   base_config,
+                                                   0.0f,
+                                                   &base)) {
+        return result;
+    }
     CoreMLResult final_result = run_pipeline(base.beat_activation,
                                              base.downbeat_activation,
                                              base.beat_sample_frames);

@@ -12,6 +12,7 @@
 #include "beatit/analysis.h"
 #include "beatit/config.h"
 #include "beatit/coreml_preset.h"
+#include "beatit/inference/torch_plugin.h"
 #include "beatit/logging.hpp"
 #include "beatit/refiner.h"
 #include "beatit/version.h"
@@ -96,7 +97,7 @@ void print_usage(const char* exe) {
         << "  --log-level <level>       Log level (error, warn, info, debug)\n"
         << "  --dump-events             Print beat/downbeat events for inspection\n"
         << "  --cpu-only                Force CoreML CPU-only execution\n"
-        << "  --model-info              Print CoreML model metadata\n"
+        << "  --model-info              Print model metadata\n"
         << "  --info                    Enable profiling and extra technical output\n"
         << "  -v, --version             Show BeatIt version\n"
         << "  -h, --help                Show this help\n"
@@ -218,6 +219,61 @@ std::string default_model_label_string() {
         !metadata.version.empty() ? metadata.version : derive_model_variant(config);
 
     return normalize_model_label(model_name, model_version);
+}
+
+std::string default_torch_model_label(const beatit::BeatitConfig& config) {
+    const std::filesystem::path model_path(config.torch_model_path);
+    const std::string stem = model_path.stem().string();
+    if (stem.empty()) {
+        return "unknown";
+    }
+
+    if (stem == "beatthis") {
+        return "BeatThis";
+    }
+
+    return stem;
+}
+
+void print_coreml_model_info(const beatit::BeatitConfig& config) {
+    const beatit::CoreMLMetadata metadata = beatit::load_coreml_metadata(config);
+    const std::string fallback_description = default_model_display_name(config);
+    const std::string fallback_version = derive_model_variant(config);
+
+    std::cout << "CoreML metadata:\n";
+    std::cout << "  Path: " << config.model_path << "\n";
+    if (!metadata.author.empty()) {
+        std::cout << "  Author: " << metadata.author << "\n";
+    }
+    if (!metadata.short_description.empty() || !fallback_description.empty()) {
+        std::cout << "  Description: "
+                  << (!metadata.short_description.empty() ? metadata.short_description
+                                                          : fallback_description)
+                  << "\n";
+    }
+    if (!metadata.license.empty()) {
+        std::cout << "  License: " << metadata.license << "\n";
+    }
+    if (!metadata.version.empty() || !fallback_version.empty()) {
+        std::cout << "  Version: "
+                  << (!metadata.version.empty() ? metadata.version : fallback_version)
+                  << "\n";
+    }
+    if (!metadata.user_defined.empty()) {
+        std::cout << "  User metadata:\n";
+        for (const auto& entry : metadata.user_defined) {
+            std::cout << "    " << entry.first << ": " << entry.second << "\n";
+        }
+    }
+}
+
+void print_torch_model_info(const beatit::BeatitConfig& config) {
+    std::cout << "Torch model:\n";
+    std::cout << "  Path: " << config.torch_model_path << "\n";
+    std::cout << "  Description: " << default_torch_model_label(config) << "\n";
+    if (!config.torch_device.empty()) {
+        std::cout << "  Configured device: " << config.torch_device << "\n";
+    }
 }
 
 bool parse_args(int argc, char** argv, CliOptions* options) {
@@ -400,7 +456,7 @@ bool parse_args(int argc, char** argv, CliOptions* options) {
         }
     }
 
-    if (options->input_path.empty()) {
+    if (options->input_path.empty() && !options->model_info) {
         std::cerr << "Input path is required.\n";
         print_usage(argv[0]);
         return false;
@@ -574,12 +630,6 @@ int main(int argc, char** argv) {
         return options.show_help ? 0 : 1;
     }
 
-    AudioData audio;
-    const auto decode_start = std::chrono::steady_clock::now();
-    if (!load_audio_file(options.input_path, options.target_sample_rate, &audio)) {
-        return 1;
-    }
-    const auto decode_end = std::chrono::steady_clock::now();
     beatit::BeatitConfig config;
     beatit::BeatitConfig::Backend requested_backend =
         beatit::BeatitConfig::Backend::CoreML;
@@ -667,35 +717,6 @@ int main(int argc, char** argv) {
         config.use_dbn = false;
         config.dbn_use_downbeat = false;
     }
-    if (options.model_info && config.backend == beatit::BeatitConfig::Backend::CoreML) {
-        const beatit::CoreMLMetadata metadata = beatit::load_coreml_metadata(config);
-        const std::string fallback_description = default_model_display_name(config);
-        const std::string fallback_version = derive_model_variant(config);
-        std::cout << "CoreML metadata:\n";
-        if (!metadata.author.empty()) {
-            std::cout << "  Author: " << metadata.author << "\n";
-        }
-        if (!metadata.short_description.empty() || !fallback_description.empty()) {
-            std::cout << "  Description: "
-                      << (!metadata.short_description.empty() ? metadata.short_description
-                                                              : fallback_description)
-                      << "\n";
-        }
-        if (!metadata.license.empty()) {
-            std::cout << "  License: " << metadata.license << "\n";
-        }
-        if (!metadata.version.empty() || !fallback_version.empty()) {
-            std::cout << "  Version: "
-                      << (!metadata.version.empty() ? metadata.version : fallback_version)
-                      << "\n";
-        }
-        if (!metadata.user_defined.empty()) {
-            std::cout << "  User metadata:\n";
-            for (const auto& entry : metadata.user_defined) {
-                std::cout << "    " << entry.first << ": " << entry.second << "\n";
-            }
-        }
-    }
     if (config.backend == beatit::BeatitConfig::Backend::BeatThisExternal) {
         if (!options.beatthis_python.empty()) {
             config.beatthis_python = options.beatthis_python;
@@ -707,14 +728,14 @@ int main(int argc, char** argv) {
 
         if (config.beatthis_script.empty()) {
             const std::filesystem::path fallback =
-                std::filesystem::current_path() / "training" / "beatthis_infer.py";
+                std::filesystem::current_path() / "scripts" / "beatthis_infer.py";
             if (std::filesystem::exists(fallback)) {
                 config.beatthis_script = fallback.string();
             }
         }
         if (config.beatthis_checkpoint.empty()) {
             const std::filesystem::path fallback =
-                std::filesystem::current_path() / "third_party" / "beat_this" / "beat_this-final0.ckpt";
+                std::filesystem::current_path() / "models" / "beat_this-small0.ckpt";
             if (std::filesystem::exists(fallback)) {
                 config.beatthis_checkpoint = fallback.string();
             }
@@ -736,6 +757,37 @@ int main(int argc, char** argv) {
             return 1;
         }
     }
+
+    if (options.model_info) {
+        if (config.backend == beatit::BeatitConfig::Backend::CoreML) {
+            print_coreml_model_info(config);
+        } else if (config.backend == beatit::BeatitConfig::Backend::Torch) {
+            print_torch_model_info(config);
+        }
+        if (options.input_path.empty()) {
+            return 0;
+        }
+    }
+
+    if (options.input_path.empty()) {
+        print_usage(argv[0]);
+        std::cerr << "Input path is required.\n";
+        return 1;
+    }
+
+    if (config.backend == beatit::BeatitConfig::Backend::Torch) {
+        if (!beatit::detail::torch_plugin_available()) {
+            std::cerr << beatit::detail::torch_plugin_error_message() << "\n";
+            return 1;
+        }
+    }
+
+    AudioData audio;
+    const auto decode_start = std::chrono::steady_clock::now();
+    if (!load_audio_file(options.input_path, options.target_sample_rate, &audio)) {
+        return 1;
+    }
+    const auto decode_end = std::chrono::steady_clock::now();
 
     const auto analyze_start = std::chrono::steady_clock::now();
     beatit::AnalysisResult result = beatit::analyze(audio.samples, audio.sample_rate, config);

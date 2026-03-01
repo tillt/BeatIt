@@ -7,39 +7,19 @@
 //
 
 #include "beatit/inference/backend.h"
-#include "beatit/inference/backend_torch.h"
+#include "beatit/inference/coreml_plugin_api.h"
 #include "beatit/logging.hpp"
 
-#include <algorithm>
+#include <vector>
 
 namespace beatit {
+
+CoreMLResult coreml_plugin_analyze_with_coreml_impl(const std::vector<float>& samples,
+                                                    double sample_rate,
+                                                    const BeatitConfig& config,
+                                                    float reference_bpm);
+
 namespace detail {
-
-bool InferenceBackend::infer_windows(const std::vector<std::vector<float>>& windows,
-                                     const BeatitConfig& config,
-                                     std::vector<std::vector<float>>* beats,
-                                     std::vector<std::vector<float>>* downbeats,
-                                     InferenceTiming* timing) {
-    if (!beats || !downbeats) {
-        return false;
-    }
-    beats->clear();
-    downbeats->clear();
-    beats->reserve(windows.size());
-    downbeats->reserve(windows.size());
-
-    for (const auto& window : windows) {
-        std::vector<float> beat;
-        std::vector<float> downbeat;
-        if (!infer_window(window, config, &beat, &downbeat, timing)) {
-            return false;
-        }
-        beats->push_back(std::move(beat));
-        downbeats->push_back(std::move(downbeat));
-    }
-    return true;
-}
-
 namespace {
 
 class CoreMLInferenceBackend final : public InferenceBackend {
@@ -64,14 +44,15 @@ public:
         BeatitConfig local_config = config;
         local_config.tempo_window_percent = 0.0f;
         local_config.prefer_double_time = false;
-        CoreMLResult result = analyze_with_coreml(window,
-                                                  local_config.sample_rate,
-                                                  local_config,
-                                                  0.0f);
+        CoreMLResult result = coreml_plugin_analyze_with_coreml_impl(window,
+                                                                     local_config.sample_rate,
+                                                                     local_config,
+                                                                     0.0f);
         if (result.beat_activation.empty()) {
             BEATIT_LOG_ERROR("CoreML backend: inference returned empty beat activation.");
             return false;
         }
+
         *beat = std::move(result.beat_activation);
         *downbeat = std::move(result.downbeat_activation);
         return true;
@@ -79,14 +60,30 @@ public:
 };
 
 } // namespace
-
-std::unique_ptr<InferenceBackend> make_inference_backend(
-    const BeatitConfig& config) {
-    if (config.backend == BeatitConfig::Backend::Torch) {
-        return make_torch_inference_backend();
-    }
-    return std::make_unique<CoreMLInferenceBackend>();
-}
-
 } // namespace detail
 } // namespace beatit
+
+extern "C" bool beatit_coreml_plugin_analyze_activations(const std::vector<float>& samples,
+                                                         double sample_rate,
+                                                         const beatit::BeatitConfig& config,
+                                                         float reference_bpm,
+                                                         beatit::CoreMLResult* out_result) {
+    if (!out_result) {
+        return false;
+    }
+
+    *out_result = beatit::coreml_plugin_analyze_with_coreml_impl(samples,
+                                                                 sample_rate,
+                                                                 config,
+                                                                 reference_bpm);
+    return !out_result->beat_activation.empty();
+}
+
+extern "C" beatit::detail::InferenceBackend* beatit_coreml_plugin_create_inference_backend() {
+    return new beatit::detail::CoreMLInferenceBackend();
+}
+
+extern "C" void beatit_coreml_plugin_destroy_inference_backend(
+    beatit::detail::InferenceBackend* backend) {
+    delete backend;
+}

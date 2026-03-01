@@ -168,14 +168,8 @@ int main() {
         (env_model_path && env_model_path[0] != '\0')
             ? env_model_path
             : (test_root / "models" / "beatthis.pt").string();
-    const std::string mps_model_path = (test_root / "models" / "beatthis_mps.pt").string();
     if (!std::filesystem::exists(cpu_model_path)) {
         std::cerr << "SKIP: Torch CPU model missing.\n";
-        return 77;
-    }
-    if (!std::filesystem::exists(mps_model_path)) {
-        std::cerr << "SKIP: Torch MPS model missing (expected "
-                  << mps_model_path << ").\n";
         return 77;
     }
 
@@ -191,7 +185,7 @@ int main() {
                         std::string* error) -> bool {
         beatit::BeatitConfig config = base_config;
         config.backend = beatit::BeatitConfig::Backend::Torch;
-        config.torch_model_path = (device == "mps") ? mps_model_path : cpu_model_path;
+        config.torch_model_path = cpu_model_path;
         config.torch_device = device;
         config.log_verbosity = beatit::LogVerbosity::Debug;
         config.profile = true;
